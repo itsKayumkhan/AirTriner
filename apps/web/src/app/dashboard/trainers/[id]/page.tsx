@@ -84,27 +84,58 @@ export default function BookTrainerPage() {
     const [processing, setProcessing] = useState(false);
 
     // Date generation state
-    const [offsetDays, setOffsetDays] = useState(0);
+    const [currentMonthDate, setCurrentMonthDate] = useState(new Date());
 
     const dates = useMemo(() => {
+        const year = currentMonthDate.getFullYear();
+        const month = currentMonthDate.getMonth();
+
+        const firstDayOfMonth = new Date(year, month, 1);
+        const lastDayOfMonth = new Date(year, month + 1, 0);
+
+        const firstDayWeekday = firstDayOfMonth.getDay(); // 0 (Sun) to 6 (Sat)
+
+        const daysInPrevMonth = firstDayWeekday;
+        const daysInMonth = lastDayOfMonth.getDate();
+
+        const totalCells = Math.ceil((daysInPrevMonth + daysInMonth) / 7) * 7;
+
         const today = new Date();
-        return Array.from({ length: 14 }).map((_, i) => {
-            const d = new Date(today);
-            d.setDate(today.getDate() + offsetDays + i);
+        today.setHours(0, 0, 0, 0);
+
+        return Array.from({ length: totalCells }).map((_, i) => {
+            const d = new Date(year, month, 1 - daysInPrevMonth + i);
+            const isCurrentMonth = d.getMonth() === month;
+            const isPastDate = d < today;
+
+            const formatLocalDate = (date: Date) => {
+                const yyyy = date.getFullYear();
+                const mm = String(date.getMonth() + 1).padStart(2, '0');
+                const dd = String(date.getDate()).padStart(2, '0');
+                return `${yyyy}-${mm}-${dd}`;
+            };
+
             return {
-                fullDate: d.toISOString().split("T")[0],
-                day: d.toLocaleDateString("en-US", { weekday: "short" }).toUpperCase().substring(0, 2),
+                fullDate: formatLocalDate(d),
                 date: d.getDate(),
-                monthName: d.toLocaleDateString("en-US", { month: "long" }),
-                year: d.getFullYear()
+                isCurrentMonth,
+                isPastDate
             };
         });
-    }, [offsetDays]);
+    }, [currentMonthDate]);
 
-    const displayMonth = `${dates[0].monthName} ${dates[0].year}`;
+    const displayMonth = `${currentMonthDate.toLocaleDateString("en-US", { month: "long" })} ${currentMonthDate.getFullYear()}`;
+
+    const WEEKDAYS = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
 
     // Booking Form State
-    const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split("T")[0]);
+    const [selectedDate, setSelectedDate] = useState<string>(() => {
+        const today = new Date();
+        const yyyy = today.getFullYear();
+        const mm = String(today.getMonth() + 1).padStart(2, '0');
+        const dd = String(today.getDate()).padStart(2, '0');
+        return `${yyyy}-${mm}-${dd}`;
+    });
     const [selectedTime, setSelectedTime] = useState<string>("");
 
     useEffect(() => {
@@ -365,8 +396,11 @@ export default function BookTrainerPage() {
                                 <h3 className="text-white font-black text-[15px] tracking-wide">Select Date</h3>
                                 <div className="flex items-center gap-1.5 bg-[#12141A] rounded-full border border-white/5 py-1 px-1.5 h-auto">
                                     <button
-                                        onClick={() => setOffsetDays(prev => Math.max(0, prev - 14))}
-                                        disabled={offsetDays === 0}
+                                        onClick={() => {
+                                            const newDate = new Date(currentMonthDate);
+                                            newDate.setMonth(newDate.getMonth() - 1);
+                                            setCurrentMonthDate(newDate);
+                                        }}
                                         className="w-7 h-7 flex items-center justify-center rounded-full text-white/50 hover:bg-white/10 hover:text-white disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
                                     >
                                         <ChevronLeft size={16} strokeWidth={3} />
@@ -375,7 +409,11 @@ export default function BookTrainerPage() {
                                         {displayMonth}
                                     </div>
                                     <button
-                                        onClick={() => setOffsetDays(prev => prev + 14)}
+                                        onClick={() => {
+                                            const newDate = new Date(currentMonthDate);
+                                            newDate.setMonth(newDate.getMonth() + 1);
+                                            setCurrentMonthDate(newDate);
+                                        }}
                                         className="w-7 h-7 flex items-center justify-center rounded-full text-white/50 hover:bg-white/10 hover:text-white transition-colors"
                                     >
                                         <ChevronRight size={16} strokeWidth={3} />
@@ -383,40 +421,32 @@ export default function BookTrainerPage() {
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-7 gap-y-4 gap-x-2">
+                            <div className="grid grid-cols-7 gap-y-3 gap-x-2">
                                 {/* Days of week header */}
-                                {dates.slice(0, 7).map((d, i) => (
-                                    <div key={`col-${i}`} className="flex flex-col items-center gap-4">
+                                {WEEKDAYS.map((day, i) => (
+                                    <div key={`col-${i}`} className="flex flex-col items-center mb-1">
                                         <div className="text-[10px] text-text-main/40 font-bold uppercase tracking-wider h-4 flex items-center justify-center">
-                                            {d.day}
+                                            {day}
                                         </div>
                                     </div>
                                 ))}
 
-                                {/* Row 1 of dates */}
-                                {dates.slice(0, 7).map((d, i) => (
-                                    <div key={`row1-${i}`} className="flex justify-center">
+                                {/* Dates */}
+                                {dates.map((d, i) => (
+                                    <div key={`date-${d.fullDate}-${i}`} className="flex justify-center">
                                         <button
-                                            onClick={() => setSelectedDate(d.fullDate)}
+                                            onClick={() => {
+                                                if (!d.isPastDate) {
+                                                    setSelectedDate(d.fullDate);
+                                                }
+                                            }}
+                                            disabled={d.isPastDate}
                                             className={`w-9 h-10 rounded-[10px] text-sm font-black flex items-center justify-center transition-all duration-200
-                                                ${selectedDate === d.fullDate
+                                                ${!d.isCurrentMonth ? "opacity-30" : ""}
+                                                ${d.isPastDate ? "opacity-20 cursor-not-allowed" : ""}
+                                                ${selectedDate === d.fullDate && !d.isPastDate
                                                     ? "bg-primary text-bg shadow-[0_4px_12px_rgba(163,255,18,0.3)] scale-105"
-                                                    : "text-white hover:bg-white/5 hover:-translate-y-0.5"}`}
-                                        >
-                                            {d.date}
-                                        </button>
-                                    </div>
-                                ))}
-
-                                {/* Row 2 of dates */}
-                                {dates.slice(7, 14).map((d, i) => (
-                                    <div key={`row2-${i}`} className="flex justify-center">
-                                        <button
-                                            onClick={() => setSelectedDate(d.fullDate)}
-                                            className={`w-9 h-10 rounded-[10px] text-sm font-black flex items-center justify-center transition-all duration-200
-                                                ${selectedDate === d.fullDate
-                                                    ? "bg-primary text-bg shadow-[0_4px_12px_rgba(163,255,18,0.3)] scale-105"
-                                                    : "text-white hover:bg-white/5 hover:-translate-y-0.5"}`}
+                                                    : !d.isPastDate ? "text-white hover:bg-white/5 hover:-translate-y-0.5" : "text-white"}`}
                                         >
                                             {d.date}
                                         </button>

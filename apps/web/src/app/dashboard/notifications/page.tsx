@@ -5,6 +5,12 @@ import React, { useEffect, useState } from "react";
 import { getSession, AuthUser } from "@/lib/auth";
 import { supabase, NotificationRow } from "@/lib/supabase";
 
+interface OfferNotificationData {
+    offer_id?: string;
+    offer_status?: string;
+    [key: string]: unknown;
+}
+
 export default function NotificationsPage() {
     const [user, setUser] = useState<AuthUser | null>(null);
     const [notifications, setNotifications] = useState<NotificationRow[]>([]);
@@ -52,6 +58,33 @@ export default function NotificationsPage() {
             setNotifications([]);
         } catch (err) {
             console.error("Failed to clear notifications:", err);
+        }
+    };
+
+    const handleOfferResponse = async (notificationId: string, offerId: string, response: "accepted" | "declined") => {
+        try {
+            // Update the training offer status
+            const { error: offerError } = await supabase
+                .from("training_offers")
+                .update({ status: response })
+                .eq("id", offerId);
+
+            if (offerError) throw offerError;
+
+            // Update the notification data so we don't show the buttons again
+            const currentNotif = notifications.find(n => n.id === notificationId);
+            if (currentNotif) {
+                const newData = { ...(currentNotif.data as OfferNotificationData), offer_status: response };
+                await supabase
+                    .from("notifications")
+                    .update({ data: newData })
+                    .eq("id", notificationId);
+
+                setNotifications(prev => prev.map(n => n.id === notificationId ? { ...n, data: newData } : n));
+            }
+        } catch (err) {
+            console.error("Failed to respond to offer:", err);
+            alert("Failed to update offer status. Please try again.");
         }
     };
 
@@ -124,8 +157,8 @@ export default function NotificationsPage() {
                             key={n.id}
                             onClick={() => !n.read && markAsRead(n.id)}
                             className={`px-6 py-5 flex items-start gap-5 border-b border-white/5 last:border-0 transition-all ${n.read
-                                    ? "bg-transparent hover:bg-white/5 cursor-default"
-                                    : "bg-primary/5 hover:bg-primary/10 cursor-pointer"
+                                ? "bg-transparent hover:bg-white/5 cursor-default"
+                                : "bg-primary/5 hover:bg-primary/10 cursor-pointer"
                                 }`}
                         >
                             <div className="mt-1 shrink-0 p-2.5 rounded-xl bg-[#272A35] border border-white/5 shadow-sm">
@@ -143,6 +176,30 @@ export default function NotificationsPage() {
                                 <p className="text-sm text-text-main/60 font-medium leading-relaxed max-w-xl">
                                     {n.body}
                                 </p>
+
+                                {n.type === "MESSAGE_RECEIVED" && (n.data as OfferNotificationData)?.offer_id && !(n.data as OfferNotificationData)?.offer_status && (
+                                    <div className="flex gap-3 mt-4">
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); handleOfferResponse(n.id, (n.data as OfferNotificationData).offer_id!, "accepted"); }}
+                                            className="px-5 py-2 rounded-xl bg-primary text-bg font-black text-xs uppercase tracking-wider hover:shadow-[0_0_15px_rgba(163,255,18,0.3)] transition-all"
+                                        >
+                                            Accept Offer
+                                        </button>
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); handleOfferResponse(n.id, (n.data as OfferNotificationData).offer_id!, "declined"); }}
+                                            className="px-5 py-2 rounded-xl border border-white/10 text-white font-bold text-xs uppercase tracking-wider hover:bg-white/5 transition-all"
+                                        >
+                                            Decline
+                                        </button>
+                                    </div>
+                                )}
+                                {(n.data as OfferNotificationData)?.offer_status && (
+                                    <div className="mt-3">
+                                        <span className={`inline-block px-3 py-1 text-[10px] uppercase font-black tracking-wider rounded-lg border ${(n.data as OfferNotificationData).offer_status === 'accepted' ? 'text-green-500 bg-green-500/10 border-green-500/20' : 'text-red-500 bg-red-500/10 border-red-500/20'}`}>
+                                            Offer {(n.data as OfferNotificationData).offer_status}
+                                        </span>
+                                    </div>
+                                )}
                             </div>
                             <span className="text-[10px] text-text-main/40 uppercase tracking-widest font-bold whitespace-nowrap mt-1">
                                 {timeAgo(n.created_at)}

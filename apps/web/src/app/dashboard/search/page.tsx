@@ -86,6 +86,10 @@ export default function SearchTrainersPage() {
     const [locationFilter, setLocationFilter] = useState<string>("");
     const [sortBy, setSortBy] = useState<string>("match");
 
+    // Pagination
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 8;
+
     useEffect(() => {
         if (typeof window !== 'undefined') {
             const params = new URLSearchParams(window.location.search);
@@ -187,6 +191,17 @@ export default function SearchTrainersPage() {
         return result;
     }, [trainers, sportFilter, maxRate, minRating, locationFilter, sortBy]);
 
+    // Reset to page 1 when filters change
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [sportFilter, maxRate, minRating, locationFilter, sortBy]);
+
+    const totalPages = Math.ceil(filteredTrainers.length / itemsPerPage);
+    const paginatedTrainers = filteredTrainers.slice(
+        (currentPage - 1) * itemsPerPage,
+        currentPage * itemsPerPage
+    );
+
     if (loading) {
         return (
             <div className="flex justify-center items-center h-full">
@@ -284,7 +299,7 @@ export default function SearchTrainersPage() {
 
             {/* Trainer Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                {filteredTrainers.map((trainer, idx) => (
+                {paginatedTrainers.map((trainer, idx) => (
                     <div key={trainer.id} className="bg-surface border border-white/5 rounded-2xl overflow-hidden group hover:border-gray-600 transition-colors flex flex-col">
 
                         {/* Image area */}
@@ -347,15 +362,37 @@ export default function SearchTrainersPage() {
                 ))}
             </div>
 
-            {filteredTrainers.length > 0 && (
+            {totalPages > 1 && (
                 <div className="mt-12 flex justify-center items-center gap-2">
-                    <button className="w-10 h-10 rounded-full border border-white/5 flex items-center justify-center text-text-main/60 hover:text-text-main hover:border-gray-600 transition-colors"><ChevronLeft size={16} /></button>
-                    <button className="w-10 h-10 rounded-full bg-primary text-bg font-bold flex items-center justify-center text-sm shadow-[0_0_10px_rgba(163,255,18,0.2)]">1</button>
-                    <button className="w-10 h-10 rounded-full text-text-main/60 hover:text-text-main font-bold text-sm transition-colors">2</button>
-                    <button className="w-10 h-10 rounded-full text-text-main/60 hover:text-text-main font-bold text-sm transition-colors">3</button>
-                    <span className="text-gray-600 px-1">...</span>
-                    <button className="w-10 h-10 rounded-full text-text-main/60 hover:text-text-main font-bold text-sm transition-colors">12</button>
-                    <button className="w-10 h-10 rounded-full border border-white/5 flex items-center justify-center text-text-main/60 hover:text-text-main hover:border-gray-600 transition-colors"><ChevronRight size={16} /></button>
+                    <button 
+                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                        disabled={currentPage === 1}
+                        className="w-10 h-10 rounded-full border border-white/5 flex items-center justify-center text-text-main/60 hover:text-text-main hover:border-gray-600 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
+                        <ChevronLeft size={16} />
+                    </button>
+                    
+                    {Array.from({ length: totalPages }).map((_, i) => (
+                        <button 
+                            key={i}
+                            onClick={() => setCurrentPage(i + 1)}
+                            className={`w-10 h-10 rounded-full font-bold text-sm transition-colors flex items-center justify-center ${
+                                currentPage === i + 1 
+                                ? "bg-primary text-bg shadow-[0_0_10px_rgba(163,255,18,0.2)]" 
+                                : "text-text-main/60 hover:text-text-main border border-transparent hover:border-white/5"
+                            }`}
+                        >
+                            {i + 1}
+                        </button>
+                    ))}
+
+                    <button 
+                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                        disabled={currentPage === totalPages}
+                        className="w-10 h-10 rounded-full border border-white/5 flex items-center justify-center text-text-main/60 hover:text-text-main hover:border-gray-600 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
+                        <ChevronRight size={16} />
+                    </button>
                 </div>
             )}
         </div>

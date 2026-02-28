@@ -218,7 +218,7 @@ export default function DashboardOverview() {
 
                                     return (
                                         <Link
-                                            href={`/dashboard/bookings/${booking.id}`}
+                                            href={`/dashboard/bookings`}
                                             key={booking.id}
                                             className="p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 hover:bg-white/5 transition-colors m-2 rounded-2xl group border border-transparent hover:border-white/5/50"
                                         >

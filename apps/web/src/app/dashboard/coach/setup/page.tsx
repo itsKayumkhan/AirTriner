@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { getSession, setSession, AuthUser } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
+import { v4 as uuidv4 } from "uuid";
 import {
     Pencil,
     FileText,
@@ -12,22 +13,35 @@ import {
     Award,
     DollarSign,
     X,
-    FileUp
+    FileUp,
+    CheckCircle,
+    AlertTriangle
 } from "lucide-react";
+
+const SPORTS_LIST = [
+    "hockey", "baseball", "basketball", "football", "soccer",
+    "tennis", "golf", "swimming", "boxing", "lacrosse",
+    "wrestling", "martial_arts", "gymnastics", "track_and_field", "volleyball",
+];
 
 export default function TrainerEditProfilePage() {
     const router = useRouter();
     const [user, setUser] = useState<AuthUser | null>(null);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [uploading, setUploading] = useState(false);
+    const [popup, setPopup] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
     const [formData, setFormData] = useState({
+        firstName: "",
+        lastName: "",
         bio: "",
         sports: [] as string[],
         yearsExperience: "",
         previousFacility: "",
         hourlyRate: "75",
         packageRate: "650",
+        certifications: "",
     });
 
     const [newTag, setNewTag] = useState("");
@@ -50,15 +64,22 @@ export default function TrainerEditProfilePage() {
 
         if (session.trainerProfile) {
             const tp = session.trainerProfile;
+            let initialCerts = "";
+            if (typeof tp.certifications === "string") initialCerts = tp.certifications;
+            else if (Array.isArray(tp.certifications)) initialCerts = tp.certifications.join("\n");
+
             setFormData(prev => ({
                 ...prev,
+                firstName: session.firstName || "",
+                lastName: session.lastName || "",
                 bio: tp.bio || "",
                 sports: tp.sports || [],
                 yearsExperience: tp.years_experience?.toString() || "",
                 hourlyRate: tp.hourly_rate?.toString() || "75",
                 // previousFacility and packageRate are frontend-only for now unless added to DB
                 previousFacility: prev.previousFacility,
-                packageRate: prev.packageRate
+                packageRate: prev.packageRate,
+                certifications: initialCerts,
             }));
         }
         setLoading(false);
@@ -73,31 +94,112 @@ export default function TrainerEditProfilePage() {
                 sports: formData.sports,
                 years_experience: parseInt(formData.yearsExperience) || null,
                 hourly_rate: parseFloat(formData.hourlyRate) || 75,
+                certifications: formData.certifications,
             };
 
-            const { error } = await supabase
-                .from("trainer_profiles")
-                .update(updateData)
-                .eq("user_id", user.id);
+            const [profileRes, userRes] = await Promise.all([
+                supabase.from("trainer_profiles").update(updateData).eq("user_id", user.id),
+                supabase.from("users").update({ first_name: formData.firstName, last_name: formData.lastName }).eq("id", user.id)
+            ]);
 
-            if (error) throw error;
+            if (profileRes.error) throw profileRes.error;
+            if (userRes.error) throw userRes.error;
 
             const updatedSession = {
                 ...user,
+                firstName: formData.firstName,
+                lastName: formData.lastName,
                 trainerProfile: {
                     ...user.trainerProfile,
                     ...updateData
                 },
             };
             setSession(updatedSession as AuthUser);
-            // Optionally show a toast instead of redirecting immediately
-            // router.push("/dashboard");
-            alert("Profile saved successfully!");
+            setPopup({ type: "success", message: "Profile saved successfully!" });
         } catch (err) {
             console.error("Failed to save:", err);
-            alert("Failed to save profile. Please try again.");
+            setPopup({ type: "error", message: "Failed to save profile. Please try again." });
         } finally {
             setSaving(false);
+        }
+    };
+
+    const handleUploadAvatar = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        try {
+            setUploading(true);
+            if (!e.target.files || e.target.files.length === 0 || !user) {
+                return;
+            }
+
+            const file = e.target.files[0];
+            const fileExt = file.name.split('.').pop();
+            const fileName = `${user.id}-${uuidv4()}.${fileExt}`;
+            const filePath = `${fileName}`;
+
+            // Try to upload to a "avatars" storage bucket
+            const { error: uploadError } = await supabase.storage
+                .from('avatars')
+                .upload(filePath, file);
+
+            if (uploadError) {
+                console.error("Storage upload error details:", uploadError);
+                throw uploadError;
+            }
+
+            // Get public URL
+            const { data: publicUrlData } = supabase.storage
+                .from('avatars')
+                .getPublicUrl(filePath);
+
+            const avatarUrl = publicUrlData.publicUrl;
+
+            // Updated auth user
+            const { error: updateError } = await supabase
+                .from('users')
+                .update({ avatar_url: avatarUrl })
+                .eq('id', user.id);
+
+            if (updateError) throw updateError;
+
+            const updatedUser = { ...user, avatarUrl };
+            setUser(updatedUser);
+            setSession(updatedUser);
+
+            setPopup({ type: "success", message: "Avatar updated successfully!" });
+
+        } catch (error) {
+            console.error('Error uploading image: ', error);
+            setPopup({ type: "error", message: "Error uploading image! Please try again." });
+        } finally {
+            setUploading(false);
+            if (fileInputRef.current) {
+                fileInputRef.current.value = "";
+            }
+        }
+    };
+
+    const handleRemoveAvatar = async () => {
+        if (!user || !user.avatarUrl) return;
+        try {
+            setUploading(true);
+
+            const { error: updateError } = await supabase
+                .from('users')
+                .update({ avatar_url: null })
+                .eq('id', user.id);
+
+            if (updateError) throw updateError;
+
+            const updatedUser = { ...user, avatarUrl: undefined };
+            setUser(updatedUser);
+            setSession(updatedUser);
+
+            setPopup({ type: "success", message: "Avatar removed successfully!" });
+        } catch (error) {
+            console.error('Error removing image: ', error);
+            setPopup({ type: "error", message: "Error removing image!" });
+        } finally {
+            setUploading(false);
         }
     };
 
@@ -158,37 +260,32 @@ export default function TrainerEditProfilePage() {
             {/* Content Blocks */}
             <div className="space-y-6">
 
-                {/* Profile Identity */}
+                {/* Profile Identity - Temporarily hidden per user request
                 <div className="bg-[#1A1C23] border border-white/5 rounded-[20px] p-6 lg:p-8 flex flex-col sm:flex-row items-center sm:items-start gap-8 shadow-md">
-                    {/* Avatar Area */}
                     <div className="relative shrink-0">
-                        <div className="w-36 h-36 rounded-2xl bg-gray-800 overflow-hidden border border-white/5 shadow-inner">
-                            {user?.avatarUrl ? (
-                                <img src={user.avatarUrl} alt="Profile" className="w-full h-full object-cover" />
-                            ) : (
-                                <div className="w-full h-full bg-[#272A35] flex items-center justify-center text-5xl font-black text-text-main/40">
-                                    {user?.firstName?.[0]}{user?.lastName?.[0]}
-                                </div>
-                            )}
-                        </div>
-                        <button className="absolute -bottom-2 -right-2 w-8 h-8 rounded-full bg-primary text-bg flex items-center justify-center shadow-[0_4px_10px_rgba(163,255,18,0.4)] hover:scale-105 transition-transform z-10">
-                            <Pencil size={14} strokeWidth={3} />
-                        </button>
+                        ...
                     </div>
+                </div>
+                */}
 
-                    {/* Identity Info */}
-                    <div className="flex-1 text-center sm:text-left pt-2">
-                        <h2 className="text-[22px] font-bold text-white mb-2 tracking-tight">Profile Identity</h2>
-                        <p className="text-text-main/60 text-sm mb-6 max-w-md leading-relaxed pr-4">
-                            Use a professional high-quality headshot. Recommended size 800x800px. Supports JPG, PNG or WebP.
-                        </p>
-                        <div className="flex items-center justify-center sm:justify-start gap-4">
-                            <button className="bg-primary text-bg font-bold text-sm px-6 py-2.5 rounded-full hover:shadow-[0_4px_15px_rgba(163,255,18,0.25)] hover:-translate-y-0.5 transition-all">
-                                Upload New
-                            </button>
-                            <button className="bg-[#2a2d36] text-white font-bold text-sm px-6 py-2.5 rounded-full hover:bg-[#343844] transition-colors">
-                                Remove
-                            </button>
+                {/* Personal Information */}
+                <div className="bg-[#1A1C23] border border-white/5 rounded-[20px] p-6 lg:p-8 shadow-md">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">First Name</label>
+                            <input
+                                value={formData.firstName}
+                                onChange={(e) => setFormData((p) => ({ ...p, firstName: e.target.value }))}
+                                className="w-full bg-[#12141A] border border-white/5 rounded-2xl px-5 py-3.5 text-white text-sm outline-none focus:border-primary/50 transition-colors"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">Last Name</label>
+                            <input
+                                value={formData.lastName}
+                                onChange={(e) => setFormData((p) => ({ ...p, lastName: e.target.value }))}
+                                className="w-full bg-[#12141A] border border-white/5 rounded-2xl px-5 py-3.5 text-white text-sm outline-none focus:border-primary/50 transition-colors"
+                            />
                         </div>
                     </div>
                 </div>
@@ -230,34 +327,30 @@ export default function TrainerEditProfilePage() {
                         <div className="flex-1">
                             <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">CORE DISCIPLINES</label>
                             <div className="flex flex-wrap gap-2.5">
-                                {formData.sports.map(tag => (
-                                    <span key={tag} className="bg-primary text-bg text-[11px] font-black px-4 py-2 rounded-full uppercase tracking-wider flex items-center gap-2 shadow-[0_2px_8px_rgba(163,255,18,0.15)]">
-                                        {tag}
-                                        <button onClick={() => removeTag(tag)} className="hover:opacity-70 transition-opacity">
-                                            <X size={14} strokeWidth={3} />
+                                {SPORTS_LIST.map((sport) => {
+                                    const selected = formData.sports.includes(sport);
+                                    return (
+                                        <button
+                                            key={sport}
+                                            type="button"
+                                            onClick={() => {
+                                                setFormData((p) => ({
+                                                    ...p,
+                                                    sports: selected ? p.sports.filter((s) => s !== sport) : [...p.sports, sport],
+                                                }));
+                                            }}
+                                            className={`
+                                                px-5 py-2.5 rounded-full text-[11px] font-black uppercase tracking-wider transition-all duration-200
+                                                ${selected
+                                                    ? "bg-primary text-bg shadow-[0_4px_15px_rgba(163,255,18,0.25)] border-transparent"
+                                                    : "bg-transparent border border-white/10 text-text-main/50 hover:border-white/30 hover:text-white"
+                                                }
+                                            `}
+                                        >
+                                            {sport.replace(/_/g, " ")}
                                         </button>
-                                    </span>
-                                ))}
-
-                                {showTagInput ? (
-                                    <input
-                                        type="text"
-                                        value={newTag}
-                                        onChange={(e) => setNewTag(e.target.value)}
-                                        onKeyDown={addTag}
-                                        onBlur={() => setShowTagInput(false)}
-                                        autoFocus
-                                        placeholder="Type & press Enter"
-                                        className="bg-[#12141A] border border-white/10 text-white text-[11px] font-bold px-4 py-2 rounded-full outline-none focus:border-primary uppercase min-w-[140px]"
-                                    />
-                                ) : (
-                                    <button
-                                        onClick={() => setShowTagInput(true)}
-                                        className="border border-dashed border-white/20 text-text-main/50 hover:text-white hover:border-white/40 text-[11px] font-bold px-5 py-2 rounded-full uppercase tracking-wider transition-colors"
-                                    >
-                                        + Add Tag
-                                    </button>
-                                )}
+                                    );
+                                })}
                             </div>
                         </div>
                     </div>
@@ -294,21 +387,20 @@ export default function TrainerEditProfilePage() {
                     </div>
 
                     {/* Certifications */}
-                    <div className="bg-[#1A1C23] border border-white/5 rounded-[20px] p-6 lg:p-8 shadow-md">
+                    <div className="bg-[#1A1C23] border border-white/5 rounded-[20px] p-6 lg:p-8 shadow-md flex flex-col">
                         <div className="flex items-center gap-3 mb-6">
                             <Award size={20} className="text-primary" strokeWidth={2.5} />
-                            <h3 className="text-[15px] font-black text-white tracking-widest uppercase">CERTIFICATIONS</h3>
+                            <h3 className="text-[15px] font-black text-white tracking-widest uppercase">CERTIFICATIONS DETAILS</h3>
                         </div>
 
-                        <div className="border-2 border-dashed border-white/10 rounded-[20px] bg-[#12141A] p-8 flex flex-col items-center justify-center text-center hover:border-primary/30 transition-colors cursor-pointer group h-36">
-                            <div className="mb-2 group-hover:-translate-y-1 transition-transform duration-300 relative">
-                                <FileText size={20} className="text-text-main/40 group-hover:text-primary transition-colors" strokeWidth={2} />
-                                <div className="absolute -top-1 -right-1.5 bg-[#12141A] rounded-full p-0.5">
-                                    <div className="w-2.5 h-2.5 bg-text-main/40 group-hover:bg-primary text-bg flex items-center justify-center rounded-full text-[8px] font-black transition-colors">↑</div>
-                                </div>
-                            </div>
-                            <h4 className="text-white font-bold text-[13px] mb-1">Drag certifications here</h4>
-                            <p className="text-text-main/40 text-[11px]">PDF or Images up to 10MB</p>
+                        <div className="flex-1">
+                            <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">LIST YOUR CREDENTIALS</label>
+                            <textarea
+                                value={formData.certifications}
+                                onChange={(e) => setFormData({ ...formData, certifications: e.target.value })}
+                                placeholder="E.g. NASM Certified Personal Trainer, ISSA Nutritionist..."
+                                className="w-full h-32 bg-[#12141A] border border-white/5 rounded-2xl p-5 text-white text-sm outline-none focus:border-primary/50 resize-none transition-colors placeholder:text-text-main/30"
+                            />
                         </div>
                     </div>
 
@@ -348,6 +440,41 @@ export default function TrainerEditProfilePage() {
                     </div>
                 </div>
             </div>
+
+            {/* Custom Popup Modal */}
+            {popup && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+                    <div className="bg-[#1A1C23] border border-white/10 rounded-2xl p-6 shadow-2xl max-w-sm w-full animate-in fade-in zoom-in-95 duration-200">
+                        <div className="flex flex-col items-center text-center">
+                            {popup.type === "success" ? (
+                                <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center mb-4 text-primary">
+                                    <CheckCircle size={28} strokeWidth={2.5} />
+                                </div>
+                            ) : (
+                                <div className="w-12 h-12 rounded-full bg-red-500/20 flex items-center justify-center mb-4 text-red-500">
+                                    <AlertTriangle size={28} strokeWidth={2.5} />
+                                </div>
+                            )}
+                            <h3 className={`text-xl font-black font-display uppercase tracking-wider mb-2 ${popup.type === "success" ? "text-primary" : "text-red-500"}`}>
+                                {popup.type === "success" ? "Success!" : "Error"}
+                            </h3>
+                            <p className="text-text-main/80 text-sm font-medium mb-6">
+                                {popup.message}
+                            </p>
+                            <button
+                                onClick={() => setPopup(null)}
+                                className={`w-full py-3 rounded-full font-black text-sm uppercase tracking-wider transition-all ${
+                                    popup.type === "success" 
+                                    ? "bg-primary text-bg hover:shadow-[0_0_15px_rgba(163,255,18,0.3)]" 
+                                    : "bg-red-500 text-white hover:bg-red-600"
+                                }`}
+                            >
+                                OK
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

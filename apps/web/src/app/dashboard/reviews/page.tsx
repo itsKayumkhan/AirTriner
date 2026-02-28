@@ -65,37 +65,50 @@ export default function ReviewsPage() {
 
     if (loading) {
         return (
-            <div style={{ display: "flex", justifyContent: "center", padding: "60px" }}>
-                <div style={{ width: "40px", height: "40px", border: "3px solid var(--gray-200)", borderTopColor: "var(--primary)", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+            <div className="flex justify-center flex-col items-center h-full min-h-[50vh]">
+                <div className="w-12 h-12 border-4 border-primary/20 border-t-primary rounded-full animate-spin"></div>
             </div>
         );
     }
 
     return (
-        <div>
-            <div style={{ marginBottom: "28px" }}>
-                <h1 style={{ fontSize: "24px", fontWeight: 800, fontFamily: "var(--font-display)", marginBottom: "4px" }}>My Reviews</h1>
-                <p style={{ color: "var(--gray-500)", fontSize: "14px" }}>See what athletes are saying about your sessions.</p>
+        <div className="max-w-[1000px] w-full pb-12">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+                <div>
+                    <h1 className="text-[32px] font-black font-display italic tracking-wide text-white uppercase mb-1 leading-none drop-shadow-sm">My Reviews</h1>
+                    <p className="text-text-main/60 font-medium text-[15px]">See what athletes are saying about your sessions.</p>
+                </div>
             </div>
 
             {/* Overall Rating */}
-            <div style={{ display: "grid", gridTemplateColumns: "200px 1fr", gap: "32px", background: "var(--surface)", borderRadius: "var(--radius-lg)", border: "1px solid var(--gray-200)", padding: "32px", marginBottom: "24px" }}>
-                <div style={{ textAlign: "center" }}>
-                    <div style={{ fontSize: "52px", fontWeight: 800, fontFamily: "var(--font-display)", marginBottom: "4px" }}>{avgRating || "—"}</div>
-                    <div style={{ fontSize: "22px", marginBottom: "4px" }}>
+            <div className="bg-[#1A1C23] border border-white/5 rounded-[20px] p-6 lg:p-8 mb-8 shadow-md flex flex-col md:flex-row gap-8 lg:gap-12 items-center md:items-stretch">
+                <div className="text-center md:border-r border-white/5 md:pr-12 md:mr-4 shrink-0 flex flex-col justify-center">
+                    <div className="text-[64px] font-black font-display text-white leading-none tracking-tighter mb-2 shadow-sm drop-shadow-md">{avgRating || "—"}</div>
+                    <div className="text-2xl mb-1 text-amber-500 tracking-widest drop-shadow-[0_0_10px_rgba(245,158,11,0.3)]">
                         {"★".repeat(Math.round(avgRating))}
-                        {"☆".repeat(5 - Math.round(avgRating))}
+                        <span className="text-white/10">{"★".repeat(5 - Math.round(avgRating))}</span>
                     </div>
-                    <div style={{ fontSize: "14px", color: "var(--gray-500)" }}>{reviews.length} review{reviews.length !== 1 ? "s" : ""}</div>
+                    <div className="text-sm font-bold text-text-main/50 uppercase tracking-widest">
+                        {reviews.length} {reviews.length === 1 ? 'Review' : 'Reviews'}
+                    </div>
                 </div>
-                <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", gap: "6px" }}>
+
+                <div className="flex-1 flex flex-col justify-center gap-3 w-full max-w-sm">
                     {ratingDist.map((d) => (
-                        <div key={d.stars} style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                            <span style={{ fontSize: "13px", fontWeight: 600, width: "24px", color: "var(--gray-600)" }}>{d.stars}★</span>
-                            <div style={{ flex: 1, height: "8px", borderRadius: "var(--radius-full)", background: "var(--gray-100)", overflow: "hidden" }}>
-                                <div style={{ height: "100%", width: `${d.pct}%`, borderRadius: "var(--radius-full)", background: d.stars >= 4 ? "#10b981" : d.stars === 3 ? "#f59e0b" : "#ef4444" }} />
+                        <div key={d.stars} className="flex items-center gap-4 group">
+                            <span className="text-[13px] font-black text-white/70 w-8 flex items-center justify-end gap-1">
+                                {d.stars} <span className="text-amber-500">★</span>
+                            </span>
+                            <div className="flex-1 h-3 rounded-full bg-[#12141A] border border-white/5 overflow-hidden">
+                                <div
+                                    className={`h-full rounded-full transition-all duration-1000 ease-out ${d.stars >= 4 ? "bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.4)]" :
+                                            d.stars === 3 ? "bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.4)]" :
+                                                "bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.4)]"
+                                        }`}
+                                    style={{ width: `${d.pct}%` }}
+                                />
                             </div>
-                            <span style={{ fontSize: "12px", color: "var(--gray-400)", width: "30px" }}>{d.count}</span>
+                            <span className="text-[12px] font-bold text-text-main/40 w-10">{d.count}</span>
                         </div>
                     ))}
                 </div>
@@ -103,32 +116,42 @@ export default function ReviewsPage() {
 
             {/* Reviews list */}
             {reviews.length === 0 ? (
-                <div style={{ background: "var(--surface)", borderRadius: "var(--radius-lg)", border: "1px solid var(--gray-200)", padding: "60px 24px", textAlign: "center" }}>
-                    <FileText className="text-text-main/60 w-10 h-10 mb-4 mx-auto" />
-                    <p style={{ color: "var(--gray-500)" }}>No reviews yet. Complete sessions to start receiving reviews!</p>
+                <div className="bg-[#1A1C23] border border-white/5 rounded-[20px] p-16 text-center shadow-md">
+                    <FileText className="text-text-main/20 w-12 h-12 mb-4 mx-auto" strokeWidth={1.5} />
+                    <h3 className="text-white font-bold text-lg mb-2">No reviews yet</h3>
+                    <p className="text-text-main/50 text-sm">Complete sessions to start receiving reviews!</p>
                 </div>
             ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                <div className="flex flex-col gap-5">
                     {reviews.map((review) => (
-                        <div key={review.id} style={{ background: "var(--surface)", borderRadius: "var(--radius-lg)", border: "1px solid var(--gray-200)", padding: "24px" }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "12px" }}>
-                                <div style={{ width: "40px", height: "40px", borderRadius: "var(--radius-full)", background: "var(--gradient-accent)", display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontWeight: 700, fontSize: "14px" }}>
-                                    {review.reviewer ? `${review.reviewer.first_name[0]}${review.reviewer.last_name[0]}` : "?"}
-                                </div>
-                                <div style={{ flex: 1 }}>
-                                    <div style={{ fontWeight: 600, fontSize: "14px" }}>
-                                        {review.reviewer ? `${review.reviewer.first_name} ${review.reviewer.last_name}` : "Anonymous"}
+                        <div key={review.id} className="bg-[#1A1C23] border border-white/5 rounded-[20px] p-6 lg:p-8 shadow-md hover:border-white/10 transition-colors">
+                            <div className="flex flex-wrap sm:flex-nowrap items-start justify-between gap-4 mb-5">
+                                <div className="flex items-center gap-4">
+                                    <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center font-black text-lg border border-primary/20 shrink-0">
+                                        {review.reviewer ? `${review.reviewer.first_name[0]}${review.reviewer.last_name[0]}` : "?"}
                                     </div>
-                                    <div style={{ fontSize: "12px", color: "var(--gray-400)" }}>
-                                        {new Date(review.created_at).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+                                    <div>
+                                        <div className="font-bold text-white text-[16px] mb-0.5">
+                                            {review.reviewer ? `${review.reviewer.first_name} ${review.reviewer.last_name}` : "Anonymous"}
+                                        </div>
+                                        <div className="text-[12px] font-medium text-text-main/40">
+                                            {new Date(review.created_at).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+                                        </div>
                                     </div>
                                 </div>
-                                <div style={{ fontSize: "16px", color: "#f59e0b" }}>
-                                    {"★".repeat(review.rating)}{"☆".repeat(5 - review.rating)}
+                                <div className="text-[18px] text-amber-500 tracking-wider">
+                                    {"★".repeat(review.rating)}
+                                    <span className="text-white/10">{"★".repeat(5 - review.rating)}</span>
                                 </div>
                             </div>
-                            {review.review_text && (
-                                <p style={{ fontSize: "14px", lineHeight: 1.6, color: "var(--gray-600)" }}>{review.review_text}</p>
+                            {review.review_text ? (
+                                <p className="text-[14px] leading-relaxed text-text-main/70 bg-[#12141A] border border-white/5 p-5 rounded-2xl">
+                                    {review.review_text}
+                                </p>
+                            ) : (
+                                <p className="text-[14px] leading-relaxed text-text-main/30 italic">
+                                    No written review provided.
+                                </p>
                             )}
                         </div>
                     ))}

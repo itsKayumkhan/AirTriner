@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { getSession, AuthUser } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
+import { Plus, Trash2, CheckCircle2, Circle, Clock } from "lucide-react";
 
 interface AvailabilitySlot {
     id: string;
@@ -10,7 +11,7 @@ interface AvailabilitySlot {
     day_of_week: number;
     start_time: string;
     end_time: string;
-    is_active: boolean;
+    is_blocked: boolean;
 }
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -37,10 +38,12 @@ export default function AvailabilityPage() {
 
     const loadSlots = async (u: AuthUser) => {
         try {
+            if (!u.trainerProfile?.id) return;
+
             const { data } = await supabase
                 .from("availability_slots")
                 .select("*")
-                .eq("trainer_id", u.id)
+                .eq("trainer_id", u.trainerProfile.id)
                 .order("day_of_week")
                 .order("start_time");
 
@@ -54,38 +57,53 @@ export default function AvailabilityPage() {
 
     const addSlot = async () => {
         if (!user) return;
-        
+
+        if (!newSlot.start || !newSlot.end) {
+            setError("Please provide both start and end times.");
+            return;
+        }
+
         // Validate start time is before end time
         if (newSlot.start >= newSlot.end) {
             setError("Start time must be before end time");
             return;
         }
-        
+
         // Check for conflicts with existing slots
-        const conflictingSlot = slots.find((s) => 
-            s.day_of_week === newSlot.day && 
-            s.is_active &&
-            ((newSlot.start >= s.start_time.slice(0, 5) && newSlot.start < s.end_time.slice(0, 5)) ||
-             (newSlot.end > s.start_time.slice(0, 5) && newSlot.end <= s.end_time.slice(0, 5)) ||
-             (newSlot.start <= s.start_time.slice(0, 5) && newSlot.end >= s.end_time.slice(0, 5)))
-        );
-        
+        const conflictingSlot = slots.find((s) => {
+            if (s.day_of_week !== newSlot.day) return false;
+
+            const existingStart = s.start_time.slice(0, 5);
+            const existingEnd = s.end_time.slice(0, 5);
+
+            return (
+                (newSlot.start >= existingStart && newSlot.start < existingEnd) || // New start is inside existing
+                (newSlot.end > existingStart && newSlot.end <= existingEnd) ||     // New end is inside existing
+                (newSlot.start <= existingStart && newSlot.end >= existingEnd)     // New envelopes existing
+            );
+        });
+
         if (conflictingSlot) {
             setError(`Time conflicts with existing slot: ${conflictingSlot.start_time.slice(0, 5)} - ${conflictingSlot.end_time.slice(0, 5)}`);
             return;
         }
-        
+
         setError("");
         setSaving(true);
         try {
+            if (!user.trainerProfile?.id) {
+                setError("Trainer profile not found. Please setup your profile first.");
+                return;
+            }
+
             const { data, error: insertError } = await supabase
                 .from("availability_slots")
                 .insert({
-                    trainer_id: user.id,
+                    trainer_id: user.trainerProfile.id,
                     day_of_week: newSlot.day,
-                    start_time: newSlot.start + ":00",
-                    end_time: newSlot.end + ":00",
-                    is_active: true,
+                    start_time: newSlot.start,
+                    end_time: newSlot.end,
+                    is_blocked: false,
                 })
                 .select()
                 .single();
@@ -102,10 +120,10 @@ export default function AvailabilityPage() {
         }
     };
 
-    const toggleSlot = async (slotId: string, isActive: boolean) => {
+    const toggleSlot = async (slotId: string, currentIsBlocked: boolean) => {
         try {
-            await supabase.from("availability_slots").update({ is_active: !isActive }).eq("id", slotId);
-            setSlots((prev) => prev.map((s) => (s.id === slotId ? { ...s, is_active: !isActive } : s)));
+            await supabase.from("availability_slots").update({ is_blocked: !currentIsBlocked }).eq("id", slotId);
+            setSlots((prev) => prev.map((s) => (s.id === slotId ? { ...s, is_blocked: !currentIsBlocked } : s)));
         } catch (err) {
             console.error("Failed to toggle slot:", err);
         }
@@ -129,100 +147,121 @@ export default function AvailabilityPage() {
 
     if (loading) {
         return (
-            <div style={{ display: "flex", justifyContent: "center", padding: "60px" }}>
-                <div style={{ width: "40px", height: "40px", border: "3px solid var(--gray-200)", borderTopColor: "var(--primary)", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+            <div className="flex justify-center items-center h-full min-h-[50vh]">
+                <div className="w-12 h-12 border-4 border-primary/20 border-t-primary rounded-full animate-spin"></div>
             </div>
         );
     }
 
     return (
-        <div>
-            <div style={{ marginBottom: "28px" }}>
-                <h1 style={{ fontSize: "24px", fontWeight: 800, fontFamily: "var(--font-display)", marginBottom: "4px" }}>Availability</h1>
-                <p style={{ color: "var(--gray-500)", fontSize: "14px" }}>
+        <div className="max-w-[1000px] w-full pb-12">
+            <div className="mb-8">
+                <h1 className="text-[32px] font-black font-display italic tracking-wide text-white uppercase mb-1 leading-none drop-shadow-sm">Availability</h1>
+                <p className="text-text-main/60 font-medium text-[15px]">
                     Set your weekly availability so athletes know when to book.
                 </p>
             </div>
 
             {saved && (
-                <div style={{ padding: "12px 16px", background: "#d1fae5", borderRadius: "var(--radius-md)", color: "#059669", fontSize: "14px", fontWeight: 600, marginBottom: "24px" }}>
-                    ✅ Availability updated!
+                <div className="p-4 bg-green-500/10 border border-green-500/20 rounded-2xl text-green-500 text-[14px] font-bold mb-6 flex items-center gap-2">
+                    <CheckCircle2 size={18} /> Availability updated!
                 </div>
             )}
 
             {error && (
-                <div style={{ padding: "12px 16px", background: "#fef2f2", borderRadius: "var(--radius-md)", color: "#dc2626", fontSize: "14px", fontWeight: 600, marginBottom: "24px", borderLeft: "4px solid #dc2626" }}>
-                    ❌ {error}
+                <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl text-red-500 text-[14px] font-bold mb-6 flex items-center gap-2">
+                    <Circle size={18} className="rotate-45" /> {error}
                 </div>
             )}
 
             {/* Add new slot */}
-            <div style={{ background: "var(--surface)", borderRadius: "var(--radius-lg)", border: "1px solid var(--gray-200)", padding: "24px", marginBottom: "24px" }}>
-                <h3 style={{ fontSize: "15px", fontWeight: 700, marginBottom: "16px", fontFamily: "var(--font-display)" }}>Add Time Slot</h3>
-                <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", alignItems: "end" }}>
-                    <div style={{ minWidth: "140px" }}>
-                        <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "var(--gray-500)", marginBottom: "6px" }}>Day</label>
-                        <select value={newSlot.day} onChange={(e) => setNewSlot((p) => ({ ...p, day: Number(e.target.value) }))}
-                            style={{ width: "100%", padding: "10px 12px", borderRadius: "var(--radius-md)", border: "1px solid var(--gray-200)", fontSize: "14px", outline: "none" }}>
+            <div className="bg-[#1A1C23] rounded-[20px] border border-white/5 p-6 lg:p-8 mb-8 shadow-md">
+                <h3 className="text-[18px] font-black font-display text-white uppercase tracking-wider mb-5 flex items-center gap-2">
+                    <Plus size={20} className="text-primary" /> Add Time Slot
+                </h3>
+                <div className="flex flex-wrap gap-4 items-end">
+                    <div className="flex-1 min-w-[200px]">
+                        <label className="block text-[11px] font-bold uppercase tracking-widest text-text-main/40 mb-2">Day</label>
+                        <select
+                            value={newSlot.day}
+                            onChange={(e) => setNewSlot((p) => ({ ...p, day: Number(e.target.value) }))}
+                            className="w-full bg-[#12141A] border border-white/5 rounded-xl text-[15px] font-medium text-white px-4 py-3 outline-none focus:border-primary/50 focus:bg-[#1A1C23] transition-all appearance-none custom-select-arrow"
+                        >
                             {DAYS.map((d, i) => (
-                                <option key={d} value={i}>{d}</option>
+                                <option key={d} value={i} className="bg-[#1A1C23]">{d}</option>
                             ))}
                         </select>
                     </div>
-                    <div style={{ minWidth: "110px" }}>
-                        <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "var(--gray-500)", marginBottom: "6px" }}>From</label>
-                        <input type="time" value={newSlot.start} onChange={(e) => setNewSlot((p) => ({ ...p, start: e.target.value }))}
-                            style={{ width: "100%", padding: "10px 12px", borderRadius: "var(--radius-md)", border: "1px solid var(--gray-200)", fontSize: "14px", outline: "none" }} />
+                    <div className="flex-1 min-w-[140px]">
+                        <label className="block text-[11px] font-bold uppercase tracking-widest text-text-main/40 mb-2">From</label>
+                        <input
+                            type="time"
+                            value={newSlot.start}
+                            onChange={(e) => setNewSlot((p) => ({ ...p, start: e.target.value }))}
+                            className="w-full bg-[#12141A] border border-white/5 rounded-xl text-[15px] font-medium text-white px-4 py-3 outline-none focus:border-primary/50 focus:bg-[#1A1C23] transition-all [color-scheme:dark]"
+                        />
                     </div>
-                    <div style={{ minWidth: "110px" }}>
-                        <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "var(--gray-500)", marginBottom: "6px" }}>To</label>
-                        <input type="time" value={newSlot.end} onChange={(e) => setNewSlot((p) => ({ ...p, end: e.target.value }))}
-                            style={{ width: "100%", padding: "10px 12px", borderRadius: "var(--radius-md)", border: "1px solid var(--gray-200)", fontSize: "14px", outline: "none" }} />
+                    <div className="flex-1 min-w-[140px]">
+                        <label className="block text-[11px] font-bold uppercase tracking-widest text-text-main/40 mb-2">To</label>
+                        <input
+                            type="time"
+                            value={newSlot.end}
+                            onChange={(e) => setNewSlot((p) => ({ ...p, end: e.target.value }))}
+                            className="w-full bg-[#12141A] border border-white/5 rounded-xl text-[15px] font-medium text-white px-4 py-3 outline-none focus:border-primary/50 focus:bg-[#1A1C23] transition-all [color-scheme:dark]"
+                        />
                     </div>
-                    <button onClick={addSlot} disabled={saving}
-                        style={{ padding: "10px 24px", borderRadius: "var(--radius-md)", background: "var(--gradient-primary)", color: "white", border: "none", fontWeight: 700, fontSize: "14px", cursor: "pointer", boxShadow: "0 2px 8px rgba(99, 102, 241, 0.3)" }}>
-                        {saving ? "Adding..." : "+ Add Slot"}
-                    </button>
+                    <div className="w-full sm:w-auto">
+                        <button
+                            onClick={addSlot}
+                            disabled={saving}
+                            className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-primary text-bg font-black uppercase tracking-widest hover:shadow-[0_0_20px_rgba(163,255,18,0.4)] hover:-translate-y-0.5 transition-all text-[13px] disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                        >
+                            {saving ? "Adding..." : "+ Add Slot"}
+                        </button>
+                    </div>
                 </div>
             </div>
 
             {/* Weekly view */}
-            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            <div className="flex flex-col gap-5">
                 {slotsByDay.map(({ day, slots: daySlots }) => (
-                    <div key={day} style={{ background: "var(--surface)", borderRadius: "var(--radius-lg)", border: "1px solid var(--gray-200)", padding: "20px 24px" }}>
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: daySlots.length > 0 ? "16px" : "0" }}>
-                            <h4 style={{ fontSize: "15px", fontWeight: 700, fontFamily: "var(--font-display)" }}>{day}</h4>
+                    <div key={day} className="bg-[#1A1C23] rounded-[20px] border border-white/5 p-6 lg:p-8 shadow-md hover:border-white/10 transition-colors">
+                        <div className={`flex items-center justify-between ${daySlots.length > 0 ? "mb-5" : "mb-0"}`}>
+                            <h4 className="text-[18px] font-bold text-white tracking-wide">{day}</h4>
                             {daySlots.length === 0 && (
-                                <span style={{ fontSize: "13px", color: "var(--gray-400)", fontStyle: "italic" }}>No slots set</span>
+                                <span className="text-[13px] font-medium text-text-main/30 italic px-3 py-1 bg-[#12141A] rounded-lg border border-white/5">No slots set</span>
                             )}
                         </div>
                         {daySlots.length > 0 && (
-                            <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                            <div className="flex flex-wrap gap-3">
                                 {daySlots.map((slot) => (
                                     <div
                                         key={slot.id}
-                                        style={{
-                                            display: "flex",
-                                            alignItems: "center",
-                                            gap: "10px",
-                                            padding: "8px 14px",
-                                            borderRadius: "var(--radius-md)",
-                                            background: slot.is_active ? "var(--primary-50)" : "var(--gray-50)",
-                                            border: `1px solid ${slot.is_active ? "var(--primary-light)" : "var(--gray-200)"}`,
-                                            opacity: slot.is_active ? 1 : 0.6,
-                                        }}
+                                        className={`flex items-center gap-3 px-4 py-2.5 rounded-xl border transition-all ${!slot.is_blocked
+                                            ? "bg-primary/10 border-primary/20 text-primary shadow-[0_0_10px_rgba(163,255,18,0.05)]"
+                                            : "bg-[#12141A] border-white/5 text-text-main/40 opacity-70"
+                                            }`}
                                     >
-                                        <span style={{ fontSize: "14px", fontWeight: 600, color: slot.is_active ? "var(--primary)" : "var(--gray-400)" }}>
+                                        <Clock size={14} className={!slot.is_blocked ? "text-primary" : "text-text-main/30"} />
+                                        <span className="text-[14px] font-bold tracking-wide">
                                             {slot.start_time.slice(0, 5)} – {slot.end_time.slice(0, 5)}
                                         </span>
-                                        <button onClick={() => toggleSlot(slot.id, slot.is_active)} title={slot.is_active ? "Disable" : "Enable"}
-                                            style={{ border: "none", background: "none", cursor: "pointer", fontSize: "14px", padding: "2px" }}>
-                                            {slot.is_active ? "🟢" : "⚪"}
-                                        </button>
-                                        <button onClick={() => deleteSlot(slot.id)} title="Remove"
-                                            style={{ border: "none", background: "none", cursor: "pointer", fontSize: "14px", padding: "2px", color: "#ef4444" }}>
-                                            ✕
-                                        </button>
+                                        <div className="flex items-center gap-1.5 ml-1 border-l border-current/10 pl-2.5">
+                                            <button
+                                                onClick={() => toggleSlot(slot.id, slot.is_blocked)}
+                                                title={!slot.is_blocked ? "Disable" : "Enable"}
+                                                className={`p-1.5 rounded-md transition-colors ${!slot.is_blocked ? "hover:bg-primary/20 text-primary" : "hover:bg-white/5 text-text-main/30 hover:text-white"}`}
+                                            >
+                                                {!slot.is_blocked ? <CheckCircle2 size={16} /> : <Circle size={16} />}
+                                            </button>
+                                            <button
+                                                onClick={() => deleteSlot(slot.id)}
+                                                title="Remove"
+                                                className="p-1.5 rounded-md hover:bg-red-500/10 text-red-500/50 hover:text-red-500 transition-colors"
+                                            >
+                                                <Trash2 size={16} />
+                                            </button>
+                                        </div>
                                     </div>
                                 ))}
                             </div>

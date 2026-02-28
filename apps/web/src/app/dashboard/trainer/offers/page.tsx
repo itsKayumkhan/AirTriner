@@ -41,7 +41,12 @@ export default function TrainingOffersPage() {
     const [selectedAthlete, setSelectedAthlete] = useState<Athlete | null>(null);
     const [searchTerm, setSearchTerm] = useState("");
     const [sending, setSending] = useState(false);
+    const [offerError, setOfferError] = useState("");
     const [tab, setTab] = useState<"athletes" | "sent">("athletes");
+
+    // Cancel Modal State
+    const [offerToCancel, setOfferToCancel] = useState<string | null>(null);
+    const [isCanceling, setIsCanceling] = useState(false);
 
     const [offerData, setOfferData] = useState({
         message: "",
@@ -83,27 +88,29 @@ export default function TrainingOffersPage() {
                 })));
             }
 
-            // Load sent offers (from notifications)
-            const { data: notifData } = await supabase
-                .from("notifications")
+            // Load sent offers (from training_offers)
+            const { data: offersData } = await supabase
+                .from("training_offers")
                 .select("*")
-                .eq("user_id", session.id)
-                .eq("type", "training_offer_sent")
+                .eq("trainer_id", session.id)
+                .neq("status", "expired")
                 .order("created_at", { ascending: false });
 
-            if (notifData) {
-                setOffers(notifData.map((n: Record<string, unknown>) => {
-                    const data = n.data as Record<string, unknown> || {};
+            if (offersData) {
+                setOffers(offersData.map((o: any) => {
+                    const foundAthlete = athleteData?.find((a: any) => a.id === o.athlete_id) as Record<string, unknown> | undefined;
+                    const athleteName = foundAthlete ? `${foundAthlete.first_name} ${foundAthlete.last_name}` : "Unknown";
+                    const proposed = o.proposed_dates || {};
                     return {
-                        id: n.id as string,
-                        athlete_id: data.athlete_id as string || "",
-                        athlete_name: data.athlete_name as string || "Unknown",
-                        sport: data.sport as string || "",
-                        message: data.message as string || "",
-                        session_type: data.session_type as string || "private",
-                        rate: data.rate as number || 0,
-                        status: data.status as "pending" | "accepted" | "declined" || "pending",
-                        created_at: n.created_at as string,
+                        id: o.id,
+                        athlete_id: o.athlete_id,
+                        athlete_name: athleteName,
+                        sport: o.sport || "",
+                        message: o.message || "",
+                        session_type: proposed.session_type || "private",
+                        rate: o.price ? Number(o.price) : 0,
+                        status: o.status || "pending",
+                        created_at: o.created_at,
                     };
                 }));
             }
@@ -115,50 +122,65 @@ export default function TrainingOffersPage() {
     };
 
     const sendOffer = async () => {
+        setOfferError("");
         if (!user || !selectedAthlete) return;
+
+        const numericRate = parseFloat(offerData.rate);
+        const hasCustomRate = offerData.rate.trim() !== "";
+        const finalTrainerRate = user.trainerProfile?.hourly_rate ? Number(user.trainerProfile.hourly_rate) : 50;
+
+        if (hasCustomRate && (isNaN(numericRate) || numericRate < 1)) {
+            setOfferError("Please enter a valid rate.");
+            return;
+        }
+
+        const finalRateToUse = hasCustomRate ? numericRate : finalTrainerRate;
+
+        if (!offerData.timeSlot.trim()) {
+            setOfferError("Please select or enter a preferred time slot.");
+            return;
+        }
+
         setSending(true);
 
         try {
-            const rate = parseFloat(offerData.rate) || (user.trainerProfile?.hourly_rate ? Number(user.trainerProfile.hourly_rate) : 50);
-            const finalRate = offerData.introDiscount ? rate * (1 - parseInt(offerData.discountPercent) / 100) : rate;
+            const finalRate = offerData.introDiscount ? finalRateToUse * (1 - parseInt(offerData.discountPercent) / 100) : finalRateToUse;
 
-            // Create notification for the athlete
+            // Save to training_offers table
+            const { data: insertedOffer, error: offerError } = await supabase.from("training_offers").insert({
+                trainer_id: user.id,
+                athlete_id: selectedAthlete.id,
+                status: "pending",
+                message: offerData.message || null,
+                price: finalRate,
+                session_length_min: offerData.sessionType === "private" ? 60 : 60,
+                sport: selectedAthlete.athlete_profile?.sports?.[0] || null,
+                proposed_dates: { time_slot: offerData.timeSlot, session_type: offerData.sessionType },
+            }).select("id").single();
+            if (offerError) throw offerError;
+
+            // Notify athlete about the offer using MESSAGE_RECEIVED to avoid enum errors
             await supabase.from("notifications").insert({
                 user_id: selectedAthlete.id,
-                type: "training_offer",
+                type: "MESSAGE_RECEIVED",
                 title: `Training Offer from ${user.firstName} ${user.lastName}`,
                 body: offerData.message || `${user.firstName} wants to train with you! Rate: $${finalRate.toFixed(0)}/hr`,
                 data: {
+                    offer_id: insertedOffer.id,
                     trainer_id: user.id,
                     trainer_name: `${user.firstName} ${user.lastName}`,
                     sport: selectedAthlete.athlete_profile?.sports?.[0] || "",
                     session_type: offerData.sessionType,
                     rate: finalRate,
-                    original_rate: rate,
+                    original_rate: finalRateToUse,
                     has_discount: offerData.introDiscount,
                     time_slot: offerData.timeSlot,
                 },
             });
 
-            // Track in trainer's notifications
-            await supabase.from("notifications").insert({
-                user_id: user.id,
-                type: "training_offer_sent",
-                title: `Offer sent to ${selectedAthlete.first_name} ${selectedAthlete.last_name}`,
-                body: `Rate: $${finalRate.toFixed(0)}/hr — ${offerData.sessionType} session`,
-                data: {
-                    athlete_id: selectedAthlete.id,
-                    athlete_name: `${selectedAthlete.first_name} ${selectedAthlete.last_name}`,
-                    sport: selectedAthlete.athlete_profile?.sports?.[0] || "",
-                    message: offerData.message,
-                    session_type: offerData.sessionType,
-                    rate: finalRate,
-                    status: "pending",
-                },
-            });
-
             // Reset
             setShowNewOffer(false);
+            setOfferError("");
             setSelectedAthlete(null);
             setOfferData({ message: "", sessionType: "private", rate: "", introDiscount: false, discountPercent: "20", timeSlot: "" });
 
@@ -172,6 +194,25 @@ export default function TrainingOffersPage() {
         }
     };
 
+    const cancelOffer = (offerId: string) => {
+        setOfferToCancel(offerId);
+    };
+
+    const confirmCancelOffer = async () => {
+        if (!offerToCancel) return;
+        setIsCanceling(true);
+        try {
+            await supabase.from("training_offers").update({ status: 'expired' }).eq("id", offerToCancel);
+            setOffers(prev => prev.filter(o => o.id !== offerToCancel));
+            setOfferToCancel(null);
+        } catch (err) {
+            console.error("Failed to cancel offer:", err);
+            alert("Failed to cancel offer");
+        } finally {
+            setIsCanceling(false);
+        }
+    };
+
     const filteredAthletes = athletes.filter(a => {
         const name = `${a.first_name} ${a.last_name}`.toLowerCase();
         const sports = a.athlete_profile?.sports?.join(" ").toLowerCase() || "";
@@ -180,58 +221,43 @@ export default function TrainingOffersPage() {
         return name.includes(query) || sports.includes(query) || location.includes(query);
     });
 
-    const inputStyle: React.CSSProperties = {
-        width: "100%", padding: "12px 16px", borderRadius: "12px",
-        border: "1px solid #e2e8f0", fontSize: "15px", outline: "none",
-        background: "#fff", color: "#0f172a",
-    };
-
     if (loading) {
         return (
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "60vh" }}>
-                <div style={{ width: "48px", height: "48px", border: "4px solid #e2e8f0", borderTopColor: "#6366f1", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+            <div className="flex justify-center items-center h-full min-h-[50vh]">
+                <div className="w-12 h-12 border-4 border-primary/20 border-t-primary rounded-full animate-spin"></div>
             </div>
         );
     }
 
     return (
-        <div style={{ maxWidth: "900px", margin: "0 auto" }}>
+        <div className="max-w-[1000px] w-full pb-12">
             {/* Header */}
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "28px", flexWrap: "wrap", gap: "12px" }}>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
                 <div>
-                    <h1 style={{ fontSize: "28px", fontWeight: 800, color: "#0f172a", marginBottom: "4px" }}>Training Offers</h1>
-                    <p style={{ color: "#64748b", fontSize: "15px" }}>Send personalized offers to athletes and grow your business.</p>
+                    <h1 className="text-[32px] font-black font-display italic tracking-wide text-white uppercase mb-1 leading-none drop-shadow-sm">Training Offers</h1>
+                    <p className="text-text-main/60 font-medium text-[15px]">Send personalized offers to athletes and grow your business.</p>
                 </div>
                 <button
                     onClick={() => { setShowNewOffer(true); setTab("athletes"); }}
-                    style={{
-                        display: "flex", alignItems: "center", gap: "8px",
-                        padding: "12px 24px", borderRadius: "12px", border: "none",
-                        background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
-                        color: "white", fontWeight: 700, fontSize: "14px", cursor: "pointer",
-                        boxShadow: "0 4px 14px rgba(99,102,241,0.3)",
-                    }}
+                    className="px-6 py-2.5 rounded-full bg-primary text-bg font-black text-sm hover:shadow-[0_0_15px_rgba(163,255,18,0.3)] transition-all flex items-center gap-2"
                 >
-                    <Plus size={18} /> New Offer
+                    <Plus size={18} strokeWidth={3} /> New Offer
                 </button>
             </div>
 
             {/* Tabs */}
-            <div style={{ display: "flex", gap: "4px", padding: "4px", background: "#f1f5f9", borderRadius: "14px", marginBottom: "24px" }}>
+            <div className="flex gap-2 p-1 bg-[#1A1C23] border border-white/5 rounded-[16px] mb-8 w-full sm:w-fit">
                 {[
                     { key: "athletes", label: "Browse Athletes", icon: <Users size={16} /> },
                     { key: "sent", label: `Sent Offers (${offers.length})`, icon: <Send size={16} /> },
                 ].map(t => (
                     <button key={t.key} onClick={() => setTab(t.key as "athletes" | "sent")}
-                        style={{
-                            flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: "8px",
-                            padding: "10px", borderRadius: "10px", border: "none",
-                            background: tab === t.key ? "white" : "transparent",
-                            color: tab === t.key ? "#0f172a" : "#64748b",
-                            fontWeight: tab === t.key ? 700 : 500, fontSize: "14px", cursor: "pointer",
-                            boxShadow: tab === t.key ? "0 2px 8px rgba(0,0,0,0.06)" : "none",
-                            transition: "all 0.2s",
-                        }}
+                        className={`
+                            flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-2.5 rounded-[12px] font-bold text-sm transition-all duration-200
+                            ${tab === t.key
+                                ? "bg-[#272A35] text-white shadow-sm"
+                                : "bg-transparent text-text-main/50 hover:text-white hover:bg-white/5"}
+                        `}
                     >{t.icon} {t.label}</button>
                 ))}
             </div>
@@ -240,87 +266,68 @@ export default function TrainingOffersPage() {
             {tab === "athletes" && (
                 <div>
                     {/* Search */}
-                    <div style={{ position: "relative", marginBottom: "20px" }}>
-                        <Search size={18} style={{ position: "absolute", left: "14px", top: "50%", transform: "translateY(-50%)", color: "#94a3b8" }} />
+                    <div className="relative mb-8">
+                        <Search size={18} className="absolute left-5 top-1/2 -translate-y-1/2 text-text-main/40" />
                         <input
                             type="text"
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                             placeholder="Search athletes by name, sport, or location..."
-                            style={{ ...inputStyle, paddingLeft: "42px" }}
+                            className="w-full bg-[#1A1C23] border border-white/5 rounded-[20px] pl-12 pr-5 py-4 text-white text-sm outline-none focus:border-primary/50 transition-colors shadow-md"
                         />
                     </div>
 
                     {/* Athletes Grid */}
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "16px" }}>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {filteredAthletes.length === 0 ? (
-                            <div style={{ gridColumn: "1 / -1", textAlign: "center", padding: "48px 24px", color: "#94a3b8" }}>
-                                <Users size={48} style={{ margin: "0 auto 12px", opacity: 0.5 }} />
-                                <p style={{ fontSize: "16px", fontWeight: 600 }}>No athletes found</p>
-                                <p style={{ fontSize: "14px" }}>Try adjusting your search or check back soon.</p>
+                            <div className="col-span-full text-center py-16 bg-[#1A1C23] border border-white/5 rounded-[20px] shadow-md">
+                                <Users size={48} className="mx-auto mb-4 text-text-main/20" />
+                                <p className="text-white font-bold text-lg mb-1">No athletes found</p>
+                                <p className="text-text-main/50 text-sm">Try adjusting your search or check back soon.</p>
                             </div>
                         ) : (
                             filteredAthletes.map((athlete) => (
                                 <div key={athlete.id}
-                                    style={{
-                                        background: "white", borderRadius: "16px", border: "1px solid #e2e8f0",
-                                        padding: "20px", cursor: "pointer", transition: "all 0.2s",
-                                        boxShadow: "0 2px 8px rgba(0,0,0,0.03)",
-                                    }}
-                                    onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 8px 24px rgba(0,0,0,0.08)"; }}
-                                    onMouseLeave={e => { e.currentTarget.style.transform = "none"; e.currentTarget.style.boxShadow = "0 2px 8px rgba(0,0,0,0.03)"; }}
+                                    className="bg-[#1A1C23] border border-white/5 rounded-[20px] p-6 cursor-pointer transition-all duration-300 hover:shadow-[0_8px_30px_rgba(0,0,0,0.5)] hover:-translate-y-1 hover:border-white/10 group flex flex-col"
                                 >
-                                    <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "14px" }}>
-                                        <div style={{
-                                            width: "48px", height: "48px", borderRadius: "14px",
-                                            background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
-                                            display: "flex", alignItems: "center", justifyContent: "center",
-                                            color: "white", fontWeight: 800, fontSize: "16px",
-                                        }}>
+                                    <div className="flex items-center gap-4 mb-5">
+                                        <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center font-black text-lg border border-primary/20 shrink-0">
                                             {athlete.first_name?.charAt(0)}{athlete.last_name?.charAt(0)}
                                         </div>
-                                        <div>
-                                            <h3 style={{ fontWeight: 700, fontSize: "16px", color: "#0f172a" }}>{athlete.first_name} {athlete.last_name}</h3>
-                                            <p style={{ fontSize: "13px", color: "#64748b", display: "flex", alignItems: "center", gap: "4px" }}>
-                                                {athlete.athlete_profile?.city && athlete.athlete_profile?.state ? (
-                                                    <><MapPin size={12} /> {athlete.athlete_profile.city}, {athlete.athlete_profile.state}</>
-                                                ) : (
-                                                    "Location not set"
-                                                )}
+                                        <div className="min-w-0">
+                                            <h3 className="font-bold text-white text-[17px] truncate">{athlete.first_name} {athlete.last_name}</h3>
+                                            <p className="text-[13px] text-text-main/50 flex items-center gap-1.5 mt-0.5 truncate">
+                                                <MapPin size={12} className="shrink-0" />
+                                                <span className="truncate">
+                                                    {athlete.athlete_profile?.city && athlete.athlete_profile?.state ? (
+                                                        `${athlete.athlete_profile.city}, ${athlete.athlete_profile.state}`
+                                                    ) : (
+                                                        "Location not set"
+                                                    )}
+                                                </span>
                                             </p>
                                         </div>
                                     </div>
 
                                     {/* Sports Tags */}
-                                    <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "14px" }}>
+                                    <div className="flex flex-wrap gap-2 mb-6 flex-1">
                                         {(athlete.athlete_profile?.sports || []).slice(0, 3).map((s: string) => (
-                                            <span key={s} style={{
-                                                padding: "4px 10px", borderRadius: "999px", fontSize: "11px", fontWeight: 600,
-                                                background: "#eef2ff", color: "#4338ca",
-                                            }}>
+                                            <span key={s} className="px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-white/5 text-text-main/80 border border-white/5">
                                                 {s.replace(/_/g, " ")}
                                             </span>
                                         ))}
                                         {athlete.athlete_profile?.skill_level && (
-                                            <span style={{
-                                                padding: "4px 10px", borderRadius: "999px", fontSize: "11px", fontWeight: 600,
-                                                background: "#f0fdf4", color: "#16a34a",
-                                            }}>
+                                            <span className="px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-primary/10 text-primary border border-primary/10">
                                                 {athlete.athlete_profile.skill_level}
                                             </span>
                                         )}
                                     </div>
 
                                     <button
-                                        onClick={() => { setSelectedAthlete(athlete); setShowNewOffer(true); }}
-                                        style={{
-                                            width: "100%", padding: "10px", borderRadius: "10px", border: "none",
-                                            background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
-                                            color: "white", fontWeight: 600, fontSize: "13px", cursor: "pointer",
-                                            display: "flex", alignItems: "center", justifyContent: "center", gap: "6px",
-                                        }}
+                                        onClick={(e) => { e.stopPropagation(); setSelectedAthlete(athlete); setShowNewOffer(true); }}
+                                        className="w-full py-3.5 rounded-xl border border-white/5 bg-[#272A35] text-white font-bold text-sm flex items-center justify-center gap-2 group-hover:bg-primary group-hover:text-bg group-hover:border-primary transition-colors"
                                     >
-                                        <Send size={14} /> Send Offer
+                                        <Send size={15} /> Send Offer
                                     </button>
                                 </div>
                             ))
@@ -331,37 +338,61 @@ export default function TrainingOffersPage() {
 
             {/* Sent Offers Tab */}
             {tab === "sent" && (
-                <div style={{ display: "grid", gap: "12px" }}>
+                <div className="flex flex-col gap-4">
                     {offers.length === 0 ? (
-                        <div style={{ textAlign: "center", padding: "48px 24px", color: "#94a3b8", background: "white", borderRadius: "16px", border: "1px solid #e2e8f0" }}>
-                            <Send size={48} style={{ margin: "0 auto 12px", opacity: 0.5 }} />
-                            <p style={{ fontSize: "16px", fontWeight: 600 }}>No offers sent yet</p>
-                            <p style={{ fontSize: "14px" }}>Browse athletes and send your first training offer!</p>
+                        <div className="text-center py-16 bg-[#1A1C23] border border-white/5 rounded-[20px] shadow-md">
+                            <Send size={48} className="mx-auto mb-4 text-text-main/20" />
+                            <p className="text-white font-bold text-lg mb-1">No offers sent yet</p>
+                            <p className="text-text-main/50 text-sm">Browse athletes and send your first training offer!</p>
                         </div>
                     ) : (
                         offers.map((offer) => (
-                            <div key={offer.id} style={{ background: "white", borderRadius: "14px", border: "1px solid #e2e8f0", padding: "18px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                                <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
-                                    <div style={{
-                                        width: "44px", height: "44px", borderRadius: "12px",
-                                        background: offer.status === "accepted" ? "#dcfce7" : offer.status === "declined" ? "#fee2e2" : "#f1f5f9",
-                                        display: "flex", alignItems: "center", justifyContent: "center",
-                                    }}>
-                                        {offer.status === "accepted" ? <Award size={20} style={{ color: "#16a34a" }} /> : offer.status === "declined" ? <X size={20} style={{ color: "#ef4444" }} /> : <Clock size={20} style={{ color: "#64748b" }} />}
+                            <div key={offer.id} className="bg-[#1A1C23] border border-white/5 rounded-[20px] p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-md hover:border-white/10 transition-colors">
+                                <div className="flex items-center gap-5">
+                                    <div className={`
+                                        w-12 h-12 rounded-2xl flex items-center justify-center border shrink-0
+                                        ${offer.status === "accepted" ? "bg-green-500/10 text-green-500 border-green-500/20" :
+                                            offer.status === "declined" ? "bg-red-500/10 text-red-500 border-red-500/20" :
+                                                "bg-[#272A35] text-text-main/50 border-white/5"}
+                                    `}>
+                                        {offer.status === "accepted" ? <Award size={22} /> : offer.status === "declined" ? <X size={22} /> : <Clock size={22} />}
                                     </div>
                                     <div>
-                                        <h3 style={{ fontWeight: 700, fontSize: "15px", color: "#0f172a" }}>{offer.athlete_name}</h3>
-                                        <p style={{ fontSize: "13px", color: "#64748b" }}>
-                                            ${offer.rate?.toFixed(0)}/hr · {offer.session_type} · {new Date(offer.created_at).toLocaleDateString()}
+                                        <h3 className="font-bold text-[17px] text-white mb-1">Offer sent to {offer.athlete_name}</h3>
+                                        <p className="text-[13px] text-text-main/50 flex flex-wrap items-center gap-2">
+                                            <span className="font-bold text-primary">${offer.rate?.toFixed(0)}/hr</span>
+                                            <span className="w-1 h-1 rounded-full bg-white/20" />
+                                            <span className="capitalize text-white/80">{offer.session_type.replace('_', ' ')} Session</span>
+                                            {offer.sport && (
+                                                <>
+                                                    <span className="w-1 h-1 rounded-full bg-white/20" />
+                                                    <span className="text-white/80 capitalize">{offer.sport.replace(/_/g, ' ')}</span>
+                                                </>
+                                            )}
+                                        </p>
+                                        <p className="text-[12px] text-text-main/40 mt-1 flex items-center gap-1.5">
+                                            <Calendar size={12} /> {new Date(offer.created_at).toLocaleDateString()} at {new Date(offer.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                         </p>
                                     </div>
                                 </div>
-                                <span style={{
-                                    padding: "5px 12px", borderRadius: "999px", fontSize: "12px", fontWeight: 600,
-                                    background: offer.status === "accepted" ? "#dcfce7" : offer.status === "declined" ? "#fee2e2" : "#f1f5f9",
-                                    color: offer.status === "accepted" ? "#16a34a" : offer.status === "declined" ? "#ef4444" : "#64748b",
-                                    textTransform: "capitalize",
-                                }}>{offer.status}</span>
+                                <div className="flex flex-col sm:flex-row items-end sm:items-center gap-2">
+                                    <span className={`
+                                        px-4 py-1.5 rounded-full text-[11px] font-black uppercase tracking-wider border
+                                        ${offer.status === "accepted" ? "bg-green-500/10 text-green-500 border-green-500/20" :
+                                            offer.status === "declined" ? "bg-red-500/10 text-red-500 border-red-500/20" :
+                                                "bg-[#272A35] text-text-main/70 border-white/5"}
+                                    `}>
+                                        {offer.status}
+                                    </span>
+                                    {offer.status === "pending" && (
+                                        <button
+                                            onClick={() => cancelOffer(offer.id)}
+                                            className="px-4 py-1.5 rounded-full border border-red-500/20 bg-red-500/10 text-red-500 font-bold text-[11px] uppercase tracking-wider hover:bg-red-500 hover:text-bg transition-colors whitespace-nowrap"
+                                        >
+                                            Cancel
+                                        </button>
+                                    )}
+                                </div>
                             </div>
                         ))
                     )}
@@ -370,122 +401,212 @@ export default function TrainingOffersPage() {
 
             {/* New Offer Modal */}
             {showNewOffer && selectedAthlete && (
-                <div style={{
-                    position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center",
-                    zIndex: 100, padding: "20px", backdropFilter: "blur(4px)",
-                }}>
-                    <div style={{
-                        background: "white", borderRadius: "20px", padding: "32px", maxWidth: "520px", width: "100%",
-                        maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.2)",
-                    }}>
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "24px" }}>
-                            <h2 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a" }}>Send Training Offer</h2>
-                            <button onClick={() => { setShowNewOffer(false); setSelectedAthlete(null); }}
-                                style={{ background: "#f1f5f9", border: "none", borderRadius: "10px", padding: "8px", cursor: "pointer" }}>
-                                <X size={18} style={{ color: "#64748b" }} />
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 sm:p-6 overflow-y-auto">
+                    <div className="bg-[#1A1C23] border border-white/10 rounded-[24px] w-full max-w-[600px] shadow-2xl relative my-auto">
+                        <div className="p-5 sm:p-6">
+                            <div className="flex items-center justify-between mb-6">
+                                <h2 className="text-[22px] font-black font-display text-white tracking-wide uppercase">Send Offer</h2>
+                                <button onClick={() => { setShowNewOffer(false); setSelectedAthlete(null); }}
+                                    className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center text-text-main/50 hover:bg-white/10 hover:text-white transition-colors">
+                                    <X size={16} strokeWidth={3} />
+                                </button>
+                            </div>
+
+                            {/* Athlete Info */}
+                            <div className="flex items-center gap-4 p-3 bg-[#12141A] border border-white/5 rounded-[12px] mb-5">
+                                <div className="w-11 h-11 rounded-[10px] bg-primary/10 text-primary flex items-center justify-center font-black text-base border border-primary/20 shrink-0">
+                                    {selectedAthlete.first_name?.charAt(0)}{selectedAthlete.last_name?.charAt(0)}
+                                </div>
+                                <div>
+                                    <h3 className="font-bold text-[16px] text-white">{selectedAthlete.first_name} {selectedAthlete.last_name}</h3>
+                                    <p className="text-[12px] text-text-main/50 uppercase tracking-widest font-bold mt-1">
+                                        {(selectedAthlete.athlete_profile?.sports || []).slice(0, 2).map((s: string) => s.replace(/_/g, " ")).join(", ") || "Athletic Training"}
+                                    </p>
+                                </div>
+                            </div>
+
+                            {offerError && (
+                                <div className="p-3 mb-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-500 text-[13px] font-bold flex items-center gap-2">
+                                    <X size={16} /> {offerError}
+                                </div>
+                            )}
+
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-3">
+                                        Personal Message
+                                    </label>
+                                    <textarea
+                                        value={offerData.message}
+                                        onChange={(e) => setOfferData(prev => ({ ...prev, message: e.target.value }))}
+                                        placeholder="Hi! I'd love to work with you..."
+                                        rows={2}
+                                        className="w-full bg-[#12141A] border border-white/5 rounded-xl p-4 text-white text-sm outline-none focus:border-primary/50 resize-none transition-colors placeholder:text-text-main/30"
+                                    />
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">Session Type</label>
+                                        <select
+                                            value={offerData.sessionType}
+                                            onChange={(e) => setOfferData(prev => ({ ...prev, sessionType: e.target.value }))}
+                                            className="w-full bg-[#12141A] border border-white/5 rounded-2xl px-5 py-3.5 text-white text-sm outline-none focus:border-primary/50 transition-colors appearance-none"
+                                            style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 16px center' }}
+                                        >
+                                            <option value="private">Private (1-on-1)</option>
+                                            <option value="semi_private">Semi-Private</option>
+                                            <option value="group">Group</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">Rate ($/hr)</label>
+                                        <input
+                                            type="number"
+                                            value={offerData.rate}
+                                            onChange={(e) => setOfferData(prev => ({ ...prev, rate: e.target.value }))}
+                                            placeholder={user?.trainerProfile?.hourly_rate?.toString() || "50"}
+                                            className="w-full bg-[#12141A] border border-white/5 rounded-2xl px-5 py-3.5 text-white text-sm outline-none focus:border-primary/50 transition-colors placeholder:text-text-main/30"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">Preferred Time Slot</label>
+
+                                    <div className="grid grid-cols-2 gap-3 mb-3">
+                                        {[
+                                            { id: "Morning", label: "Morning", sub: "6am - 12pm" },
+                                            { id: "Afternoon", label: "Afternoon", sub: "12pm - 5pm" },
+                                            { id: "Evening", label: "Evening", sub: "5pm - 9pm" },
+                                            { id: "Anytime", label: "Anytime", sub: "Flexible" }
+                                        ].map(slot => {
+                                            const isSelected = offerData.timeSlot === slot.id;
+                                            return (
+                                                <button
+                                                    key={slot.id}
+                                                    onClick={(e) => {
+                                                        e.preventDefault();
+                                                        setOfferData(prev => ({ ...prev, timeSlot: slot.id }));
+                                                    }}
+                                                    className={`py-2.5 rounded-xl flex flex-col items-center justify-center transition-all border
+                                                        ${isSelected
+                                                            ? "bg-transparent border-primary border-[2px] shadow-[0_0_15px_rgba(163,255,18,0.15)]"
+                                                            : "bg-[#272A35] border-transparent hover:bg-[#323644]"}`}
+                                                >
+                                                    <span className={`text-xs font-black mb-0.5 ${isSelected ? 'text-white' : 'text-white/80'}`}>{slot.label}</span>
+                                                    <span className={`text-[10px] font-bold uppercase tracking-wider ${isSelected ? 'text-primary/80' : 'text-text-main/40'}`}>{slot.sub}</span>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+
+                                    <input
+                                        type="text"
+                                        value={!["Morning", "Afternoon", "Evening", "Anytime"].includes(offerData.timeSlot) ? offerData.timeSlot : ""}
+                                        onChange={(e) => setOfferData(prev => ({ ...prev, timeSlot: e.target.value }))}
+                                        placeholder="Or type a custom time (e.g. Weekdays 4-6pm)"
+                                        className="w-full bg-[#1A1C23] border border-white/5 rounded-2xl px-5 py-3.5 text-white text-sm outline-none focus:border-primary/50 transition-colors placeholder:text-text-main/30"
+                                    />
+                                </div>
+
+                                {/* Intro Discount Toggle */}
+                                <label className={`
+                                    flex items-center gap-4 p-4 rounded-xl border transition-colors cursor-pointer
+                                    ${offerData.introDiscount ? "border-primary bg-primary/5" : "border-white/5 bg-[#1A1C23] hover:bg-white/[0.03]"}
+                                `}>
+                                    <input type="checkbox" className="hidden"
+                                        checked={offerData.introDiscount}
+                                        onChange={(e) => setOfferData(prev => ({ ...prev, introDiscount: e.target.checked }))}
+                                    />
+                                    <div className={`w-5 h-5 rounded-[4px] border flex items-center justify-center shrink-0 transition-all ${offerData.introDiscount ? "bg-primary border-primary text-bg" : "border-white/20 bg-white"}`}>
+                                        {offerData.introDiscount && <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>}
+                                    </div>
+                                    <div className="flex-1">
+                                        <p className="font-bold text-white text-[14px] flex items-center gap-2">
+                                            <PartyPopper size={16} className="text-white/60" />
+                                            Add Intro Session Discount
+                                        </p>
+                                        <p className="text-[12px] text-text-main/50 mt-0.5">Offer a special rate for the first session</p>
+                                    </div>
+                                    {offerData.introDiscount && (
+                                        <select
+                                            value={offerData.discountPercent}
+                                            onChange={(e) => setOfferData(prev => ({ ...prev, discountPercent: e.target.value }))}
+                                            className="bg-[#272A35] border border-white/10 rounded-xl px-3 py-2 text-white text-xs font-bold outline-none focus:border-primary appearance-none cursor-pointer"
+                                            style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 8px center', paddingRight: '28px' }}
+                                            onClick={e => e.stopPropagation()}
+                                        >
+                                            <option value="10">10%</option>
+                                            <option value="15">15%</option>
+                                            <option value="20">20%</option>
+                                            <option value="25">25%</option>
+                                            <option value="50">50%</option>
+                                        </select>
+                                    )}
+                                </label>
+                            </div>
+
+                            {/* Send Button */}
+                            <button
+                                onClick={sendOffer}
+                                disabled={sending}
+                                className={`
+                                    w-full py-3.5 rounded-xl font-black text-[15px] mt-6 flex items-center justify-center gap-2 transition-all
+                                    ${sending
+                                        ? "bg-primary/50 text-bg/50 cursor-not-allowed"
+                                        : "bg-primary text-bg hover:shadow-[0_0_20px_rgba(163,255,18,0.3)] hover:-translate-y-0.5"}
+                                `}
+                            >
+                                {sending ? (
+                                    <><div className="w-5 h-5 border-2 border-bg/30 border-t-bg rounded-full animate-spin" /> Sending...</>
+                                ) : (
+                                    <><Send size={18} strokeWidth={2.5} /> Send Offer</>
+                                )}
                             </button>
                         </div>
-
-                        {/* Athlete Info */}
-                        <div style={{ display: "flex", alignItems: "center", gap: "12px", padding: "14px", background: "#f8fafc", borderRadius: "14px", marginBottom: "24px" }}>
-                            <div style={{
-                                width: "44px", height: "44px", borderRadius: "12px",
-                                background: "linear-gradient(135deg, #6366f1, #8b5cf6)", display: "flex", alignItems: "center", justifyContent: "center",
-                                color: "white", fontWeight: 800, fontSize: "15px",
-                            }}>
-                                {selectedAthlete.first_name?.charAt(0)}{selectedAthlete.last_name?.charAt(0)}
-                            </div>
-                            <div>
-                                <h3 style={{ fontWeight: 700, fontSize: "15px" }}>{selectedAthlete.first_name} {selectedAthlete.last_name}</h3>
-                                <p style={{ fontSize: "13px", color: "#64748b" }}>
-                                    {(selectedAthlete.athlete_profile?.sports || []).slice(0, 2).map((s: string) => s.replace(/_/g, " ")).join(", ") || "No sports listed"}
-                                </p>
-                            </div>
-                        </div>
-
-                        <div style={{ display: "grid", gap: "18px" }}>
-                            <div>
-                                <label style={{ display: "block", fontSize: "14px", fontWeight: 600, marginBottom: "6px", color: "#374151" }}>
-                                    Personal Message
-                                </label>
-                                <textarea
-                                    value={offerData.message}
-                                    onChange={(e) => setOfferData(prev => ({ ...prev, message: e.target.value }))}
-                                    placeholder="Hi! I'd love to work with you on improving your skills. I specialize in..."
-                                    rows={4}
-                                    style={{ ...inputStyle, resize: "vertical" }}
-                                />
-                            </div>
-
-                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                                <div>
-                                    <label style={{ display: "block", fontSize: "14px", fontWeight: 600, marginBottom: "6px", color: "#374151" }}>Session Type</label>
-                                    <select value={offerData.sessionType} onChange={(e) => setOfferData(prev => ({ ...prev, sessionType: e.target.value }))} style={inputStyle}>
-                                        <option value="private">Private (1-on-1)</option>
-                                        <option value="semi_private">Semi-Private</option>
-                                        <option value="group">Group</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label style={{ display: "block", fontSize: "14px", fontWeight: 600, marginBottom: "6px", color: "#374151" }}>Rate ($/hr)</label>
-                                    <input type="number" value={offerData.rate} onChange={(e) => setOfferData(prev => ({ ...prev, rate: e.target.value }))}
-                                        placeholder={user?.trainerProfile?.hourly_rate?.toString() || "50"} style={inputStyle} />
-                                </div>
-                            </div>
-
-                            <div>
-                                <label style={{ display: "block", fontSize: "14px", fontWeight: 600, marginBottom: "6px", color: "#374151" }}>Preferred Time Slot</label>
-                                <input type="text" value={offerData.timeSlot} onChange={(e) => setOfferData(prev => ({ ...prev, timeSlot: e.target.value }))}
-                                    placeholder="e.g. Weekdays 4-6pm, Saturday mornings" style={inputStyle} />
-                            </div>
-
-                            {/* Intro Discount Toggle */}
-                            <label style={{
-                                display: "flex", alignItems: "center", gap: "12px", padding: "14px",
-                                borderRadius: "12px", border: `2px solid ${offerData.introDiscount ? "#6366f1" : "#e2e8f0"}`,
-                                background: offerData.introDiscount ? "#eef2ff" : "#fff", cursor: "pointer",
-                            }}>
-                                <input type="checkbox" checked={offerData.introDiscount}
-                                    onChange={(e) => setOfferData(prev => ({ ...prev, introDiscount: e.target.checked }))}
-                                    style={{ width: "20px", height: "20px", accentColor: "#6366f1" }} />
-                                <div style={{ flex: 1 }}>
-                                    <p style={{ fontWeight: 600, fontSize: "14px", color: "#0f172a" }}><PartyPopper className="inline-block w-4 h-4 mr-1 text-primary" /> Add Intro Session Discount</p>
-                                    <p style={{ fontSize: "12px", color: "#64748b" }}>Offer a special rate for the first session</p>
-                                </div>
-                                {offerData.introDiscount && (
-                                    <select value={offerData.discountPercent} onChange={(e) => setOfferData(prev => ({ ...prev, discountPercent: e.target.value }))}
-                                        style={{ ...inputStyle, width: "80px", padding: "6px 8px", fontSize: "13px" }} onClick={e => e.stopPropagation()}>
-                                        <option value="10">10%</option>
-                                        <option value="15">15%</option>
-                                        <option value="20">20%</option>
-                                        <option value="25">25%</option>
-                                        <option value="50">50%</option>
-                                    </select>
-                                )}
-                            </label>
-                        </div>
-
-                        {/* Send Button */}
-                        <button
-                            onClick={sendOffer}
-                            disabled={sending}
-                            style={{
-                                width: "100%", padding: "14px", borderRadius: "14px", border: "none",
-                                background: sending ? "#94a3b8" : "linear-gradient(135deg, #6366f1, #8b5cf6)",
-                                color: "white", fontWeight: 700, fontSize: "15px", cursor: sending ? "not-allowed" : "pointer",
-                                marginTop: "24px", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px",
-                                boxShadow: "0 4px 14px rgba(99,102,241,0.3)",
-                            }}
-                        >
-                            {sending ? "Sending..." : <><Send size={16} /> Send Offer</>}
-                        </button>
                     </div>
                 </div>
             )}
 
-            <style>{`
-                @keyframes spin { to { transform: rotate(360deg); } }
-            `}</style>
+            {/* Cancel Confirmation Modal */}
+            {offerToCancel && (
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                    <div className="bg-[#1A1C23] border border-white/10 rounded-[24px] w-full max-w-[400px] shadow-2xl p-6 relative text-center">
+                        <div className="w-16 h-16 rounded-full bg-red-500/10 border border-red-500/20 text-red-500 flex items-center justify-center mx-auto mb-4">
+                            <X size={32} strokeWidth={2.5} />
+                        </div>
+                        <h3 className="text-[20px] font-black font-display tracking-wide text-white uppercase mb-2">Cancel Offer?</h3>
+                        <p className="text-text-main/60 text-sm font-medium mb-8">
+                            Are you sure you want to cancel this training offer? This action cannot be undone and the athlete will not be able to accept it.
+                        </p>
+
+                        <div className="flex items-center gap-3">
+                            <button
+                                onClick={() => setOfferToCancel(null)}
+                                disabled={isCanceling}
+                                className="flex-1 py-3 rounded-xl border border-white/10 bg-transparent text-white font-bold text-sm hover:bg-white/5 transition-colors"
+                            >
+                                Nevermind
+                            </button>
+                            <button
+                                onClick={confirmCancelOffer}
+                                disabled={isCanceling}
+                                className={`
+                                    flex-[1.5] py-3 rounded-xl border border-transparent font-bold text-sm transition-colors flex items-center justify-center gap-2
+                                    ${isCanceling ? "bg-red-500/50 text-white cursor-not-allowed" : "bg-red-500 text-bg hover:bg-red-600"}
+                                `}
+                            >
+                                {isCanceling ? (
+                                    <><div className="w-4 h-4 border-2 border-bg/30 border-t-bg rounded-full animate-spin" /> Canceling...</>
+                                ) : (
+                                    "Yes, Cancel Offer"
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
