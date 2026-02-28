@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getSession, clearSession, AuthUser } from "@/lib/auth";
+import { supabase } from "@/lib/supabase";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import {
@@ -29,6 +30,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const [user, setUser] = useState<AuthUser | null>(null);
     const [loading, setLoading] = useState(true);
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+    const [unreadCount, setUnreadCount] = useState(0);
     const router = useRouter();
     const pathname = usePathname();
 
@@ -51,6 +53,45 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         checkAuth();
     }, [router]);
+
+    // Fetch and subscribe to unread notifications count
+    useEffect(() => {
+        if (!user) return;
+
+        const fetchUnreadCount = async () => {
+            try {
+                const { count, error } = await supabase
+                    .from("notifications")
+                    .select("*", { count: "exact", head: true })
+                    .eq("user_id", user.id)
+                    .eq("read", false);
+
+                if (!error && count !== null) {
+                    setUnreadCount(count);
+                }
+            } catch (err) {
+                console.error("Failed to fetch unread count:", err);
+            }
+        };
+
+        fetchUnreadCount();
+
+        // Real-time listener for new, updated, or deleted notifications
+        const channel = supabase
+            .channel(`notifications_${user.id}`)
+            .on(
+                "postgres_changes",
+                { event: "*", schema: "public", table: "notifications", filter: `user_id=eq.${user.id}` },
+                () => {
+                    fetchUnreadCount();
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [user, pathname]); // Re-fetch on path changes in case they were read on another page
 
     const handleLogout = async () => {
         await clearSession();
@@ -89,7 +130,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         ] : []),
         { divider: true, id: "div1" },
         { label: "Messages", href: "/dashboard/messages", icon: MessageSquare },
-        { label: "Notifications", href: "/dashboard/notifications", icon: Bell, badge: 12 },
+        { label: "Notifications", href: "/dashboard/notifications", icon: Bell, badge: unreadCount > 0 ? unreadCount : undefined },
     ];
 
     return (

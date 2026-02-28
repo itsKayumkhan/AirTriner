@@ -165,12 +165,29 @@ export default function BookTrainerPage() {
                 .eq("id", profile.user_id)
                 .single();
 
+            const { data: reviews } = await supabase
+                .from("reviews")
+                .select("rating")
+                .eq("reviewee_id", profile.user_id);
+
+            const totalReviewsCount = reviews ? reviews.length : 0;
+            const averageRating = totalReviewsCount > 0
+                ? reviews.reduce((sum, r) => sum + r.rating, 0) / totalReviewsCount
+                : 0;
+
+            const { count: bookingsCount } = await supabase
+                .from("bookings")
+                .select("id", { count: "exact", head: true })
+                .eq("trainer_id", profile.user_id)
+                .eq("status", "completed");
+            const sessionsCount = bookingsCount || 0;
+
             setTrainer({
                 ...profile,
                 user: userData as TrainerWithUser["user"],
-                avg_rating: 4.9,
-                review_count: 128,
-                sessions_count: 1200,
+                avg_rating: Math.round(averageRating * 10) / 10,
+                review_count: totalReviewsCount,
+                sessions_count: sessionsCount,
                 cover_image: getSportCover(profile.sports)
             });
         } catch (err) {

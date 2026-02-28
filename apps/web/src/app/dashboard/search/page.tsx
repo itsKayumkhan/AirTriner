@@ -82,7 +82,7 @@ export default function SearchTrainersPage() {
     // Filters
     const [sportFilter, setSportFilter] = useState<string>("All Sports");
     const [maxRate, setMaxRate] = useState<number>(300);
-    const [minRating, setMinRating] = useState<number>(4.5);
+    const [minRating, setMinRating] = useState<number>(0);
     const [locationFilter, setLocationFilter] = useState<string>("");
     const [sortBy, setSortBy] = useState<string>("match");
 
@@ -154,8 +154,8 @@ export default function SearchTrainersPage() {
                     user: usersMap.get(p.user_id) as TrainerWithUser["user"],
                     avg_rating: ratingMap.has(p.user_id)
                         ? Math.round((ratingMap.get(p.user_id)!.sum / ratingMap.get(p.user_id)!.count) * 10) / 10
-                        : (4.5 + Math.random() * 0.5), // Fallback rating for demo
-                    review_count: ratingMap.get(p.user_id)?.count || Math.floor(Math.random() * 200) + 10,
+                        : 0, 
+                    review_count: ratingMap.get(p.user_id)?.count || 0,
                     matchScore: Math.min(100, matchScore),
                     cover_image: getSportImage(p.sports)
                 };
@@ -265,13 +265,13 @@ export default function SearchTrainersPage() {
                     <div className="flex-1 min-w-[200px]">
                         <label className="block text-[10px] font-bold text-text-main/40 uppercase tracking-widest mb-3">Min. Rating</label>
                         <div className="flex gap-2">
-                            {[4.5, 4.0, 3.5].map(r => (
+                            {[0, 3.5, 4.0, 4.5].map(r => (
                                 <button
                                     key={r}
                                     onClick={() => setMinRating(r)}
                                     className={`flex-1 py-3 text-xs font-bold rounded-xl transition-colors ${minRating === r ? "bg-primary text-bg shadow-[0_0_10px_rgba(163,255,18,0.3)]" : "bg-[#272A35] text-text-main/60 hover:text-text-main"}`}
                                 >
-                                    {r}+ {minRating === r && "★"}
+                                    {r === 0 ? "Any" : `${r}+`} {minRating === r && r !== 0 && "★"}
                                 </button>
                             ))}
                         </div>
