@@ -1,0 +1,450 @@
+// This is your Prisma schema file
+// Learn more: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [postgis]
+}
+
+// ============================================
+// Core Users Table (Polymorphic for Athlete/Trainer/Admin)
+// ============================================
+model User {
+  id            String    @id @default(uuid()) @db.Uuid
+  email         String    @unique @db.VarChar(255)
+  passwordHash  String    @map("password_hash") @db.VarChar(255)
+  role          UserRole
+  firstName     String    @map("first_name") @db.VarChar(100)
+  lastName      String    @map("last_name") @db.VarChar(100)
+  phone         String?   @db.VarChar(20)
+  dateOfBirth   DateTime? @map("date_of_birth") @db.Date
+  sex           String?   @db.VarChar(10)
+  avatarUrl     String?   @map("avatar_url") @db.VarChar(500)
+  emailVerified Boolean   @default(false) @map("email_verified")
+  phoneVerified Boolean   @default(false) @map("phone_verified")
+  isApproved    Boolean   @default(false) @map("is_approved")
+
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  deletedAt     DateTime? @map("deleted_at")
+
+  // Relations
+  athleteProfile   AthleteProfile?
+  trainerProfile   TrainerProfile?
+  subAccounts      SubAccount[]       @relation("ParentSubAccounts")
+  ageVerification  AgeVerification?
+  bookingsAsAthlete Booking[]         @relation("AthleteBookings")
+  bookingsAsTrainer Booking[]         @relation("TrainerBookings")
+  reviewsGiven     Review[]           @relation("ReviewerReviews")
+  reviewsReceived  Review[]           @relation("RevieweeReviews")
+  notifications    Notification[]
+  refreshTokens    RefreshToken[]
+  messages         Message[]          @relation("SenderMessages")
+  messagesReceived Message[]          @relation("ReceiverMessages")
+  offersAsTrainer  TrainingOffer[]    @relation("TrainerOffers")
+  offersAsAthlete  TrainingOffer[]    @relation("AthleteOffers")
+
+  @@map("users")
+}
+
+// ============================================
+// Age Verification
+// ============================================
+model AgeVerification {
+  id                 String   @id @default(uuid()) @db.Uuid
+  userId             String   @unique @map("user_id") @db.Uuid
+  verificationMethod String?  @map("verification_method") @db.VarChar(50)
+  verifiedAt         DateTime? @map("verified_at")
+  documentUrl        String?  @map("document_url") @db.VarChar(500)
+  status             VerificationStatus @default(pending)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("age_verifications")
+}
+
+// ============================================
+// Athlete Profiles
+// ============================================
+model AthleteProfile {
+  id               String   @id @default(uuid()) @db.Uuid
+  userId           String   @unique @map("user_id") @db.Uuid
+  skillLevel       SkillLevel?  @map("skill_level")
+  sports           String[]
+  preferredTrainingTimes TimeOfDay[]
+  trainingPreferences    TrainingType[]
+  addressLine1     String?  @map("address_line1") @db.VarChar(255)
+  addressLine2     String?  @map("address_line2") @db.VarChar(255)
+  city             String?  @db.VarChar(100)
+  state            String?  @db.VarChar(50)
+  zipCode          String?  @map("zip_code") @db.VarChar(20)
+  country          String   @default("US") @db.VarChar(2)
+  latitude         Float?
+  longitude        Float?
+  travelRadiusMiles Int     @default(25) @map("travel_radius_miles")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("athlete_profiles")
+}
+
+// ============================================
+// Sub-Accounts (Up to 6 under main account)
+// ============================================
+model SubAccount {
+  id              String   @id @default(uuid()) @db.Uuid
+  parentUserId    String   @map("parent_user_id") @db.Uuid
+  profileData     Json     @map("profile_data")
+  maxBookingsPerMonth Int  @default(10) @map("max_bookings_per_month")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  parentUser User      @relation("ParentSubAccounts", fields: [parentUserId], references: [id], onDelete: Cascade)
+  bookings   Booking[] @relation("SubAccountBookings")
+
+  @@map("sub_accounts")
+}
+
+// ============================================
+// Trainer Profiles
+// ============================================
+model TrainerProfile {
+  id                    String   @id @default(uuid()) @db.Uuid
+  userId                String   @unique @map("user_id") @db.Uuid
+  bio                   String?  @db.Text
+  headline              String?  @db.VarChar(200)
+  yearsExperience       Int?     @map("years_experience")
+  hourlyRate            Decimal  @default(50) @map("hourly_rate") @db.Decimal(10, 2)
+  sports                String[]
+  trainingTypes         TrainingType[]
+  preferredTrainingTimes TimeOfDay[]
+  verificationStatus    VerificationStatus @default(pending) @map("verification_status")
+  isVerified            Boolean  @default(false) @map("is_verified")
+  subscriptionStatus    SubscriptionStatus @default(trial) @map("subscription_status")
+  subscriptionExpiresAt DateTime? @map("subscription_expires_at")
+  trialStartedAt        DateTime? @map("trial_started_at")
+  completionRate        Decimal  @default(100) @map("completion_rate") @db.Decimal(5, 2)
+  reliabilityScore      Decimal  @default(100) @map("reliability_score") @db.Decimal(5, 2)
+  latitude              Float?
+  longitude             Float?
+  addressLine1          String?  @map("address_line1") @db.VarChar(255)
+  city                  String?  @db.VarChar(100)
+  state                 String?  @db.VarChar(50)
+  zipCode               String?  @map("zip_code") @db.VarChar(20)
+  country               String   @default("US") @db.VarChar(2)
+  travelRadiusMiles     Int      @default(25) @map("travel_radius_miles")
+  stripeAccountId       String?  @map("stripe_account_id") @db.VarChar(255)
+  createdAt             DateTime @default(now()) @map("created_at")
+
+  user              User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  media             TrainerMedia[]
+  availabilitySlots AvailabilitySlot[]
+
+  @@map("trainer_profiles")
+}
+
+// ============================================
+// Trainer Media
+// ============================================
+model TrainerMedia {
+  id         String    @id @default(uuid()) @db.Uuid
+  trainerId  String    @map("trainer_id") @db.Uuid
+  mediaType  MediaType @map("media_type")
+  url        String    @db.VarChar(500)
+  isPrimary  Boolean   @default(false) @map("is_primary")
+  sortOrder  Int       @default(0) @map("sort_order")
+  uploadedAt DateTime  @default(now()) @map("uploaded_at")
+
+  trainer TrainerProfile @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+
+  @@map("trainer_media")
+}
+
+// ============================================
+// Availability & Calendar
+// ============================================
+model AvailabilitySlot {
+  id           String   @id @default(uuid()) @db.Uuid
+  trainerId    String   @map("trainer_id") @db.Uuid
+  dayOfWeek    Int      @map("day_of_week")
+  startTime    String   @map("start_time") @db.VarChar(5) // HH:mm
+  endTime      String   @map("end_time") @db.VarChar(5) // HH:mm
+  isRecurring  Boolean  @default(true) @map("is_recurring")
+  specificDate DateTime? @map("specific_date") @db.Date
+  isBlocked    Boolean  @default(false) @map("is_blocked")
+  timezone     String   @default("America/New_York") @db.VarChar(50)
+
+  trainer TrainerProfile @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+
+  @@map("availability_slots")
+}
+
+// ============================================
+// Bookings
+// ============================================
+model Booking {
+  id                   String        @id @default(uuid()) @db.Uuid
+  athleteId            String        @map("athlete_id") @db.Uuid
+  trainerId            String        @map("trainer_id") @db.Uuid
+  subAccountId         String?       @map("sub_account_id") @db.Uuid
+  sport                String        @db.VarChar(50)
+  skillLevelAtBooking  String?       @map("skill_level_at_booking") @db.VarChar(20)
+  scheduledAt          DateTime      @map("scheduled_at")
+  durationMinutes      Int           @default(60) @map("duration_minutes")
+  latitude             Float?
+  longitude            Float?
+  address              String?       @db.Text
+  status               BookingStatus @default(pending)
+  athleteNotes         String?       @map("athlete_notes") @db.Text
+  trainerNotes         String?       @map("trainer_notes") @db.Text
+  price                Decimal       @db.Decimal(10, 2)
+  platformFee          Decimal       @map("platform_fee") @db.Decimal(10, 2)
+  totalPaid            Decimal       @map("total_paid") @db.Decimal(10, 2)
+  statusHistory        Json?         @map("status_history")
+  createdAt            DateTime      @default(now()) @map("created_at")
+  updatedAt            DateTime      @updatedAt @map("updated_at")
+
+  athlete          User               @relation("AthleteBookings", fields: [athleteId], references: [id])
+  trainer          User               @relation("TrainerBookings", fields: [trainerId], references: [id])
+  subAccount       SubAccount?        @relation("SubAccountBookings", fields: [subAccountId], references: [id])
+  paymentTransaction PaymentTransaction?
+  review           Review?
+  dispute          Dispute?
+
+  @@map("bookings")
+}
+
+// ============================================
+// Payment Transactions (Escrow System)
+// ============================================
+model PaymentTransaction {
+  id                    String        @id @default(uuid()) @db.Uuid
+  bookingId             String        @unique @map("booking_id") @db.Uuid
+  stripePaymentIntentId String?       @map("stripe_payment_intent_id") @db.VarChar(255)
+  stripeTransferId      String?       @map("stripe_transfer_id") @db.VarChar(255)
+  amount                Decimal       @db.Decimal(10, 2)
+  platformFee           Decimal       @map("platform_fee") @db.Decimal(10, 2)
+  trainerPayout         Decimal       @map("trainer_payout") @db.Decimal(10, 2)
+  status                PaymentStatus @default(held)
+  holdUntil             DateTime?     @map("hold_until")
+  releasedAt            DateTime?     @map("released_at")
+  createdAt             DateTime      @default(now()) @map("created_at")
+
+  booking Booking @relation(fields: [bookingId], references: [id])
+
+  @@map("payment_transactions")
+}
+
+// ============================================
+// Reviews & Ratings
+// ============================================
+model Review {
+  id          String   @id @default(uuid()) @db.Uuid
+  bookingId   String   @unique @map("booking_id") @db.Uuid
+  reviewerId  String   @map("reviewer_id") @db.Uuid
+  revieweeId  String   @map("reviewee_id") @db.Uuid
+  rating      Int
+  reviewText  String?  @map("review_text") @db.Text
+  categories  Json?
+  isPublic    Boolean  @default(true) @map("is_public")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  booking  Booking @relation(fields: [bookingId], references: [id])
+  reviewer User    @relation("ReviewerReviews", fields: [reviewerId], references: [id])
+  reviewee User    @relation("RevieweeReviews", fields: [revieweeId], references: [id])
+
+  @@map("reviews")
+}
+
+// ============================================
+// Disputes
+// ============================================
+model Dispute {
+  id               String         @id @default(uuid()) @db.Uuid
+  bookingId        String         @unique @map("booking_id") @db.Uuid
+  initiatedBy      String         @map("initiated_by") @db.Uuid
+  reason           String         @db.Text
+  status           DisputeStatus  @default(under_review)
+  resolution       String?        @db.VarChar(50)
+  evidenceDeadline DateTime       @map("evidence_deadline")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  resolvedAt       DateTime?      @map("resolved_at")
+
+  booking Booking @relation(fields: [bookingId], references: [id])
+
+  @@map("disputes")
+}
+
+// ============================================
+// Training Offers
+// ============================================
+model TrainingOffer {
+  id               String       @id @default(uuid()) @db.Uuid
+  trainerId        String       @map("trainer_id") @db.Uuid
+  athleteId        String       @map("athlete_id") @db.Uuid
+  status           OfferStatus  @default(pending)
+  message          String?      @db.Text
+  price            Decimal      @db.Decimal(10, 2)
+  sessionLengthMin Int          @default(60) @map("session_length_min")
+  proposedDates    Json?        @map("proposed_dates")
+  sport            String?      @db.VarChar(50)
+  createdAt        DateTime     @default(now()) @map("created_at")
+  updatedAt        DateTime     @updatedAt @map("updated_at")
+
+  trainer User @relation("TrainerOffers", fields: [trainerId], references: [id])
+  athlete User @relation("AthleteOffers", fields: [athleteId], references: [id])
+
+  @@map("training_offers")
+}
+
+// ============================================
+// Notifications
+// ============================================
+model Notification {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  type      String   @db.VarChar(50)
+  title     String   @db.VarChar(255)
+  body      String   @db.Text
+  data      Json?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, read])
+  @@map("notifications")
+}
+
+// ============================================
+// Refresh Tokens
+// ============================================
+model RefreshToken {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  token     String   @unique @db.VarChar(500)
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  revokedAt DateTime? @map("revoked_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@map("refresh_tokens")
+}
+
+// ============================================
+// Messages / Chat
+// ============================================
+model Message {
+  id         String   @id @default(uuid()) @db.Uuid
+  senderId   String   @map("sender_id") @db.Uuid
+  receiverId String   @map("receiver_id") @db.Uuid
+  content    String   @db.Text
+  read       Boolean  @default(false)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  sender   User @relation("SenderMessages", fields: [senderId], references: [id])
+  receiver User @relation("ReceiverMessages", fields: [receiverId], references: [id])
+
+  @@index([senderId, receiverId])
+  @@map("messages")
+}
+
+// ============================================
+// Geo Restrictions
+// ============================================
+model GeoRestriction {
+  id             String   @id @default(uuid()) @db.Uuid
+  countryCode    String   @map("country_code") @db.VarChar(2)
+  isAllowed      Boolean  @default(true) @map("is_allowed")
+  blockedRegions String[]  @map("blocked_regions")
+
+  @@map("geo_restrictions")
+}
+
+// ============================================
+// Enums
+// ============================================
+enum UserRole {
+  athlete
+  trainer
+  admin
+}
+
+enum SkillLevel {
+  beginner
+  intermediate
+  advanced
+  pro
+}
+
+enum BookingStatus {
+  pending
+  confirmed
+  completed
+  cancelled
+  no_show
+  disputed
+}
+
+enum PaymentStatus {
+  held
+  released
+  refunded
+  disputed
+}
+
+enum VerificationStatus {
+  pending
+  verified
+  rejected
+  suspended
+}
+
+enum SubscriptionStatus {
+  trial
+  active
+  expired
+  cancelled
+}
+
+enum MediaType {
+  photo
+  video
+  certificate
+}
+
+enum DisputeStatus {
+  under_review
+  resolved
+  escalated
+}
+
+enum TimeOfDay {
+  morning
+  afternoon
+  evening
+}
+
+enum TrainingType {
+  one_on_one
+  group
+  skill_specific
+  strength_conditioning
+  pre_season
+  in_season
+}
+
+enum OfferStatus {
+  pending
+  accepted
+  declined
+  expired
+}

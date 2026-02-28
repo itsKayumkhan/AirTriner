@@ -1,0 +1,89 @@
+﻿Γû▓ Next.js 16.1.6 (Turbopack)
+- Environments: .env.local
+
+  Creating an optimized production build ...
+Γ£ô Compiled successfully in 18.1s
+  Running TypeScript ...
+node.exe : Failed to compile.
+At C:\Program 
+Files\nodejs\npx.ps1:29 
+char:3
++   & $NODE_EXE $NPX_CLI_JS 
+$args
++   
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo           
+   : NotSpecified: (Failed   
+  to compile.:String) [],    
+ RemoteException
+    + FullyQualifiedErrorId  
+   : NativeCommandError
+ 
+
+./src/app/admin/payments/page
+.tsx:65:29
+Type error: Argument of type 
+'{ id: any; booking_id: any; 
+amount: number; 
+platform_fee: number; 
+total_paid: number; status: 
+string; payment_method: 
+string; created_at: any; 
+booking: { athlete_name: 
+string; trainer_name: 
+string; sport: any; }; }[]' 
+is not assignable to 
+parameter of type 
+'SetStateAction<Payment[]>'.
+  Type '{ id: any; 
+booking_id: any; amount: 
+number; platform_fee: 
+number; total_paid: number; 
+status: string; 
+payment_method: string; 
+created_at: any; booking: { 
+athlete_name: string; 
+trainer_name: string; sport: 
+any; }; }[]' is not 
+assignable to type 
+'Payment[]'.
+    Type '{ id: any; 
+booking_id: any; amount: 
+number; platform_fee: 
+number; total_paid: number; 
+status: string; 
+payment_method: string; 
+created_at: any; booking: { 
+athlete_name: string; 
+trainer_name: string; sport: 
+any; }; }' is not assignable 
+to type 'Payment'.
+      Types of property 
+'status' are incompatible.
+        Type 'string' is not 
+assignable to type 
+'"pending" | "completed" | 
+"failed" | "refunded"'.
+
+[0m [90m 63 |[39m         
+            }[33m,[39m
+ [90m 64 |[39m             
+    }))[33m;[39m
+[31m[1m>[22m[39m[90m 65 
+|[39m                 setPay
+ments(paymentsData)[33m;[39
+m
+ [90m    |[39m             
+                
+[31m[1m^[22m[39m
+ [90m 66 |[39m             
+}
+ [90m 67 |[39m         } 
+[36mcatch[39m (err) {
+ [90m 68 |[39m             
+console[33m.[39merror([32m
+"Failed to load 
+payments:"[39m[33m,[39m 
+err)[33m;[39m[0m
+Next.js build worker exited 
+with code: 1 and signal: null

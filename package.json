@@ -1,0 +1,27 @@
+{
+  "name": "airtrainr-platform",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AirTrainr - Sports Training Marketplace connecting athletes with trainers across USA & Canada",
+  "scripts": {
+    "dev": "pnpm --parallel -r run dev",
+    "dev:web": "pnpm --filter @airtrainr/web run dev",
+    "dev:api": "pnpm --filter @airtrainr/api run dev",
+    "dev:admin": "pnpm --filter @airtrainr/admin run dev",
+    "build": "pnpm -r run build",
+    "build:web": "pnpm --filter @airtrainr/web run build",
+    "build:api": "pnpm --filter @airtrainr/api run build",
+    "lint": "pnpm -r run lint",
+    "type-check": "pnpm -r run type-check",
+    "test": "pnpm -r run test",
+    "test:ci": "pnpm -r run test -- --ci --coverage",
+    "clean": "pnpm -r exec rm -rf node_modules dist .next .turbo",
+    "db:migrate": "pnpm --filter @airtrainr/api run db:migrate",
+    "db:seed": "pnpm --filter @airtrainr/api run db:seed",
+    "db:studio": "pnpm --filter @airtrainr/api run db:studio"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  }
+}

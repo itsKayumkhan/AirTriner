@@ -1,0 +1,25 @@
+{
+    "extends": "../../packages/config/tsconfig.base.json",
+    "compilerOptions": {
+        "outDir": "./dist",
+        "rootDir": "./src",
+        "module": "CommonJS",
+        "moduleResolution": "node",
+        "esModuleInterop": true,
+        "paths": {
+            "@/*": [
+                "./src/*"
+            ],
+            "@airtrainr/shared": [
+                "../../packages/shared/src"
+            ]
+        }
+    },
+    "include": [
+        "src/**/*"
+    ],
+    "exclude": [
+        "node_modules",
+        "dist"
+    ]
+}
