@@ -2,7 +2,7 @@
 // AirTrainr API - Main Application Entry Point
 // ============================================
 
-import express from 'express';
+import express, { type Express } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
@@ -18,8 +18,9 @@ import userRoutes from './modules/users/user.routes';
 import bookingRoutes from './modules/bookings/booking.routes';
 import matchingRoutes from './modules/matching/matching.routes';
 import paymentRoutes from './modules/payments/payment.routes';
+import { startReminderCron } from './jobs/reminder.cron';
 
-const app = express();
+const app: Express = express();
 
 // ---- Security Middleware ----
 app.use(helmet());
@@ -120,6 +121,9 @@ app.listen(PORT, () => {
 ║                                                       ║
 ╚═══════════════════════════════════════════════════════╝
   `);
+
+    // Start background jobs
+    startReminderCron();
 });
 
 export default app;
