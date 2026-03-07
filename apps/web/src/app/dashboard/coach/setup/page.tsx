@@ -190,7 +190,7 @@ export default function TrainerEditProfilePage() {
 
             if (updateError) throw updateError;
 
-            const updatedUser = { ...user, avatarUrl: undefined };
+            const updatedUser = { ...user, avatarUrl: null };
             setUser(updatedUser);
             setSession(updatedUser);
 

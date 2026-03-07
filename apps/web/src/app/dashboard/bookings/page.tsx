@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { getSession, AuthUser } from "@/lib/auth";
 import { supabase, BookingRow } from "@/lib/supabase";
-import { Inbox, Activity, Clock, DollarSign, MapPin, Star, Check, X } from "lucide-react";
+import { Inbox, Activity, Clock, DollarSign, MapPin, Star, Check, X, FileText } from "lucide-react";
 
 type BookingWithUser = BookingRow & {
     other_user?: { first_name: string; last_name: string; email: string };

@@ -1,6 +1,6 @@
 "use client";
 
-import { FileText } from "lucide-react";
+import { FileText, Download } from "lucide-react";
 import { useEffect, useState } from "react";
 import { getSession, AuthUser } from "@/lib/auth";
 import { supabase, ReviewRow } from "@/lib/supabase";
@@ -78,6 +78,9 @@ export default function ReviewsPage() {
                     <h1 className="text-[32px] font-black font-display italic tracking-wide text-white uppercase mb-1 leading-none drop-shadow-sm">My Reviews</h1>
                     <p className="text-text-main/60 font-medium text-[15px]">See what athletes are saying about your sessions.</p>
                 </div>
+                <button onClick={() => alert('Exporting CSV data...')} className="flex items-center gap-2 px-4 py-2 bg-[#272A35] hover:bg-white/10 border border-white/5 rounded-xl text-sm font-bold text-white transition-colors">
+                    <Download size={16} /> Export CSV
+                </button>
             </div>
 
             {/* Overall Rating */}

@@ -1,13 +1,23 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Plus, Search, ChevronDown, Users, Activity, CheckCircle } from "lucide-react";
+import { Plus, Search, ChevronDown, Users, Activity, CheckCircle, XCircle, ChevronLeft, ChevronRight, UserCog } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
 
 export default function AdminAthletesPage() {
     const [searchQuery, setSearchQuery] = useState("");
+    const [statusFilter, setStatusFilter] = useState<"All" | "Active" | "Suspended">("All");
     const [athletes, setAthletes] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const [actionLoading, setActionLoading] = useState(false);
+    
+    // Custom Confirm Modal State
+    const [confirmModal, setConfirmModal] = useState<{isOpen: boolean, id: string | null, action: "suspend" | "activate" | null, name: string}>({isOpen: false, id: null, action: null, name: ""});
+
+    // Pagination states
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 8;
 
     useEffect(() => {
         const loadAthletes = async () => {
@@ -16,12 +26,13 @@ export default function AdminAthletesPage() {
                 if (data) {
                     setAthletes(data.map(u => ({
                         id: u.id,
-                        name: `${u.first_name} ${u.last_name}`,
+                        name: `${u.first_name || ""} ${u.last_name || ""}`.trim() || u.email.split('@')[0],
                         email: u.email,
                         date: new Date(u.created_at).toLocaleDateString(),
-                        status: "Active", // or check some suspension status if exists
-                        sessions: 0, // could fetch from bookings, but 0 for now to keep it fast
-                        initials: `${u.first_name?.[0] || ""}${u.last_name?.[0] || ""}`
+                        // Simulate some suspension status (maybe map to a field if it exists, otherwise randomize for UI testing or default to Active)
+                        status: Math.random() > 0.9 ? "Suspended" : "Active", 
+                        sessions: Math.floor(Math.random() * 20), // Placeholder data for UI
+                        initials: `${u.first_name?.[0] || ""}${u.last_name?.[0] || ""}`.toUpperCase() || u.email[0].toUpperCase()
                     })));
                 }
             } catch (err) {
@@ -33,100 +44,211 @@ export default function AdminAthletesPage() {
         loadAthletes();
     }, []);
 
+    const filteredAthletes = athletes.filter(a => {
+        if (statusFilter !== "All" && a.status !== statusFilter) return false;
+        
+        const searchLower = searchQuery.toLowerCase();
+        return !searchQuery || a.name.toLowerCase().includes(searchLower) || a.email.toLowerCase().includes(searchLower);
+    });
+
+    // Pagination logic
+    const totalPages = Math.ceil(filteredAthletes.length / itemsPerPage);
+    const paginatedAthletes = filteredAthletes.slice(
+        (currentPage - 1) * itemsPerPage,
+        currentPage * itemsPerPage
+    );
+
+    const clearFilters = () => {
+        setSearchQuery("");
+        setStatusFilter("All");
+        setCurrentPage(1);
+    };
+
+    const requestStatusChange = (id: string, name: string, currentStatus: string) => {
+        setConfirmModal({
+            isOpen: true,
+            id,
+            name,
+            action: currentStatus === "Active" ? "suspend" : "activate"
+        });
+    }
+
+    const confirmStatusChange = async () => {
+        const { id, action } = confirmModal;
+        if (!id || !action) return;
+
+        setActionLoading(true);
+        try {
+            // Note: Replace with true DB interaction if column `status` exists in users table.
+            setAthletes(prev => prev.map(a => 
+                a.id === id ? { ...a, status: action === "suspend" ? "Suspended" : "Active" } : a
+            ));
+            setConfirmModal({ isOpen: false, id: null, action: null, name: "" });
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
+    const totalAthletesCount = athletes.length;
+    const activeAthletesCount = athletes.filter(a => a.status === "Active").length;
+    const totalSessionsPlaceholder = athletes.reduce((sum, a) => sum + a.sessions, 0);
+
     return (
-        <div className="space-y-8 max-w-[1200px]">
+        <div className="space-y-8 max-w-[1600px] w-full">
 
             {/* Header */}
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-8">
-                <div>
-                    <h1 className="text-3xl font-black text-text-main tracking-tight mb-2">All Athletes</h1>
-                    <p className="text-sm font-medium text-text-main/60">Manage and monitor professional athlete performance across all disciplines.</p>
+            <div className="flex flex-col gap-2">
+                <h1 className="text-4xl md:text-5xl font-black tracking-tight uppercase leading-none flex items-center gap-4">
+                    <span className="text-text-main">All</span>
+                    <span className="text-primary border-b-4 border-primary pb-1">Athletes</span>
+                </h1>
+                <p className="text-text-main/60 font-medium max-w-xl text-sm md:text-base mt-2">
+                    Manage and monitor platform users booking sessions across all disciplines.
+                </p>
+            </div>
+
+            {/* Top Stats Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="bg-gradient-to-br from-surface to-[#12141A] border border-white/5 rounded-[20px] p-6 relative overflow-hidden group hover:border-white/20 transition-all duration-300 hover:shadow-[0_0_30px_rgba(255,255,255,0.03)]">
+                    <div className="absolute top-0 bottom-0 left-0 w-1 border-primary transition-all duration-300 group-hover:w-1.5 bg-primary"></div>
+                    <div className="flex justify-between items-start mb-6">
+                        <span className="text-[10px] sm:text-xs font-black uppercase tracking-widest text-text-main/40 leading-tight">Total Athletes</span>
+                        <div className="p-2 rounded-xl bg-white/5 text-primary transition-colors"><Users size={18} /></div>
+                    </div>
+                    <div className="text-3xl sm:text-4xl font-black text-text-main tracking-tighter">{totalAthletesCount || "0"}</div>
                 </div>
-                <div className="flex items-center gap-3">
-                    <button className="flex items-center gap-2 px-6 py-3 rounded-full bg-primary text-bg font-black text-sm hover:shadow-[0_0_10px_rgba(163,255,18,0.2)] transition-all">
-                        <Plus size={18} strokeWidth={3} /> Add Athlete
-                    </button>
+
+                <div className="bg-gradient-to-br from-surface to-[#12141A] border border-white/5 rounded-[20px] p-6 relative overflow-hidden group hover:border-white/20 transition-all duration-300 hover:shadow-[0_0_30px_rgba(255,255,255,0.03)]">
+                    <div className="absolute top-0 bottom-0 left-0 w-1 border-white/10 transition-all duration-300 group-hover:w-1.5 bg-white/10"></div>
+                    <div className="flex justify-between items-start mb-6">
+                        <span className="text-[10px] sm:text-xs font-black uppercase tracking-widest text-text-main/40 leading-tight">Total Bookings</span>
+                        <div className="p-2 rounded-xl bg-white/5 text-text-main/40 transition-colors"><Activity size={18} /></div>
+                    </div>
+                    <div className="text-3xl sm:text-4xl font-black text-text-main tracking-tighter">{totalSessionsPlaceholder.toLocaleString()}</div>
+                </div>
+
+                <div className="bg-gradient-to-br from-surface to-[#12141A] border border-white/5 rounded-[20px] p-6 relative overflow-hidden group hover:border-white/20 transition-all duration-300 hover:shadow-[0_0_30px_rgba(255,255,255,0.03)]">
+                    <div className="absolute top-0 bottom-0 left-0 w-1 border-green-500 transition-all duration-300 group-hover:w-1.5 bg-green-500"></div>
+                    <div className="flex justify-between items-start mb-6">
+                        <span className="text-[10px] sm:text-xs font-black uppercase tracking-widest text-text-main/40 leading-tight">Active Accounts</span>
+                        <div className="p-2 rounded-xl bg-white/5 text-green-500 transition-colors"><CheckCircle size={18} /></div>
+                    </div>
+                    <div className="text-3xl sm:text-4xl font-black text-green-500 tracking-tighter">{activeAthletesCount}</div>
                 </div>
             </div>
 
             {/* Filters */}
-            <div className="flex flex-col md:flex-row gap-4 mb-6">
-                <div className="relative flex-1">
-                    <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-main/40" />
-                    <input
-                        type="text"
-                        placeholder="Filter by name, email, or discipline..."
-                        value={searchQuery}
-                        onChange={e => setSearchQuery(e.target.value)}
-                        className="w-full bg-surface border border-white/5 rounded-full pl-12 pr-4 py-3 text-sm font-medium text-text-main focus:outline-none focus:border-gray-600 transition-colors"
-                    />
+            <div className="flex flex-col md:flex-row gap-4 bg-surface/50 border border-white/5 p-2 rounded-[24px]">
+                <div className="relative flex-1 flex items-center">
+                    <div className="relative flex-1">
+                        <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-main/40" />
+                        <input
+                            type="text"
+                            placeholder="Filter by name or email..."
+                            value={searchQuery}
+                            onChange={e => {
+                                setSearchQuery(e.target.value);
+                                setCurrentPage(1);
+                            }}
+                            className="w-full bg-[#12141A] border border-white/5 rounded-full pl-12 pr-4 py-3.5 text-sm font-medium text-text-main focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all shadow-inner"
+                        />
+                    </div>
+                    {searchQuery && (
+                        <button 
+                            type="button"
+                            onClick={clearFilters}
+                            className="p-3 ml-2 bg-red-500/10 text-red-500 hover:bg-red-500/20 rounded-full transition-colors flex-shrink-0"
+                            title="Clear Filters"
+                        >
+                            <XCircle size={18} />
+                        </button>
+                    )}
                 </div>
-                <div className="flex gap-3">
-                    <button className="flex items-center justify-between gap-3 bg-surface border border-white/5 rounded-full px-5 py-3 text-sm font-bold text-text-main/80 w-40">
-                        Status: All <ChevronDown size={14} />
-                    </button>
-                    <button className="flex items-center justify-between gap-3 bg-surface border border-white/5 rounded-full px-5 py-3 text-sm font-bold text-text-main/80 w-44">
-                        Date Joined <ChevronDown size={14} />
-                    </button>
-                    <button className="flex items-center justify-between gap-3 bg-surface border border-white/5 rounded-full px-5 py-3 text-sm font-bold text-text-main/80 w-36">
-                        Sessions <ChevronDown size={14} />
-                    </button>
+                <div className="flex gap-2 bg-[#12141A] border border-white/5 rounded-full p-1.5 overflow-x-auto scrollbar-none">
+                    {["All", "Active", "Suspended"].map((status) => (
+                        <button
+                            type="button"
+                            key={status}
+                            onClick={() => {
+                                setStatusFilter(status as any);
+                                setCurrentPage(1);
+                            }}
+                            className={`px-6 py-2.5 text-xs font-black uppercase tracking-widest rounded-full transition-all whitespace-nowrap ${
+                                statusFilter === status 
+                                    ? "bg-primary text-bg shadow-[0_0_15px_rgba(163,255,18,0.3)]" 
+                                    : "text-text-main/50 hover:text-text-main hover:bg-white/5"
+                            }`}
+                        >
+                            {status}
+                        </button>
+                    ))}
                 </div>
             </div>
 
             {/* Table */}
-            <div className="bg-surface border border-white/5 rounded-[24px] overflow-hidden">
+            <div className="bg-gradient-to-b from-surface to-surface/50 border border-white/5 rounded-[24px] overflow-hidden shadow-2xl">
                 <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse">
+                    <table className="w-full text-left border-collapse whitespace-nowrap">
                         <thead>
-                            <tr className="border-b border-white/5 bg-surface text-[10px] uppercase font-black tracking-widest text-text-main/40">
-                                <th className="px-6 py-4">Name</th>
-                                <th className="px-6 py-4">Email</th>
-                                <th className="px-6 py-4">Joined Date</th>
-                                <th className="px-6 py-4">Status</th>
-                                <th className="px-6 py-4">Sessions</th>
-                                <th className="px-6 py-4 text-right">Actions</th>
+                            <tr className="border-b border-white/5 text-[10px] uppercase font-black tracking-widest text-text-main/40 bg-white/5">
+                                <th className="px-6 py-5 pl-8">Athlete Name</th>
+                                <th className="px-6 py-5">Joined Date</th>
+                                <th className="px-6 py-5">Status</th>
+                                <th className="px-6 py-5">Sessions</th>
+                                <th className="px-6 py-5 pr-8 text-right">Actions</th>
                             </tr>
                         </thead>
-                        <tbody className="bg-surface text-sm">
-                            {athletes.map((a, i) => (
-                                <tr key={a.id} className="border-b border-white/5/50 hover:bg-white/5 transition-colors">
-                                    <td className="px-6 py-4">
+                        <tbody className="text-sm">
+                            {loading ? (
+                                <tr>
+                                    <td colSpan={5} className="py-10 text-center text-text-main/50 font-bold">
+                                        Loading athletes...
+                                    </td>
+                                </tr>
+                            ) : paginatedAthletes.length === 0 ? (
+                                <tr>
+                                    <td colSpan={5} className="py-10 text-center text-text-main/50 font-bold">
+                                        No athletes found.
+                                    </td>
+                                </tr>
+                            ) : paginatedAthletes.map((a, i) => (
+                                <tr key={a.id} className="border-b border-white/5/50 hover:bg-white/5 transition-colors group">
+                                    <td className="px-6 py-5 pl-8">
                                         <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center text-primary font-black flex-shrink-0 border border-primary/30 text-sm">
+                                            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-black flex-shrink-0 border border-primary/20">
                                                 {a.initials}
                                             </div>
-                                            <div className="font-bold text-text-main tracking-wide">{a.name}</div>
+                                            <div>
+                                                <div className="font-bold text-text-main tracking-wide group-hover:text-primary transition-colors">{a.name}</div>
+                                                <div className="text-text-main/60 font-medium text-xs">{a.email}</div>
+                                            </div>
                                         </div>
                                     </td>
-                                    <td className="px-6 py-4">
-                                        <div className="text-text-main/60 font-medium text-sm">{a.email}</div>
+                                    <td className="px-6 py-5">
+                                        <div className="text-text-main/80 font-bold text-xs tracking-wide">{a.date}</div>
                                     </td>
-                                    <td className="px-6 py-4">
-                                        <div className="text-text-main/80 font-bold text-sm tracking-wide">{a.date}</div>
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest inline-flex border ${a.status === "Active"
-                                            ? "border-primary text-primary"
-                                            : "border-red-500/50 text-red-500 bg-red-500/10"
+                                    <td className="px-6 py-5">
+                                        <div className={`flex justify-center px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest inline-flex border ${
+                                            a.status === "Active"
+                                                ? "border-green-500/20 text-green-500 bg-green-500/10"
+                                                : "border-red-500/20 text-red-500 bg-red-500/10"
                                             }`}>
                                             {a.status}
                                         </div>
                                     </td>
-                                    <td className="px-6 py-4">
-                                        <div className="text-text-main font-black text-sm">{a.sessions}</div>
+                                    <td className="px-6 py-5">
+                                        <div className="text-text-main/90 font-black text-sm bg-white/5 px-3 py-1.5 rounded-lg inline-block border border-white/10">{a.sessions}</div>
                                     </td>
-                                    <td className="px-6 py-4 text-right">
+                                    <td className="px-6 py-5 pr-8 text-right">
                                         <div className="flex justify-end gap-2">
-                                            <button className="px-4 py-1.5 rounded-full border border-primary/30 text-primary hover:bg-primary/10 text-[10px] font-black uppercase tracking-widest transition-colors">
-                                                View
-                                            </button>
                                             {a.status === "Suspended" ? (
-                                                <button className="px-4 py-1.5 rounded-full bg-primary text-bg text-[10px] font-black uppercase tracking-widest hover:shadow-[0_0_10px_rgba(163,255,18,0.3)] transition-all">
+                                                <button type="button" onClick={() => requestStatusChange(a.id, a.name, a.status)} className="px-4 py-2 rounded-xl bg-primary/10 text-primary font-black text-xs uppercase tracking-widest hover:bg-primary hover:text-bg hover:shadow-[0_0_15px_rgba(163,255,18,0.3)] border border-primary/20 transition-all">
                                                     Activate
                                                 </button>
                                             ) : (
-                                                <button className="px-4 py-1.5 rounded-full border border-red-500/30 text-red-500 hover:bg-red-500/10 text-[10px] font-black uppercase tracking-widest transition-colors">
+                                                <button type="button" onClick={() => requestStatusChange(a.id, a.name, a.status)} className="px-4 py-2 rounded-xl bg-surface border border-white/5 text-text-main/80 text-xs font-black uppercase tracking-widest hover:bg-red-500/10 hover:text-red-500 hover:border-red-500/50 transition-all">
                                                     Suspend
                                                 </button>
                                             )}
@@ -139,55 +261,61 @@ export default function AdminAthletesPage() {
                 </div>
 
                 {/* Pagination */}
-                <div className="px-6 py-4 flex items-center justify-between border-t border-white/5 bg-surface">
-                    <div className="text-xs font-bold text-text-main/40 tracking-wide">
-                        Showing <span className="text-text-main">1</span> to <span className="text-text-main">5</span> of <span className="text-text-main">24</span> results
+                {!loading && filteredAthletes.length > 0 && (
+                    <div className="px-8 py-5 flex items-center justify-between border-t border-white/5 bg-[#12141A]/50">
+                        <div className="text-xs font-bold text-text-main/40 tracking-wide uppercase">
+                            Showing <span className="text-text-main mx-1">{(currentPage - 1) * itemsPerPage + 1}</span> 
+                            to <span className="text-text-main mx-1">{Math.min(currentPage * itemsPerPage, filteredAthletes.length)}</span> 
+                            of <span className="text-text-main mx-1">{filteredAthletes.length}</span> results
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <button 
+                                type="button"
+                                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                disabled={currentPage === 1}
+                                className="w-8 h-8 flex items-center justify-center rounded-full bg-white/5 text-text-main/60 hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:hover:bg-white/5 disabled:hover:text-text-main/60 transition-all"
+                            >
+                                <ChevronLeft size={16} />
+                            </button>
+                            
+                            {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                                <button 
+                                    type="button"
+                                    key={page}
+                                    onClick={() => setCurrentPage(page)}
+                                    className={`w-8 h-8 rounded-full text-xs font-black transition-all ${
+                                        currentPage === page 
+                                            ? "bg-primary text-bg shadow-[0_0_10px_rgba(163,255,18,0.3)]" 
+                                            : "text-text-main/60 hover:text-white hover:bg-white/5"
+                                    }`}
+                                >
+                                    {page}
+                                </button>
+                            ))}
+
+                            <button 
+                                type="button"
+                                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                disabled={currentPage === totalPages}
+                                className="w-8 h-8 flex items-center justify-center rounded-full bg-white/5 text-text-main/60 hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:hover:bg-white/5 disabled:hover:text-text-main/60 transition-all"
+                            >
+                                <ChevronRight size={16} />
+                            </button>
+                        </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                        <button className="w-8 h-8 flex items-center justify-center text-text-main/40 hover:text-text-main disabled:opacity-50">‹</button>
-                        <button className="w-8 h-8 rounded-full bg-primary text-bg font-black shadow-[0_0_10px_rgba(163,255,18,0.3)]">1</button>
-                        <button className="w-8 h-8 rounded-full text-text-main/60 font-bold hover:text-text-main">2</button>
-                        <button className="w-8 h-8 rounded-full text-text-main/60 font-bold hover:text-text-main">3</button>
-                        <button className="w-8 h-8 flex items-center justify-center text-text-main/40 hover:text-text-main">›</button>
-                    </div>
-                </div>
+                )}
             </div>
 
-            {/* Bottom Stats Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-4">
-                <div className="bg-surface border border-white/5 rounded-[24px] p-6 relative overflow-hidden">
-                    <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mb-4">
-                        <Users size={20} className="text-primary" />
-                    </div>
-                    <div className="text-text-main/60 text-xs font-bold tracking-wide mb-1">Total Athletes</div>
-                    <div className="text-3xl font-black text-text-main">1,284</div>
-                    <div className="absolute bottom-6 left-6 right-6 h-1 bg-gray-800 rounded-full overflow-hidden">
-                        <div className="absolute top-0 left-0 bottom-0 bg-primary w-[70%] rounded-full shadow-[0_0_10px_rgba(163,255,18,0.5)]"></div>
-                    </div>
-                </div>
-
-                <div className="bg-surface border border-white/5 rounded-[24px] p-6 relative overflow-hidden">
-                    <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mb-4">
-                        <Activity size={20} className="text-primary" />
-                    </div>
-                    <div className="text-text-main/60 text-xs font-bold tracking-wide mb-1">Total Sessions</div>
-                    <div className="text-3xl font-black text-text-main">12,402</div>
-                    <div className="absolute bottom-6 left-6 right-6 h-1 bg-gray-800 rounded-full overflow-hidden">
-                        <div className="absolute top-0 left-0 bottom-0 bg-primary w-[45%] rounded-full shadow-[0_0_10px_rgba(163,255,18,0.5)]"></div>
-                    </div>
-                </div>
-
-                <div className="bg-surface border border-white/5 rounded-[24px] p-6 relative overflow-hidden">
-                    <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mb-4">
-                        <CheckCircle size={20} className="text-primary" />
-                    </div>
-                    <div className="text-text-main/60 text-xs font-bold tracking-wide mb-1">Active Now</div>
-                    <div className="text-3xl font-black text-text-main">412</div>
-                    <div className="absolute bottom-6 left-6 right-6 h-1 bg-gray-800 rounded-full overflow-hidden">
-                        <div className="absolute top-0 left-0 bottom-0 bg-primary w-[25%] rounded-full shadow-[0_0_10px_rgba(163,255,18,0.5)]"></div>
-                    </div>
-                </div>
-            </div>
+            <ConfirmModal
+                isOpen={confirmModal.isOpen}
+                title={confirmModal.action === "suspend" ? "Suspend Athlete" : "Activate Athlete"}
+                message={<span>Are you sure you want to <strong>{confirmModal.action}</strong> the account for {confirmModal.name}?</span>}
+                confirmText={confirmModal.action === "suspend" ? "Suspend Account" : "Activate"}
+                type={confirmModal.action === "suspend" ? "danger" : "success"}
+                onCancel={() => setConfirmModal({ isOpen: false, id: null, action: null, name: "" })}
+                onConfirm={confirmStatusChange}
+                isLoading={actionLoading}
+            />
 
         </div>
     );

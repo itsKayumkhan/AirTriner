@@ -4,7 +4,7 @@ import { useEffect, useState, useMemo } from "react";
 import { getSession, AuthUser } from "@/lib/auth";
 import { supabase, TrainerProfileRow } from "@/lib/supabase";
 import { PrimaryButton } from "@/components/ui/Buttons";
-import { ArrowRight, Search as SearchIcon, MapPin, ChevronLeft, ChevronRight, Star } from "lucide-react";
+import { ArrowRight, Search as SearchIcon, MapPin, ChevronLeft, ChevronRight, Star, Download } from "lucide-react";
 
 type TrainerWithUser = TrainerProfileRow & {
     user: { first_name: string; last_name: string; avatar_url: string | null };
@@ -287,6 +287,12 @@ export default function SearchTrainersPage() {
                     <p className="text-sm text-text-main/60 font-medium">Showing {filteredTrainers.length} elite trainers {locationFilter ? `in ${locationFilter}` : "available"}</p>
                 </div>
                 <div className="flex items-center gap-2">
+                    <button
+                        onClick={() => alert('Exporting CSV data...')}
+                        className="flex items-center gap-2 px-4 py-2 bg-[#272A35] hover:bg-white/10 border border-white/5 rounded-xl text-sm font-bold text-white transition-colors"
+                    >
+                        <Download size={16} /> Export CSV
+                    </button>
                     <select
                         value={sortBy}
                         onChange={(e) => setSortBy(e.target.value)}

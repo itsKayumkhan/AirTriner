@@ -3,7 +3,9 @@
 import { Bell, CheckCircle, XCircle, PartyPopper, MapPin, Star, Wallet, MessageSquare } from "lucide-react";
 import React, { useEffect, useState } from "react";
 import { getSession, AuthUser } from "@/lib/auth";
-import { supabase, NotificationRow } from "@/lib/supabase";
+import { supabase } from "@/lib/supabase";
+import { useNotifications } from "@/context/NotificationContext";
+import { useAuth } from "@/context/AuthContext";
 
 interface OfferNotificationData {
     offer_id?: string;
@@ -12,54 +14,16 @@ interface OfferNotificationData {
 }
 
 export default function NotificationsPage() {
-    const [user, setUser] = useState<AuthUser | null>(null);
-    const [notifications, setNotifications] = useState<NotificationRow[]>([]);
-    const [loading, setLoading] = useState(true);
-
-    useEffect(() => {
-        const session = getSession();
-        if (session) {
-            setUser(session);
-            loadNotifications(session);
-        }
-    }, []);
-
-    const loadNotifications = async (u: AuthUser) => {
-        try {
-            const { data } = await supabase
-                .from("notifications")
-                .select("*")
-                .eq("user_id", u.id)
-                .order("created_at", { ascending: false })
-                .limit(50);
-            setNotifications((data || []) as NotificationRow[]);
-        } catch (err) {
-            console.error("Failed to load notifications:", err);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const markAsRead = async (id: string) => {
-        await supabase.from("notifications").update({ read: true }).eq("id", id);
-        setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
-    };
-
-    const markAllRead = async () => {
-        if (!user) return;
-        await supabase.from("notifications").update({ read: true }).eq("user_id", user.id).eq("read", false);
-        setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-    };
-
-    const clearAllNotifications = async () => {
-        if (!user) return;
-        try {
-            await supabase.from("notifications").delete().eq("user_id", user.id);
-            setNotifications([]);
-        } catch (err) {
-            console.error("Failed to clear notifications:", err);
-        }
-    };
+    const { user } = useAuth();
+    const { 
+        notifications, 
+        unreadCount, 
+        loading, 
+        markAsRead, 
+        markAllRead, 
+        clearAllNotifications, 
+        updateNotificationData 
+    } = useNotifications();
 
     const handleOfferResponse = async (notificationId: string, offerId: string, response: "accepted" | "declined") => {
         try {
@@ -75,20 +39,13 @@ export default function NotificationsPage() {
             const currentNotif = notifications.find(n => n.id === notificationId);
             if (currentNotif) {
                 const newData = { ...(currentNotif.data as OfferNotificationData), offer_status: response };
-                await supabase
-                    .from("notifications")
-                    .update({ data: newData })
-                    .eq("id", notificationId);
-
-                setNotifications(prev => prev.map(n => n.id === notificationId ? { ...n, data: newData } : n));
+                await updateNotificationData(notificationId, newData);
             }
         } catch (err) {
             console.error("Failed to respond to offer:", err);
             alert("Failed to update offer status. Please try again.");
         }
     };
-
-    const unreadCount = notifications.filter((n) => !n.read).length;
 
     const typeIcons: Record<string, React.ReactNode> = {
         BOOKING_CONFIRMED: <CheckCircle className="text-primary w-5 h-5 shrink-0" />,

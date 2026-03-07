@@ -171,7 +171,7 @@ export default function BookTrainerPage() {
                 .eq("reviewee_id", profile.user_id);
 
             const totalReviewsCount = reviews ? reviews.length : 0;
-            const averageRating = totalReviewsCount > 0
+            const averageRating = totalReviewsCount > 0 && reviews
                 ? reviews.reduce((sum, r) => sum + r.rating, 0) / totalReviewsCount
                 : 0;
 

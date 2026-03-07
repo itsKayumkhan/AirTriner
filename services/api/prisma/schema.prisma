@@ -448,3 +448,21 @@ enum OfferStatus {
   declined
   expired
 }
+
+// ============================================
+// Platform Settings
+// ============================================
+model PlatformSetting {
+  id                         String   @id @default(uuid()) @db.Uuid
+  platformFeePercentage      Float    @map("platform_fee_percentage")
+  maxBookingDistance         Int      @map("max_booking_distance")
+  autoApproveTrainers        Boolean  @map("auto_approve_trainers")
+  requireTrainerVerification Boolean  @map("require_trainer_verification")
+  cancellationPolicyHours    Int      @map("cancellation_policy_hours")
+  disputeResolutionDays      Int      @map("dispute_resolution_days")
+  supportEmail               String   @map("support_email") @db.VarChar(255)
+  maintenanceMode            Boolean  @map("maintenance_mode")
+  updatedAt                  DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@map("platform_settings")
+}
