@@ -216,6 +216,7 @@ model Booking {
   paymentTransaction PaymentTransaction?
   review           Review?
   dispute          Dispute?
+  rescheduleRequests RescheduleRequest[]
 
   @@map("bookings")
 }
@@ -301,6 +302,24 @@ model TrainingOffer {
   athlete User @relation("AthleteOffers", fields: [athleteId], references: [id])
 
   @@map("training_offers")
+}
+
+// ============================================
+// Reschedule Requests
+// ============================================
+model RescheduleRequest {
+  id               String       @id @default(uuid()) @db.Uuid
+  bookingId        String       @map("booking_id") @db.Uuid
+  initiatedBy      String       @map("initiated_by") @db.Uuid
+  proposedTime     DateTime     @map("proposed_time")
+  status           OfferStatus  @default(pending)
+  reason           String?      @db.Text
+  createdAt        DateTime     @default(now()) @map("created_at")
+  updatedAt        DateTime     @updatedAt @map("updated_at")
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@map("reschedule_requests")
 }
 
 // ============================================
@@ -392,6 +411,7 @@ enum BookingStatus {
   cancelled
   no_show
   disputed
+  reschedule_requested
 }
 
 enum PaymentStatus {

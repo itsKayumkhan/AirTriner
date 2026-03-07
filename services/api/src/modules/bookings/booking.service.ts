@@ -18,7 +18,8 @@ const prisma = new PrismaClient();
 // Valid state transitions
 const VALID_TRANSITIONS: Record<string, string[]> = {
     [BookingStatus.PENDING]: [BookingStatus.CONFIRMED, BookingStatus.CANCELLED],
-    [BookingStatus.CONFIRMED]: [BookingStatus.COMPLETED, BookingStatus.CANCELLED, BookingStatus.NO_SHOW],
+    [BookingStatus.CONFIRMED]: [BookingStatus.COMPLETED, BookingStatus.CANCELLED, BookingStatus.NO_SHOW, BookingStatus.RESCHEDULE_REQUESTED],
+    [BookingStatus.RESCHEDULE_REQUESTED]: [BookingStatus.CONFIRMED, BookingStatus.CANCELLED],
     [BookingStatus.COMPLETED]: [BookingStatus.DISPUTED],
     [BookingStatus.NO_SHOW]: [BookingStatus.DISPUTED],
 };
@@ -149,6 +150,137 @@ export class BookingService {
     }
 
     /**
+     * Request a reschedule for a booking
+     */
+    async requestReschedule(bookingId: string, actorId: string, proposedTime: string, reason?: string) {
+        const booking = await prisma.booking.findUnique({
+            where: { id: bookingId },
+        });
+
+        if (!booking) throw new NotFoundError('Booking not found');
+
+        // Only allowed if confirmed (or pending, but usually confirmed)
+        if (booking.status !== BookingStatus.CONFIRMED && booking.status !== BookingStatus.PENDING) {
+            throw new BadRequestError('Can only reschedule pending or confirmed bookings');
+        }
+
+        const isAthlete = booking.athleteId === actorId;
+        const isTrainer = booking.trainerId === actorId;
+
+        if (!isAthlete && !isTrainer) {
+            throw new ForbiddenError('You are not part of this booking');
+        }
+
+        // Check if there is already a pending request
+        const existingRequest = await prisma.rescheduleRequest.findFirst({
+            where: { bookingId, status: 'pending' }
+        });
+
+        if (existingRequest) {
+            throw new BadRequestError('There is already a pending reschedule request for this booking');
+        }
+
+        // Create the request
+        const request = await prisma.rescheduleRequest.create({
+            data: {
+                bookingId,
+                initiatedBy: actorId,
+                proposedTime: new Date(proposedTime),
+                reason,
+                status: 'pending'
+            }
+        });
+
+        // Transition booking status
+        await this.transitionStatus(bookingId, BookingStatus.RESCHEDULE_REQUESTED, actorId, reason);
+
+        return request;
+    }
+
+    /**
+     * Accept a reschedule request
+     */
+    async acceptReschedule(requestId: string, actorId: string) {
+        const request = await prisma.rescheduleRequest.findUnique({
+            where: { id: requestId },
+            include: { booking: true }
+        });
+
+        if (!request) throw new NotFoundError('Reschedule request not found');
+        if (request.status !== 'pending') throw new BadRequestError('Request is not pending');
+
+        const { booking } = request;
+        
+        // The person accepting must be part of the booking, but NOT the initiator
+        const isAthlete = booking.athleteId === actorId;
+        const isTrainer = booking.trainerId === actorId;
+
+        if (!isAthlete && !isTrainer) {
+            throw new ForbiddenError('You are not part of this booking');
+        }
+
+        if (request.initiatedBy === actorId) {
+             throw new ForbiddenError('You cannot accept your own reschedule request');
+        }
+
+        // Optional: check trainer availability again here to ensure no double booking
+
+        // Update the request
+        await prisma.rescheduleRequest.update({
+            where: { id: requestId },
+            data: { status: 'accepted' }
+        });
+
+        // Update the actual booking time
+        await prisma.booking.update({
+            where: { id: booking.id },
+            data: { scheduledAt: request.proposedTime }
+        });
+
+        // Transition booking status back to confirmed
+        await this.transitionStatus(booking.id, BookingStatus.CONFIRMED, actorId, 'Reschedule Accepted');
+
+        return request;
+    }
+
+    /**
+     * Decline a reschedule request
+     */
+    async declineReschedule(requestId: string, actorId: string) {
+        const request = await prisma.rescheduleRequest.findUnique({
+            where: { id: requestId },
+            include: { booking: true }
+        });
+
+        if (!request) throw new NotFoundError('Reschedule request not found');
+        if (request.status !== 'pending') throw new BadRequestError('Request is not pending');
+
+        const { booking } = request;
+
+        const isAthlete = booking.athleteId === actorId;
+        const isTrainer = booking.trainerId === actorId;
+
+        if (!isAthlete && !isTrainer) {
+            throw new ForbiddenError('You are not part of this booking');
+        }
+
+        if (request.initiatedBy === actorId) {
+             throw new ForbiddenError('You cannot decline your own reschedule request');
+        }
+
+        // Update the request
+        await prisma.rescheduleRequest.update({
+            where: { id: requestId },
+            data: { status: 'declined' }
+        });
+
+        // Transition booking status back to confirmed (keeps original time)
+        await this.transitionStatus(booking.id, BookingStatus.CONFIRMED, actorId, 'Reschedule Declined');
+
+        return request;
+    }
+
+    /**
      * Get bookings for a user (as athlete or trainer)
      */
     async getUserBookings(userId: string, role: string, filters: any = {}) {
@@ -207,6 +339,10 @@ export class BookingService {
                 trainer: { select: { firstName: true, lastName: true, avatarUrl: true, email: true } },
                 paymentTransaction: true,
                 review: true,
+                rescheduleRequests: {
+                    where: { status: 'pending' },
+                    take: 1
+                }
             },
         });
 
@@ -234,9 +370,9 @@ export class BookingService {
             throw new ForbiddenError('You are not part of this booking');
         }
 
-        // Only trainer can confirm
-        if (newStatus === BookingStatus.CONFIRMED && !isTrainer) {
-            throw new ForbiddenError('Only the trainer can confirm a booking');
+        // Only trainer can confirm, UNLESS it's from a reschedule_requested state
+        if (newStatus === BookingStatus.CONFIRMED && booking.status !== BookingStatus.RESCHEDULE_REQUESTED && !isTrainer) {
+            throw new ForbiddenError('Only the trainer can confirm a generic pending booking');
         }
 
         // Only trainer can mark completed or no_show

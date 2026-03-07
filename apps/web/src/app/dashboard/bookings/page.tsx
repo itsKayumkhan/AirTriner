@@ -3,10 +3,21 @@
 import { useEffect, useState } from "react";
 import { getSession, AuthUser } from "@/lib/auth";
 import { supabase, BookingRow } from "@/lib/supabase";
-import { Inbox, Activity, Clock, DollarSign, MapPin, Star, Check, X } from "lucide-react";
+import { Inbox, Activity, Clock, DollarSign, MapPin, Star, Check, X, RefreshCw, FileText, CalendarClock } from "lucide-react";
+import { RescheduleDialog } from "@/components/bookings/RescheduleDialog";
+import { AddToCalendarDropdown } from "@/components/bookings/AddToCalendarDropdown";
+import { CancelBookingDialog } from "@/components/bookings/CancelBookingDialog";
+
+type RescheduleInfo = {
+    id: string;
+    proposed_time: string;
+    reason: string | null;
+    initiated_by: string;
+};
 
 type BookingWithUser = BookingRow & {
     other_user?: { first_name: string; last_name: string; email: string };
+    reschedule_request?: RescheduleInfo | null;
 };
 
 export default function BookingsPage() {
@@ -22,6 +33,12 @@ export default function BookingsPage() {
     const [reviewRating, setReviewRating] = useState(5);
     const [reviewText, setReviewText] = useState("");
     const [submittingReview, setSubmittingReview] = useState(false);
+
+    // Reschedule dialog state
+    const [rescheduleBooking, setRescheduleBooking] = useState<BookingWithUser | null>(null);
+
+    // Cancel dialog state
+    const [cancelBooking, setCancelBooking] = useState<BookingWithUser | null>(null);
 
     useEffect(() => {
         const session = getSession();
@@ -52,10 +69,34 @@ export default function BookingsPage() {
                 (users || []).map((u: { id: string; first_name: string; last_name: string; email: string }) => [u.id, u])
             );
 
+            // Fetch pending reschedule requests for these bookings
+            const rescheduleBookingIds = allBookings
+                .filter((b) => b.status === "reschedule_requested")
+                .map((b) => b.id);
+
+            let rescheduleMap = new Map<string, RescheduleInfo>();
+            if (rescheduleBookingIds.length > 0) {
+                const { data: rescheduleData } = await supabase
+                    .from("reschedule_requests")
+                    .select("id, booking_id, proposed_time, reason, initiated_by")
+                    .in("booking_id", rescheduleBookingIds)
+                    .eq("status", "pending");
+
+                (rescheduleData || []).forEach((r: any) => {
+                    rescheduleMap.set(r.booking_id, {
+                        id: r.id,
+                        proposed_time: r.proposed_time,
+                        reason: r.reason,
+                        initiated_by: r.initiated_by,
+                    });
+                });
+            }
+
             setBookings(
                 allBookings.map((b) => ({
                     ...b,
                     other_user: usersMap.get(u.role === "trainer" ? b.athlete_id : b.trainer_id) as BookingWithUser["other_user"],
+                    reschedule_request: rescheduleMap.get(b.id) || null,
                 }))
             );
         } catch (err) {
@@ -65,13 +106,43 @@ export default function BookingsPage() {
         }
     };
 
+    const cancelWithReason = async (bookingId: string, reason: string) => {
+        setActionLoading(bookingId);
+        try {
+            await supabase.from("bookings").update({
+                status: "cancelled",
+                cancelled_at: new Date().toISOString(),
+                cancellation_reason: reason,
+                updated_at: new Date().toISOString(),
+            }).eq("id", bookingId);
+
+            // Send notification to the other party
+            const booking = bookings.find((b) => b.id === bookingId);
+            if (booking && user) {
+                const notifyUserId = user.role === "trainer" ? booking.athlete_id : booking.trainer_id;
+                await supabase.from("notifications").insert({
+                    user_id: notifyUserId,
+                    type: "BOOKING_CANCELLED",
+                    title: "Booking Cancelled",
+                    body: `Your ${booking.sport} booking has been cancelled. Reason: ${reason}`,
+                    data: { booking_id: bookingId },
+                    read: false,
+                });
+            }
+
+            // Refresh bookings list
+            if (user) loadBookings(user);
+        } catch (err) {
+            console.error("Failed to cancel booking:", err);
+        } finally {
+            setActionLoading(null);
+        }
+    };
+
     const updateBookingStatus = async (bookingId: string, newStatus: string) => {
         setActionLoading(bookingId);
         try {
-            const updates: Record<string, unknown> = { status: newStatus };
-            if (newStatus === "cancelled") {
-                updates.cancelled_at = new Date().toISOString();
-            }
+            const updates: Record<string, unknown> = { status: newStatus, updated_at: new Date().toISOString() };
 
             await supabase.from("bookings").update(updates).eq("id", bookingId);
 
@@ -152,6 +223,54 @@ export default function BookingsPage() {
         }
     };
 
+    const respondToReschedule = async (bookingId: string, rescheduleId: string, accept: boolean, proposedTime?: string) => {
+        setActionLoading(bookingId);
+        try {
+            // Update reschedule request status
+            await supabase
+                .from("reschedule_requests")
+                .update({ status: accept ? "accepted" : "declined", updated_at: new Date().toISOString() })
+                .eq("id", rescheduleId);
+
+            if (accept && proposedTime) {
+                // Update booking with new time and set back to confirmed
+                await supabase
+                    .from("bookings")
+                    .update({ scheduled_at: proposedTime, status: "confirmed", updated_at: new Date().toISOString() })
+                    .eq("id", bookingId);
+            } else {
+                // Declined — revert booking to confirmed with original time
+                await supabase
+                    .from("bookings")
+                    .update({ status: "confirmed", updated_at: new Date().toISOString() })
+                    .eq("id", bookingId);
+            }
+
+            // Send notification
+            const booking = bookings.find((b) => b.id === bookingId);
+            if (booking?.reschedule_request) {
+                const notifyUserId = booking.reschedule_request.initiated_by;
+                await supabase.from("notifications").insert({
+                    user_id: notifyUserId,
+                    type: accept ? "RESCHEDULE_ACCEPTED" : "RESCHEDULE_DECLINED",
+                    title: accept ? "Reschedule Accepted" : "Reschedule Declined",
+                    body: accept
+                        ? `Your reschedule request for ${booking.sport} has been accepted!`
+                        : `Your reschedule request for ${booking.sport} was declined. The original time remains.`,
+                    data: { booking_id: bookingId },
+                    read: false,
+                });
+            }
+
+            // Refresh bookings
+            if (user) loadBookings(user);
+        } catch (err) {
+            console.error("Failed to respond to reschedule:", err);
+        } finally {
+            setActionLoading(null);
+        }
+    };
+
     const submitReview = async () => {
         if (!user || !reviewBooking) return;
         setSubmittingReview(true);
@@ -201,6 +320,7 @@ export default function BookingsPage() {
         rejected: { bg: "bg-red-500/10", text: "text-red-500", border: "border-red-500/20" },
         no_show: { bg: "bg-purple-500/10", text: "text-purple-500", border: "border-purple-500/20" },
         disputed: { bg: "bg-red-500/10", text: "text-red-500", border: "border-red-500/20" },
+        reschedule_requested: { bg: "bg-cyan-500/10", text: "text-cyan-500", border: "border-cyan-500/20" },
     };
 
     const filters = ["all", "pending", "confirmed", "completed", "cancelled", "rejected"];
@@ -329,19 +449,25 @@ export default function BookingsPage() {
                                                 </>
                                             )}
                                             {booking.status === "confirmed" && !isPast && (
-                                                <button
-                                                    onClick={() => updateBookingStatus(booking.id, "cancelled")}
-                                                    disabled={actionLoading === booking.id}
-                                                    className="px-4 py-2.5 rounded-xl bg-[#12141A] border border-red-500/20 text-red-500 text-xs font-bold hover:bg-red-500/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                                >
-                                                    Cancel
-                                                </button>
+                                                <>
+                                                    <button
+                                                        onClick={() => setRescheduleBooking(booking)}
+                                                        className="px-4 py-2.5 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-500 text-xs font-bold hover:bg-cyan-500/20 transition-all flex items-center justify-center gap-1.5"
+                                                    >
+                                                        <RefreshCw size={14} strokeWidth={2.5} /> Reschedule
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setCancelBooking(booking)}
+                                                        className="px-4 py-2.5 rounded-xl bg-[#12141A] border border-red-500/20 text-red-500 text-xs font-bold hover:bg-red-500/10 transition-colors"
+                                                    >
+                                                        Cancel
+                                                    </button>
+                                                </>
                                             )}
                                             {booking.status === "pending" && !isTrainer && !isPast && (
                                                 <button
-                                                    onClick={() => updateBookingStatus(booking.id, "cancelled")}
-                                                    disabled={actionLoading === booking.id}
-                                                    className="px-4 py-2.5 rounded-xl bg-[#12141A] border border-red-500/20 text-red-500 text-xs font-bold hover:bg-red-500/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                                    onClick={() => setCancelBooking(booking)}
+                                                    className="px-4 py-2.5 rounded-xl bg-[#12141A] border border-red-500/20 text-red-500 text-xs font-bold hover:bg-red-500/10 transition-colors"
                                                 >
                                                     Cancel Request
                                                 </button>
@@ -363,9 +489,80 @@ export default function BookingsPage() {
                                                     <Star size={16} className="fill-current" /> Leave Review
                                                 </button>
                                             )}
+
+                                            {/* Reschedule Response — Accept/Decline for the other party */}
+                                            {booking.status === "reschedule_requested" && booking.reschedule_request && booking.reschedule_request.initiated_by !== user?.id && (
+                                                <>
+                                                    <button
+                                                        onClick={() => respondToReschedule(booking.id, booking.reschedule_request!.id, true, booking.reschedule_request!.proposed_time)}
+                                                        disabled={actionLoading === booking.id}
+                                                        className="px-4 py-2.5 rounded-xl bg-green-500/10 border border-green-500/20 text-green-500 text-xs font-bold hover:bg-green-500 hover:text-white transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                    >
+                                                        {actionLoading === booking.id ? "..." : <><Check size={16} strokeWidth={2.5} /> Accept</>}
+                                                    </button>
+                                                    <button
+                                                        onClick={() => respondToReschedule(booking.id, booking.reschedule_request!.id, false)}
+                                                        disabled={actionLoading === booking.id}
+                                                        className="px-4 py-2.5 rounded-xl bg-[#12141A] border border-red-500/20 text-red-500 text-xs font-bold hover:bg-red-500/10 transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                    >
+                                                        <X size={16} strokeWidth={2.5} /> Decline
+                                                    </button>
+                                                </>
+                                            )}
+
+                                            {/* Waiting badge for the requester */}
+                                            {booking.status === "reschedule_requested" && booking.reschedule_request && booking.reschedule_request.initiated_by === user?.id && (
+                                                <span className="px-4 py-2.5 rounded-xl bg-cyan-500/5 border border-cyan-500/10 text-cyan-500/60 text-xs font-bold flex items-center gap-1.5">
+                                                    <Clock size={14} /> Waiting for response...
+                                                </span>
+                                            )}
+
+                                            {/* Calendar Sync — show for confirmed or completed bookings */}
+                                            {(booking.status === "confirmed" || booking.status === "completed") && (
+                                                <AddToCalendarDropdown bookingId={booking.id} />
+                                            )}
                                         </div>
                                     </div>
                                 </div>
+
+                                {/* Reschedule Request Info Banner */}
+                                {booking.status === "reschedule_requested" && booking.reschedule_request && (
+                                    <div className="mt-6 p-5 bg-cyan-500/5 rounded-xl border border-cyan-500/10">
+                                        <div className="text-[11px] font-bold text-cyan-500/60 uppercase tracking-widest mb-2 flex items-center gap-2">
+                                            <CalendarClock size={12} /> Reschedule Request
+                                        </div>
+                                        <div className="text-[14px] text-text-main/80 font-medium">
+                                            <span className="text-text-main/40 text-xs">Proposed time: </span>
+                                            <span className="text-white font-bold">
+                                                {new Date(booking.reschedule_request.proposed_time).toLocaleString("en-US", {
+                                                    weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit"
+                                                })}
+                                            </span>
+                                        </div>
+                                        {booking.reschedule_request.reason && (
+                                            <div className="text-[13px] text-text-main/50 mt-2">
+                                                <span className="text-text-main/40 text-xs">Reason: </span>{booking.reschedule_request.reason}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* Cancellation Reason Banner */}
+                                {booking.status === "cancelled" && booking.cancellation_reason && (
+                                    <div className="mt-6 p-5 bg-red-500/5 rounded-xl border border-red-500/10">
+                                        <div className="text-[11px] font-bold text-red-500/60 uppercase tracking-widest mb-2 flex items-center gap-2">
+                                            <X size={12} /> Cancellation Reason
+                                        </div>
+                                        <div className="text-[14px] text-text-main/80 font-medium leading-relaxed">
+                                            {booking.cancellation_reason}
+                                        </div>
+                                        {booking.cancelled_at && (
+                                            <div className="text-[11px] text-text-main/30 mt-2 italic">
+                                                Cancelled on {new Date(booking.cancelled_at).toLocaleString()}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
 
                                 {booking.athlete_notes && (
                                     <div className="mt-6 p-5 bg-[#12141A] rounded-xl border border-white/5">
@@ -439,6 +636,33 @@ export default function BookingsPage() {
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* Reschedule Dialog */}
+            {rescheduleBooking && (
+                <RescheduleDialog
+                    bookingId={rescheduleBooking.id}
+                    currentTime={rescheduleBooking.scheduled_at}
+                    sport={rescheduleBooking.sport}
+                    isOpen={true}
+                    onClose={() => setRescheduleBooking(null)}
+                    onSuccess={() => {
+                        setRescheduleBooking(null);
+                        if (user) loadBookings(user);
+                    }}
+                />
+            )}
+
+            {/* Cancel Dialog */}
+            {cancelBooking && (
+                <CancelBookingDialog
+                    bookingId={cancelBooking.id}
+                    sport={cancelBooking.sport}
+                    otherUserName={cancelBooking.other_user ? `${cancelBooking.other_user.first_name} ${cancelBooking.other_user.last_name}` : "Unknown User"}
+                    isOpen={true}
+                    onClose={() => setCancelBooking(null)}
+                    onConfirm={cancelWithReason}
+                />
             )}
         </div>
     );
