@@ -126,36 +126,30 @@ export default function SearchTrainersPage() {
                 .select("id, first_name, last_name, avatar_url")
                 .in("id", userIds);
 
-            const { data: reviews } = await supabase
-                .from("reviews")
-                .select("reviewee_id, rating")
-                .in("reviewee_id", userIds);
-
             const usersMap = new Map((users || []).map((u: { id: string, first_name: string, last_name: string, avatar_url: string | null }) => [u.id, u]));
-
-            const ratingMap = new Map<string, { sum: number; count: number }>();
-            (reviews || []).forEach((r: { reviewee_id: string, rating: number }) => {
-                const existing = ratingMap.get(r.reviewee_id) || { sum: 0, count: 0 };
-                ratingMap.set(r.reviewee_id, { sum: existing.sum + r.rating, count: existing.count + 1 });
-            });
 
             // Calculate match scores
             const athleteProfile = session.athleteProfile;
             const enriched: TrainerWithUser[] = (profiles as TrainerProfileRow[]).map((p) => {
                 let matchScore = 50;
+                
+                // Sport overlap
                 if (athleteProfile) {
                     const sportOverlap = (athleteProfile.sports || []).filter((s: string) => (p.sports || []).includes(s));
                     if (sportOverlap.length > 0) matchScore += 30;
                     if (athleteProfile.city && p.city && athleteProfile.city.toLowerCase() === p.city.toLowerCase()) matchScore += 15;
                 }
 
+                // Rating Boost (Task 8 requirement: gain higher visibility)
+                const rating = p.average_rating || 0;
+                if (rating >= 4.8) matchScore += 10;
+                else if (rating >= 4.5) matchScore += 5;
+
                 return {
                     ...p,
                     user: usersMap.get(p.user_id) as TrainerWithUser["user"],
-                    avg_rating: ratingMap.has(p.user_id)
-                        ? Math.round((ratingMap.get(p.user_id)!.sum / ratingMap.get(p.user_id)!.count) * 10) / 10
-                        : 0, 
-                    review_count: ratingMap.get(p.user_id)?.count || 0,
+                    avg_rating: rating,
+                    review_count: p.total_reviews || 0,
                     matchScore: Math.min(100, matchScore),
                     cover_image: getSportImage(p.sports)
                 };

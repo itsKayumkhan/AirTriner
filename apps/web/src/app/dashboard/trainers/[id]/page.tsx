@@ -5,6 +5,16 @@ import { useParams, useRouter } from "next/navigation";
 import { getSession, AuthUser } from "@/lib/auth";
 import { supabase, TrainerProfileRow } from "@/lib/supabase";
 import { Star, MapPin, Award, GraduationCap, Clock, MessageSquare, BadgeCheck, ChevronLeft, ChevronRight } from "lucide-react";
+import { ReviewSection } from "@/components/trainers/ReviewSection";
+
+type Review = {
+    id: string;
+    reviewer_id: string;
+    rating: number;
+    review_text: string | null;
+    created_at: string;
+    reviewer: { first_name: string; last_name: string; avatar_url: string | null };
+};
 
 type TrainerWithUser = TrainerProfileRow & {
     user: { first_name: string; last_name: string; avatar_url: string | null };
@@ -12,6 +22,7 @@ type TrainerWithUser = TrainerProfileRow & {
     review_count: number;
     sessions_count: number;
     cover_image: string;
+    recent_reviews: Review[];
 };
 
 // Sports-specific wide images (NO GYM IMAGES to align with user's feedback)
@@ -65,11 +76,6 @@ const CERTIFICATIONS = [
     { icon: <GraduationCap size={20} className="text-primary" />, title: "B.S. Kinesiology", desc: "Stanford University" },
     { icon: <BadgeCheck size={20} className="text-primary" />, title: "Olympic Weightlifting", desc: "USAW Level 2 Coach" },
     { icon: <Clock size={20} className="text-primary" />, title: "Pre/Post Natal", desc: "Specialized Certification" },
-];
-
-const REVIEWS = [
-    { name: "Marcus Thorne", time: "2 weeks ago", rating: 5, text: "Alex is a game changer. The attention to detail in form and the specific programming for my goals has been incredible. I've hit PRs I didn't think were possible.", avatar: "M" },
-    { name: "Sarah Jenkins", time: "1 month ago", rating: 5, text: "Amazing energy and deeply knowledgeable. The focus on mobility has helped my recovery significantly. Highly recommend for HIIT sessions!", avatar: "S" },
 ];
 
 export default function BookTrainerPage() {
@@ -165,30 +171,38 @@ export default function BookTrainerPage() {
                 .eq("id", profile.user_id)
                 .single();
 
-            const { data: reviews } = await supabase
+            const { data: reviewsData } = await supabase
                 .from("reviews")
-                .select("rating")
-                .eq("reviewee_id", profile.user_id);
-
-            const totalReviewsCount = reviews ? reviews.length : 0;
-            const averageRating = totalReviewsCount > 0
-                ? reviews.reduce((sum, r) => sum + r.rating, 0) / totalReviewsCount
-                : 0;
+                .select(`
+                    id,
+                    reviewer_id,
+                    rating,
+                    review_text,
+                    created_at,
+                    reviewer:users!reviews_reviewer_id_fkey (
+                        first_name,
+                        last_name,
+                        avatar_url
+                    )
+                `)
+                .eq("reviewee_id", profile.user_id)
+                .order("created_at", { ascending: false })
+                .limit(5);
 
             const { count: bookingsCount } = await supabase
                 .from("bookings")
                 .select("id", { count: "exact", head: true })
                 .eq("trainer_id", profile.user_id)
                 .eq("status", "completed");
-            const sessionsCount = bookingsCount || 0;
-
+            
             setTrainer({
                 ...profile,
                 user: userData as TrainerWithUser["user"],
-                avg_rating: Math.round(averageRating * 10) / 10,
-                review_count: totalReviewsCount,
-                sessions_count: sessionsCount,
-                cover_image: getSportCover(profile.sports)
+                avg_rating: profile.average_rating || 0,
+                review_count: profile.total_reviews || 0,
+                sessions_count: bookingsCount || 0,
+                cover_image: getSportCover(profile.sports),
+                recent_reviews: (reviewsData || []) as unknown as Review[]
             });
         } catch (err) {
             console.error(err);
@@ -362,33 +376,10 @@ export default function BookTrainerPage() {
                     </div>
 
                     {/* Reviews */}
-                    <div>
-                        <div className="flex justify-between items-center mb-6">
-                            <h2 className="text-xl font-black text-text-main">Reviews</h2>
-                            <button className="text-primary font-bold text-sm">See all {trainer.review_count}</button>
-                        </div>
-                        <div className="space-y-4">
-                            {REVIEWS.map((review, i) => (
-                                <div key={i} className="bg-surface border border-white/5 rounded-2xl p-6">
-                                    <div className="flex justify-between items-start mb-4">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 rounded-full bg-[#fce6cd] flex items-center justify-center font-bold text-sm text-gray-900 border border-[#e5d2bc]">
-                                                {/* Left blank like screenshot or optionally put initial */}
-                                            </div>
-                                            <div>
-                                                <div className="text-text-main font-bold text-sm">{review.name}</div>
-                                                <div className="text-text-main/40 text-[10px] mt-0.5 font-medium">{review.time}</div>
-                                            </div>
-                                        </div>
-                                        <div className="flex gap-0.5 text-primary">
-                                            {[1, 2, 3, 4, 5].map(s => <Star key={s} size={12} className="fill-current" />)}
-                                        </div>
-                                    </div>
-                                    <p className="text-text-main/80 text-sm leading-relaxed">&ldquo;{review.text}&rdquo;</p>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
+                    <ReviewSection 
+                        reviews={trainer.recent_reviews} 
+                        totalCount={trainer.review_count} 
+                    />
 
                 </div>
 
