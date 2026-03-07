@@ -9,6 +9,8 @@ export default function AdminTrainersPage() {
     const [activeTab, setActiveTab] = useState("Pending");
     const [trainers, setTrainers] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 5;
 
     useEffect(() => {
         const loadTrainers = async () => {
@@ -68,8 +70,21 @@ export default function AdminTrainersPage() {
         if (activeTab === "Verified" && !t.isVerified) return false;
         if (activeTab === "Declined" && !t.isDeclined) return false;
         if (activeTab === "Pending" && (t.isVerified || t.isDeclined)) return false;
-        return t.name.toLowerCase().includes(searchQuery.toLowerCase());
+        return t.name.toLowerCase().includes(searchQuery.toLowerCase()) || t.email.toLowerCase().includes(searchQuery.toLowerCase());
     });
+
+    // Reset pagination when filter changes
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [activeTab, searchQuery]);
+
+    const totalPages = Math.ceil(filteredTrainers.length / itemsPerPage);
+    const paginatedTrainers = filteredTrainers.slice(
+        (currentPage - 1) * itemsPerPage,
+        currentPage * itemsPerPage
+    );
+
+    const pendingCount = trainers.filter(t => !t.isVerified && !t.isDeclined).length;
 
     return (
         <div className="space-y-8 max-w-[1200px]">
@@ -100,7 +115,7 @@ export default function AdminTrainersPage() {
                             className={`pb-4 text-sm font-bold tracking-wide relative whitespace-nowrap ${activeTab === tab ? "text-primary border-b-2 border-primary" : "text-text-main/40 hover:text-text-main/80"
                                 }`}
                         >
-                            {tab === "Pending" ? "Pending Requests (12)" : tab}
+                            {tab === "Pending" ? `Pending Requests (${pendingCount})` : tab}
                         </button>
                     ))}
                 </div>
@@ -131,7 +146,7 @@ export default function AdminTrainersPage() {
                             </tr>
                         </thead>
                         <tbody className="bg-surface text-sm">
-                            {filteredTrainers.map((t, i) => (
+                            {paginatedTrainers.map((t, i) => (
                                 <tr key={t.id} className="border-b border-white/5/50 hover:bg-white/5 transition-colors">
                                     <td className="px-6 py-4">
                                         <div className="flex items-center gap-3">
@@ -193,14 +208,38 @@ export default function AdminTrainersPage() {
                 {/* Pagination */}
                 <div className="px-6 py-4 flex items-center justify-between border-t border-white/5 bg-surface">
                     <div className="text-xs font-bold text-text-main/40 tracking-wide">
-                        Showing <span className="text-text-main">4</span> of <span className="text-text-main">12</span> pending requests
+                        Showing <span className="text-text-main">{paginatedTrainers.length}</span> of <span className="text-text-main">{filteredTrainers.length}</span> requests
                     </div>
                     <div className="flex items-center gap-2">
-                        <button className="w-8 h-8 flex items-center justify-center text-text-main/40 hover:text-text-main disabled:opacity-50">‹</button>
-                        <button className="w-8 h-8 rounded-full bg-primary text-bg font-black shadow-[0_0_10px_rgba(163,255,18,0.3)]">1</button>
-                        <button className="w-8 h-8 rounded-full text-text-main/60 font-bold hover:text-text-main">2</button>
-                        <button className="w-8 h-8 rounded-full text-text-main/60 font-bold hover:text-text-main">3</button>
-                        <button className="w-8 h-8 flex items-center justify-center text-text-main/40 hover:text-text-main">›</button>
+                        <button
+                            onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                            disabled={currentPage === 1}
+                            className="w-8 h-8 flex items-center justify-center text-text-main/40 hover:text-text-main disabled:opacity-30 disabled:cursor-not-allowed"
+                        >
+                            ‹
+                        </button>
+                        
+                        {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                            <button
+                                key={page}
+                                onClick={() => setCurrentPage(page)}
+                                className={`w-8 h-8 rounded-full font-bold transition-all ${
+                                    currentPage === page 
+                                    ? "bg-primary text-bg shadow-[0_0_10px_rgba(163,255,18,0.3)]" 
+                                    : "text-text-main/60 hover:text-text-main"
+                                }`}
+                            >
+                                {page}
+                            </button>
+                        ))}
+
+                        <button
+                            onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                            disabled={currentPage === totalPages || totalPages === 0}
+                            className="w-8 h-8 flex items-center justify-center text-text-main/40 hover:text-text-main disabled:opacity-30 disabled:cursor-not-allowed"
+                        >
+                            ›
+                        </button>
                     </div>
                 </div>
             </div>

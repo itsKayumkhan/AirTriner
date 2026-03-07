@@ -1,9 +1,10 @@
 "use client";
 
-import { Bell, CheckCircle, XCircle, PartyPopper, MapPin, Star, Wallet, MessageSquare } from "lucide-react";
 import React, { useEffect, useState } from "react";
 import { getSession, AuthUser } from "@/lib/auth";
 import { supabase, NotificationRow } from "@/lib/supabase";
+import { OfferModal } from "@/components/notifications/OfferModal";
+import { Bell, CheckCircle, XCircle, PartyPopper, MapPin, Star, Wallet, MessageSquare } from "lucide-react";
 
 interface OfferNotificationData {
     offer_id?: string;
@@ -15,6 +16,9 @@ export default function NotificationsPage() {
     const [user, setUser] = useState<AuthUser | null>(null);
     const [notifications, setNotifications] = useState<NotificationRow[]>([]);
     const [loading, setLoading] = useState(true);
+    const [selectedNotification, setSelectedNotification] = useState<NotificationRow | null>(null);
+    const [showOfferModal, setShowOfferModal] = useState(false);
+    const [isResponding, setIsResponding] = useState(false);
 
     useEffect(() => {
         const session = getSession();
@@ -62,6 +66,7 @@ export default function NotificationsPage() {
     };
 
     const handleOfferResponse = async (notificationId: string, offerId: string, response: "accepted" | "declined") => {
+        setIsResponding(true);
         try {
             // Update the training offer status
             const { error: offerError } = await supabase
@@ -81,10 +86,16 @@ export default function NotificationsPage() {
                     .eq("id", notificationId);
 
                 setNotifications(prev => prev.map(n => n.id === notificationId ? { ...n, data: newData } : n));
+                
+                // Close modal if open
+                setShowOfferModal(false);
+                setSelectedNotification(null);
             }
         } catch (err) {
             console.error("Failed to respond to offer:", err);
             alert("Failed to update offer status. Please try again.");
+        } finally {
+            setIsResponding(false);
         }
     };
 
@@ -180,16 +191,15 @@ export default function NotificationsPage() {
                                 {n.type === "MESSAGE_RECEIVED" && (n.data as OfferNotificationData)?.offer_id && !(n.data as OfferNotificationData)?.offer_status && (
                                     <div className="flex gap-3 mt-4">
                                         <button
-                                            onClick={(e) => { e.stopPropagation(); handleOfferResponse(n.id, (n.data as OfferNotificationData).offer_id!, "accepted"); }}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setSelectedNotification(n);
+                                                setShowOfferModal(true);
+                                                if (!n.read) markAsRead(n.id);
+                                            }}
                                             className="px-5 py-2 rounded-xl bg-primary text-bg font-black text-xs uppercase tracking-wider hover:shadow-[0_0_15px_rgba(163,255,18,0.3)] transition-all"
                                         >
-                                            Accept Offer
-                                        </button>
-                                        <button
-                                            onClick={(e) => { e.stopPropagation(); handleOfferResponse(n.id, (n.data as OfferNotificationData).offer_id!, "declined"); }}
-                                            className="px-5 py-2 rounded-xl border border-white/10 text-white font-bold text-xs uppercase tracking-wider hover:bg-white/5 transition-all"
-                                        >
-                                            Decline
+                                            View Offer
                                         </button>
                                     </div>
                                 )}
@@ -208,6 +218,15 @@ export default function NotificationsPage() {
                     ))}
                 </div>
             )}
+
+            {/* View Offer Modal */}
+            <OfferModal
+                isOpen={showOfferModal}
+                onClose={() => { setShowOfferModal(false); setSelectedNotification(null); }}
+                notification={selectedNotification}
+                onResponse={handleOfferResponse}
+                isResponding={isResponding}
+            />
         </div>
     );
 }
