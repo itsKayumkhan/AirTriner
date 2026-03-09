@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { getSession, AuthUser } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { Settings, Save, RefreshCw, Shield, Bell, Globe, CreditCard, Users, Calendar } from "lucide-react";
+import PopupModal from "@/components/common/PopupModal";
 
 interface PlatformSettings {
     platform_fee_percentage: number;
@@ -30,7 +31,16 @@ export default function AdminSettingsPage() {
         support_email: "support@airtrainer.com",
         maintenance_mode: false,
     });
-    const [notification, setNotification] = useState<string | null>(null);
+    const [popup, setPopup] = useState<{
+        type: "success" | "error" | "confirm" | "warning" | "info";
+        title: string;
+        message: string;
+        onConfirm?: () => void;
+    } | null>(null);
+
+    const showAlert = (type: "success" | "error" | "info", title: string, message: string) => {
+        setPopup({ type, title, message });
+    };
 
     useEffect(() => {
         const session = getSession();
@@ -41,12 +51,37 @@ export default function AdminSettingsPage() {
     }, []);
 
     const loadSettings = async () => {
+        setLoading(true);
         try {
-            // In a real implementation, this would fetch from a settings table
-            // For now, we'll use default values
-            setLoading(false);
+            const { data, error } = await supabase
+                .from("platform_settings")
+                .select("*")
+                .single();
+
+            if (error) {
+                if (error.code === "PGRST116") {
+                    console.log("No settings found, using defaults");
+                } else {
+                    throw error;
+                }
+            }
+
+            if (data) {
+                setSettings({
+                    platform_fee_percentage: data.platform_fee_percentage,
+                    max_booking_distance: data.max_booking_distance,
+                    auto_approve_trainers: data.auto_approve_trainers,
+                    require_trainer_verification: data.require_trainer_verification,
+                    cancellation_policy_hours: data.cancellation_policy_hours,
+                    dispute_resolution_days: data.dispute_resolution_days,
+                    support_email: data.support_email,
+                    maintenance_mode: data.maintenance_mode,
+                });
+            }
         } catch (err) {
             console.error("Failed to load settings:", err);
+            showAlert("error", "Error", "Failed to load settings from server");
+        } finally {
             setLoading(false);
         }
     };
@@ -54,14 +89,21 @@ export default function AdminSettingsPage() {
     const saveSettings = async () => {
         setSaving(true);
         try {
-            // In a real implementation, this would save to database
-            await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate API call
-            setNotification("Settings saved successfully!");
-            setTimeout(() => setNotification(null), 3000);
-        } catch (err) {
+            const { error } = await supabase
+                .from("platform_settings")
+                .upsert({
+                    id: '00000000-0000-0000-0000-000000000001',
+                    ...settings,
+                    updated_at: new Date().toISOString(),
+                });
+
+            if (error) throw error;
+
+            showAlert("success", "Settings Saved", "Your platform configuration has been updated successfully.");
+        } catch (err: any) {
             console.error("Failed to save settings:", err);
-            setNotification("Failed to save settings");
-            setTimeout(() => setNotification(null), 3000);
+            const errorMsg = err.message || "Make sure you have admin permissions.";
+            showAlert("error", "Save Failed", errorMsg);
         } finally {
             setSaving(false);
         }
@@ -84,15 +126,15 @@ export default function AdminSettingsPage() {
             {/* Header */}
             <div className="flex items-center justify-between">
                 <div>
-                    <h2 className="text-3xl font-black text-[#0f172a] tracking-tight mb-2">Platform Settings</h2>
-                    <p className="text-[#64748b] text-lg">
+                    <h2 className="text-3xl font-black text-text-main tracking-tight mb-2">Platform Settings</h2>
+                    <p className="text-text-main/60 text-lg">
                         Configure platform-wide settings and policies
                     </p>
                 </div>
                 <button
                     onClick={saveSettings}
                     disabled={saving}
-                    className="flex items-center gap-2 px-6 py-3 rounded-lg bg-gradient-to-r from-[#3b82f6] to-[#2563eb] text-text-main font-bold shadow-[0_4px_14px_0_rgba(59,130,246,0.39)] hover:shadow-[0_6px_20px_rgba(59,130,246,0.23)] hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex items-center gap-2 px-6 py-3 rounded-xl bg-primary text-bg font-bold shadow-[0_4px_14px_0_rgba(163,255,18,0.25)] hover:shadow-[0_6px_20px_rgba(163,255,18,0.3)] hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     {saving ? (
                         <>
@@ -108,30 +150,19 @@ export default function AdminSettingsPage() {
                 </button>
             </div>
 
-            {/* Notification */}
-            {notification && (
-                <div className={`p-4 rounded-lg font-medium ${
-                    notification.includes("success") 
-                        ? "bg-[#d1fae5] text-[#059669]" 
-                        : "bg-[#fee2e2] text-[#dc2626]"
-                }`}>
-                    {notification}
-                </div>
-            )}
-
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Platform Settings */}
-                <div className="bg-white rounded-2xl p-6 border border-[#e2e8f0] shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)]">
+                {/* Platform Configuration */}
+                <div className="bg-surface border border-white/5 rounded-[24px] p-6">
                     <div className="flex items-center gap-3 mb-6">
-                        <div className="w-10 h-10 rounded-xl bg-[#eff6ff] flex items-center justify-center">
-                            <Settings size={20} className="text-[#3b82f6]" />
+                        <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center">
+                            <Settings size={20} className="text-blue-500" />
                         </div>
-                        <h3 className="text-lg font-bold text-[#0f172a]">Platform Configuration</h3>
+                        <h3 className="text-lg font-bold text-text-main">Platform Configuration</h3>
                     </div>
                     
-                    <div className="space-y-4">
+                    <div className="space-y-5">
                         <div>
-                            <label className="block text-sm font-medium text-[#64748b] mb-2">
+                            <label className="block text-sm font-medium text-text-main/70 mb-2">
                                 Platform Fee Percentage
                             </label>
                             <input
@@ -141,13 +172,13 @@ export default function AdminSettingsPage() {
                                 step="0.1"
                                 value={settings.platform_fee_percentage}
                                 onChange={(e) => handleSettingChange('platform_fee_percentage', Number(e.target.value))}
-                                className="w-full px-3 py-2 border border-[#e2e8f0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3b82f6]"
+                                className="w-full px-4 py-2.5 bg-bg border border-white/10 rounded-xl text-text-main focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/30 transition-colors"
                             />
-                            <p className="text-xs text-[#64748b] mt-1">Percentage charged on each transaction</p>
+                            <p className="text-xs text-text-main/40 mt-1.5">Percentage charged on each transaction</p>
                         </div>
 
                         <div>
-                            <label className="block text-sm font-medium text-[#64748b] mb-2">
+                            <label className="block text-sm font-medium text-text-main/70 mb-2">
                                 Max Booking Distance (miles)
                             </label>
                             <input
@@ -156,39 +187,39 @@ export default function AdminSettingsPage() {
                                 max="200"
                                 value={settings.max_booking_distance}
                                 onChange={(e) => handleSettingChange('max_booking_distance', Number(e.target.value))}
-                                className="w-full px-3 py-2 border border-[#e2e8f0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3b82f6]"
+                                className="w-full px-4 py-2.5 bg-bg border border-white/10 rounded-xl text-text-main focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/30 transition-colors"
                             />
-                            <p className="text-xs text-[#64748b] mt-1">Maximum distance for trainer-athlete matching</p>
+                            <p className="text-xs text-text-main/40 mt-1.5">Maximum distance for trainer-athlete matching</p>
                         </div>
 
                         <div>
-                            <label className="block text-sm font-medium text-[#64748b] mb-2">
+                            <label className="block text-sm font-medium text-text-main/70 mb-2">
                                 Support Email
                             </label>
                             <input
                                 type="email"
                                 value={settings.support_email}
                                 onChange={(e) => handleSettingChange('support_email', e.target.value)}
-                                className="w-full px-3 py-2 border border-[#e2e8f0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3b82f6]"
+                                className="w-full px-4 py-2.5 bg-bg border border-white/10 rounded-xl text-text-main focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/30 transition-colors"
                             />
-                            <p className="text-xs text-[#64748b] mt-1">Email displayed to users for support</p>
+                            <p className="text-xs text-text-main/40 mt-1.5">Email displayed to users for support</p>
                         </div>
 
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between pt-2">
                             <div>
-                                <label className="block text-sm font-medium text-[#64748b] mb-1">
+                                <label className="block text-sm font-medium text-text-main/70 mb-1">
                                     Maintenance Mode
                                 </label>
-                                <p className="text-xs text-[#64748b]">Disable platform for maintenance</p>
+                                <p className="text-xs text-text-main/40">Disable platform for maintenance</p>
                             </div>
                             <button
                                 onClick={() => handleSettingChange('maintenance_mode', !settings.maintenance_mode)}
-                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                                    settings.maintenance_mode ? 'bg-[#ef4444]' : 'bg-[#cbd5e1]'
+                                className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${
+                                    settings.maintenance_mode ? 'bg-red-500' : 'bg-white/10'
                                 }`}
                             >
                                 <span
-                                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                    className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition-transform ${
                                         settings.maintenance_mode ? 'translate-x-6' : 'translate-x-1'
                                     }`}
                                 />
@@ -198,30 +229,30 @@ export default function AdminSettingsPage() {
                 </div>
 
                 {/* User Management */}
-                <div className="bg-white rounded-2xl p-6 border border-[#e2e8f0] shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)]">
+                <div className="bg-surface border border-white/5 rounded-[24px] p-6">
                     <div className="flex items-center gap-3 mb-6">
-                        <div className="w-10 h-10 rounded-xl bg-[#ecfdf5] flex items-center justify-center">
-                            <Users size={20} className="text-[#10b981]" />
+                        <div className="w-10 h-10 rounded-xl bg-green-500/10 flex items-center justify-center">
+                            <Users size={20} className="text-green-500" />
                         </div>
-                        <h3 className="text-lg font-bold text-[#0f172a]">User Management</h3>
+                        <h3 className="text-lg font-bold text-text-main">User Management</h3>
                     </div>
                     
-                    <div className="space-y-4">
+                    <div className="space-y-6">
                         <div className="flex items-center justify-between">
                             <div>
-                                <label className="block text-sm font-medium text-[#64748b] mb-1">
+                                <label className="block text-sm font-medium text-text-main/70 mb-1">
                                     Auto-approve Trainers
                                 </label>
-                                <p className="text-xs text-[#64748b]">Automatically approve new trainer accounts</p>
+                                <p className="text-xs text-text-main/40">Automatically approve new trainer accounts</p>
                             </div>
                             <button
                                 onClick={() => handleSettingChange('auto_approve_trainers', !settings.auto_approve_trainers)}
-                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                                    settings.auto_approve_trainers ? 'bg-[#10b981]' : 'bg-[#cbd5e1]'
+                                className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${
+                                    settings.auto_approve_trainers ? 'bg-primary' : 'bg-white/10'
                                 }`}
                             >
                                 <span
-                                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                    className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition-transform ${
                                         settings.auto_approve_trainers ? 'translate-x-6' : 'translate-x-1'
                                     }`}
                                 />
@@ -230,19 +261,19 @@ export default function AdminSettingsPage() {
 
                         <div className="flex items-center justify-between">
                             <div>
-                                <label className="block text-sm font-medium text-[#64748b] mb-1">
+                                <label className="block text-sm font-medium text-text-main/70 mb-1">
                                     Require Trainer Verification
                                 </label>
-                                <p className="text-xs text-[#64748b]">Trainers must be verified before booking</p>
+                                <p className="text-xs text-text-main/40">Trainers must be verified before booking</p>
                             </div>
                             <button
                                 onClick={() => handleSettingChange('require_trainer_verification', !settings.require_trainer_verification)}
-                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                                    settings.require_trainer_verification ? 'bg-[#10b981]' : 'bg-[#cbd5e1]'
+                                className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${
+                                    settings.require_trainer_verification ? 'bg-primary' : 'bg-white/10'
                                 }`}
                             >
                                 <span
-                                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                    className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition-transform ${
                                         settings.require_trainer_verification ? 'translate-x-6' : 'translate-x-1'
                                     }`}
                                 />
@@ -252,17 +283,17 @@ export default function AdminSettingsPage() {
                 </div>
 
                 {/* Booking Policies */}
-                <div className="bg-white rounded-2xl p-6 border border-[#e2e8f0] shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)]">
+                <div className="bg-surface border border-white/5 rounded-[24px] p-6">
                     <div className="flex items-center gap-3 mb-6">
-                        <div className="w-10 h-10 rounded-xl bg-[#dbeafe] flex items-center justify-center">
-                            <Calendar size={20} className="text-[#2563eb]" />
+                        <div className="w-10 h-10 rounded-xl bg-purple-500/10 flex items-center justify-center">
+                            <Calendar size={20} className="text-purple-500" />
                         </div>
-                        <h3 className="text-lg font-bold text-[#0f172a]">Booking Policies</h3>
+                        <h3 className="text-lg font-bold text-text-main">Booking Policies</h3>
                     </div>
                     
                     <div className="space-y-4">
                         <div>
-                            <label className="block text-sm font-medium text-[#64748b] mb-2">
+                            <label className="block text-sm font-medium text-text-main/70 mb-2">
                                 Cancellation Policy (hours)
                             </label>
                             <input
@@ -271,25 +302,25 @@ export default function AdminSettingsPage() {
                                 max="168"
                                 value={settings.cancellation_policy_hours}
                                 onChange={(e) => handleSettingChange('cancellation_policy_hours', Number(e.target.value))}
-                                className="w-full px-3 py-2 border border-[#e2e8f0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3b82f6]"
+                                className="w-full px-4 py-2.5 bg-bg border border-white/10 rounded-xl text-text-main focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/30 transition-colors"
                             />
-                            <p className="text-xs text-[#64748b] mt-1">Hours before booking when cancellation is allowed</p>
+                            <p className="text-xs text-text-main/40 mt-1.5">Hours before booking when cancellation is allowed</p>
                         </div>
                     </div>
                 </div>
 
                 {/* Dispute Resolution */}
-                <div className="bg-white rounded-2xl p-6 border border-[#e2e8f0] shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)]">
+                <div className="bg-surface border border-white/5 rounded-[24px] p-6">
                     <div className="flex items-center gap-3 mb-6">
-                        <div className="w-10 h-10 rounded-xl bg-[#fef3c7] flex items-center justify-center">
-                            <Shield size={20} className="text-[#f59e0b]" />
+                        <div className="w-10 h-10 rounded-xl bg-orange-500/10 flex items-center justify-center">
+                            <Shield size={20} className="text-orange-500" />
                         </div>
-                        <h3 className="text-lg font-bold text-[#0f172a]">Dispute Resolution</h3>
+                        <h3 className="text-lg font-bold text-text-main">Dispute Resolution</h3>
                     </div>
                     
                     <div className="space-y-4">
                         <div>
-                            <label className="block text-sm font-medium text-[#64748b] mb-2">
+                            <label className="block text-sm font-medium text-text-main/70 mb-2">
                                 Dispute Resolution Timeframe (days)
                             </label>
                             <input
@@ -298,47 +329,56 @@ export default function AdminSettingsPage() {
                                 max="30"
                                 value={settings.dispute_resolution_days}
                                 onChange={(e) => handleSettingChange('dispute_resolution_days', Number(e.target.value))}
-                                className="w-full px-3 py-2 border border-[#e2e8f0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3b82f6]"
+                                className="w-full px-4 py-2.5 bg-bg border border-white/10 rounded-xl text-text-main focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/30 transition-colors"
                             />
-                            <p className="text-xs text-[#64748b] mt-1">Days to resolve disputes before escalation</p>
+                            <p className="text-xs text-text-main/40 mt-1.5">Days to resolve disputes before escalation</p>
                         </div>
                     </div>
                 </div>
             </div>
 
             {/* System Status */}
-            <div className="bg-white rounded-2xl p-6 border border-[#e2e8f0] shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)]">
+            <div className="bg-surface border border-white/5 rounded-[24px] p-6">
                 <div className="flex items-center gap-3 mb-6">
-                    <div className="w-10 h-10 rounded-xl bg-[#d1fae5] flex items-center justify-center">
-                        <Globe size={20} className="text-[#10b981]" />
+                    <div className="w-10 h-10 rounded-xl bg-green-500/10 flex items-center justify-center">
+                        <Globe size={20} className="text-green-500" />
                     </div>
-                    <h3 className="text-lg font-bold text-[#0f172a]">System Status</h3>
+                    <h3 className="text-lg font-bold text-text-main">System Status</h3>
                 </div>
                 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div className="flex items-center gap-3">
-                        <div className="w-3 h-3 rounded-full bg-[#10b981] animate-pulse"></div>
+                        <div className="w-3 h-3 rounded-full bg-green-500 animate-pulse"></div>
                         <div>
-                            <p className="font-medium text-[#0f172a]">Database</p>
-                            <p className="text-sm text-[#64748b]">Connected</p>
+                            <p className="font-medium text-text-main">Database</p>
+                            <p className="text-sm text-text-main/50">Connected</p>
                         </div>
                     </div>
                     <div className="flex items-center gap-3">
-                        <div className="w-3 h-3 rounded-full bg-[#10b981] animate-pulse"></div>
+                        <div className="w-3 h-3 rounded-full bg-green-500 animate-pulse"></div>
                         <div>
-                            <p className="font-medium text-[#0f172a]">API</p>
-                            <p className="text-sm text-[#64748b]">Operational</p>
+                            <p className="font-medium text-text-main">API</p>
+                            <p className="text-sm text-text-main/50">Operational</p>
                         </div>
                     </div>
                     <div className="flex items-center gap-3">
-                        <div className="w-3 h-3 rounded-full bg-[#10b981] animate-pulse"></div>
+                        <div className="w-3 h-3 rounded-full bg-green-500 animate-pulse"></div>
                         <div>
-                            <p className="font-medium text-[#0f172a]">Storage</p>
-                            <p className="text-sm text-[#64748b]">Available</p>
+                            <p className="font-medium text-text-main">Storage</p>
+                            <p className="text-sm text-text-main/50">Available</p>
                         </div>
                     </div>
                 </div>
             </div>
+
+            <PopupModal 
+                isOpen={!!popup}
+                onClose={() => setPopup(null)}
+                type={popup?.type || "info"}
+                title={popup?.title || ""}
+                message={popup?.message || ""}
+                onConfirm={popup?.onConfirm}
+            />
         </div>
     );
 }

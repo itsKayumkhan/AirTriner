@@ -15,7 +15,9 @@ import {
     X,
     FileUp,
     CheckCircle,
-    AlertTriangle
+    AlertTriangle,
+    MapPin,
+    Clock
 } from "lucide-react";
 
 const SPORTS_LIST = [
@@ -42,10 +44,17 @@ export default function TrainerEditProfilePage() {
         hourlyRate: "75",
         packageRate: "650",
         certifications: "",
+        city: "",
+        state: "",
+        travelRadius: "20",
+        targetSkillLevels: ["beginner", "intermediate", "advanced", "pro"] as ("beginner"|"intermediate"|"advanced"|"pro")[],
+        preferredTrainingTimes: ["morning", "afternoon", "evening"] as ("morning"|"afternoon"|"evening")[],
     });
 
     const [newTag, setNewTag] = useState("");
     const [showTagInput, setShowTagInput] = useState(false);
+
+    const [requireVerification, setRequireVerification] = useState(true);
 
     // File upload refs
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -62,27 +71,49 @@ export default function TrainerEditProfilePage() {
         }
         setUser(session);
 
-        if (session.trainerProfile) {
-            const tp = session.trainerProfile;
-            let initialCerts = "";
-            if (typeof tp.certifications === "string") initialCerts = tp.certifications;
-            else if (Array.isArray(tp.certifications)) initialCerts = tp.certifications.join("\n");
+        const fetchData = async () => {
+            // Fetch Platform Settings & Latest Profile in parallel
+            const [settingsRes, profileRes] = await Promise.all([
+                supabase.from("platform_settings").select("require_trainer_verification").single(),
+                supabase.from("trainer_profiles").select("*").eq("user_id", session.id).single()
+            ]);
+            
+            if (settingsRes.data) {
+                setRequireVerification(settingsRes.data.require_trainer_verification);
+            }
 
-            setFormData(prev => ({
-                ...prev,
-                firstName: session.firstName || "",
-                lastName: session.lastName || "",
-                bio: tp.bio || "",
-                sports: tp.sports || [],
-                yearsExperience: tp.years_experience?.toString() || "",
-                hourlyRate: tp.hourly_rate?.toString() || "75",
-                // previousFacility and packageRate are frontend-only for now unless added to DB
-                previousFacility: prev.previousFacility,
-                packageRate: prev.packageRate,
-                certifications: initialCerts,
-            }));
-        }
-        setLoading(false);
+            const latestProfile = profileRes.data;
+            if (latestProfile) {
+                const updatedSession = { ...session, trainerProfile: latestProfile };
+                setUser(updatedSession);
+                setSession(updatedSession); // Update local storage too
+
+                let initialCerts = "";
+                if (typeof latestProfile.certifications === "string") initialCerts = latestProfile.certifications;
+                else if (Array.isArray(latestProfile.certifications)) initialCerts = latestProfile.certifications.join("\n");
+
+                setFormData(prev => ({
+                    ...prev,
+                    firstName: session.firstName || "",
+                    lastName: session.lastName || "",
+                    bio: latestProfile.bio || "",
+                    sports: latestProfile.sports || [],
+                    yearsExperience: latestProfile.years_experience?.toString() || "",
+                    hourlyRate: latestProfile.hourly_rate?.toString() || "75",
+                    previousFacility: prev.previousFacility,
+                    packageRate: prev.packageRate,
+                    certifications: initialCerts,
+                    city: latestProfile.city || "",
+                    state: latestProfile.state || "",
+                    travelRadius: latestProfile.travel_radius_miles?.toString() || "20",
+                    targetSkillLevels: latestProfile.target_skill_levels || ["beginner", "intermediate", "advanced", "pro"],
+                    preferredTrainingTimes: latestProfile.preferredTrainingTimes || ["morning", "afternoon", "evening"],
+                }));
+            }
+            setLoading(false);
+        };
+
+        fetchData();
     }, [router]);
 
     const handleSaveProfile = async () => {
@@ -95,6 +126,11 @@ export default function TrainerEditProfilePage() {
                 years_experience: parseInt(formData.yearsExperience) || null,
                 hourly_rate: parseFloat(formData.hourlyRate) || 75,
                 certifications: formData.certifications,
+                city: formData.city || null,
+                state: formData.state || null,
+                travel_radius_miles: parseInt(formData.travelRadius) || 20,
+                target_skill_levels: formData.targetSkillLevels,
+                "preferredTrainingTimes": formData.preferredTrainingTimes,
             };
 
             const [profileRes, userRes] = await Promise.all([
@@ -190,9 +226,9 @@ export default function TrainerEditProfilePage() {
 
             if (updateError) throw updateError;
 
-            const updatedUser = { ...user, avatarUrl: undefined };
+            const updatedUser = { ...user, avatarUrl: null };
             setUser(updatedUser);
-            setSession(updatedUser);
+            setSession(updatedUser as AuthUser);
 
             setPopup({ type: "success", message: "Avatar removed successfully!" });
         } catch (error) {
@@ -256,6 +292,22 @@ export default function TrainerEditProfilePage() {
                     </button>
                 </div>
             </div>
+
+            {/* Verification Notice */}
+            {requireVerification && user?.trainerProfile && !user.trainerProfile.is_verified && (
+                <div className="mb-8 p-6 bg-blue-500/10 border border-blue-500/20 rounded-[24px] flex items-start gap-4 animate-in fade-in slide-in-from-top-4 duration-500">
+                    <div className="w-12 h-12 rounded-2xl bg-blue-500/20 flex items-center justify-center shrink-0">
+                        <AlertTriangle className="text-blue-400 w-6 h-6" />
+                    </div>
+                    <div>
+                        <h3 className="text-blue-400 font-bold text-lg mb-1">Profile Verification Required</h3>
+                        <p className="text-text-main/70 text-sm leading-relaxed max-w-2xl">
+                            Your profile is currently hidden from athletes because the platform requires admin verification. 
+                            Complete your profile details below, and an admin will review your account for approval.
+                        </p>
+                    </div>
+                </div>
+            )}
 
             {/* Content Blocks */}
             <div className="space-y-6">
@@ -401,6 +453,117 @@ export default function TrainerEditProfilePage() {
                                 placeholder="E.g. NASM Certified Personal Trainer, ISSA Nutritionist..."
                                 className="w-full h-32 bg-[#12141A] border border-white/5 rounded-2xl p-5 text-white text-sm outline-none focus:border-primary/50 resize-none transition-colors placeholder:text-text-main/30"
                             />
+                        </div>
+                    </div>
+
+                    {/* Location & Matching */}
+                    <div className="bg-[#1A1C23] border border-white/5 rounded-[20px] p-6 lg:p-8 shadow-md md:col-span-2">
+                        <div className="flex items-center gap-3 mb-6">
+                            <MapPin size={20} className="text-primary" strokeWidth={2.5} />
+                            <h3 className="text-[15px] font-black text-white tracking-widest uppercase">LOCATION & MATCHING</h3>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <div>
+                                <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">City</label>
+                                <input
+                                    value={formData.city}
+                                    onChange={(e) => setFormData((p) => ({ ...p, city: e.target.value }))}
+                                    placeholder="e.g. Austin"
+                                    className="w-full bg-[#12141A] border border-white/5 rounded-2xl px-5 py-3.5 text-white text-sm outline-none focus:border-primary/50 transition-colors placeholder:text-text-main/30"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">State</label>
+                                <input
+                                    value={formData.state}
+                                    onChange={(e) => setFormData((p) => ({ ...p, state: e.target.value }))}
+                                    placeholder="e.g. TX"
+                                    className="w-full bg-[#12141A] border border-white/5 rounded-2xl px-5 py-3.5 text-white text-sm outline-none focus:border-primary/50 transition-colors placeholder:text-text-main/30"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">Travel Radius (Miles)</label>
+                                <input
+                                    type="number"
+                                    value={formData.travelRadius}
+                                    onChange={(e) => setFormData((p) => ({ ...p, travelRadius: e.target.value }))}
+                                    min="1"
+                                    max="100"
+                                    className="w-full bg-[#12141A] border border-white/5 rounded-2xl px-5 py-3.5 text-white text-sm outline-none focus:border-primary/50 transition-colors"
+                                />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Target Skill Levels */}
+                    <div className="bg-[#1A1C23] border border-white/5 rounded-[20px] p-6 lg:p-8 shadow-md flex flex-col md:col-span-2">
+                        <div className="flex items-center gap-3 mb-6">
+                            <Crosshair size={20} className="text-primary" strokeWidth={2.5} />
+                            <h3 className="text-[15px] font-black text-white tracking-widest uppercase">TARGET ATHLETE SKILL LEVELS</h3>
+                        </div>
+                        <div className="flex flex-wrap gap-3">
+                            {["beginner", "intermediate", "advanced", "pro"].map((skill) => {
+                                const selected = formData.targetSkillLevels.includes(skill as any);
+                                return (
+                                    <button
+                                        key={skill}
+                                        type="button"
+                                        onClick={() => {
+                                            setFormData((p) => ({
+                                                ...p,
+                                                targetSkillLevels: selected
+                                                    ? p.targetSkillLevels.filter((s) => s !== skill)
+                                                    : [...p.targetSkillLevels, skill as any],
+                                            }));
+                                        }}
+                                        className={`px-6 py-3 rounded-full text-xs font-black uppercase tracking-wider transition-all duration-200 border ${
+                                            selected
+                                                ? "bg-primary text-bg shadow-[0_4px_15px_rgba(163,255,18,0.25)] border-transparent"
+                                                : "bg-[#12141A] border-white/10 text-text-main/50 hover:border-white/30 hover:text-white"
+                                        }`}
+                                    >
+                                        {skill}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* Availability */}
+                    <div className="bg-[#1A1C23] border border-white/5 rounded-[20px] p-6 lg:p-8 shadow-md flex flex-col md:col-span-2">
+                        <div className="flex items-center gap-3 mb-6">
+                            <Clock size={20} className="text-primary" strokeWidth={2.5} />
+                            <h3 className="text-[15px] font-black text-white tracking-widest uppercase">PREFERRED AVAILABILITY</h3>
+                        </div>
+                        <div className="flex flex-wrap gap-3">
+                            {[
+                                { id: "morning", label: "Morning (6am-12pm)" },
+                                { id: "afternoon", label: "Afternoon (12pm-5pm)" },
+                                { id: "evening", label: "Evening (5pm-9pm)" },
+                            ].map((time) => {
+                                const selected = formData.preferredTrainingTimes.includes(time.id as any);
+                                return (
+                                    <button
+                                        key={time.id}
+                                        type="button"
+                                        onClick={() => {
+                                            setFormData((p) => ({
+                                                ...p,
+                                                preferredTrainingTimes: selected
+                                                    ? p.preferredTrainingTimes.filter((t) => t !== time.id)
+                                                    : [...p.preferredTrainingTimes, time.id as any],
+                                            }));
+                                        }}
+                                        className={`px-6 py-3 rounded-full text-xs font-black uppercase tracking-wider transition-all duration-200 border ${
+                                            selected
+                                                ? "bg-primary text-bg shadow-[0_4px_15px_rgba(163,255,18,0.25)] border-transparent"
+                                                : "bg-[#12141A] border-white/10 text-text-main/50 hover:border-white/30 hover:text-white"
+                                        }`}
+                                    >
+                                        {time.label}
+                                    </button>
+                                );
+                            })}
                         </div>
                     </div>
 

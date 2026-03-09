@@ -1,0 +1,337 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import { 
+    Plus, 
+    Search, 
+    Trophy, 
+    MoreVertical, 
+    Edit2, 
+    Trash2, 
+    Eye, 
+    EyeOff,
+    CheckCircle2,
+    XCircle,
+    Loader2
+} from "lucide-react";
+import { supabase } from "@/lib/supabase";
+import PopupModal from "@/components/common/PopupModal";
+
+interface Sport {
+    id: string;
+    name: string;
+    slug: string;
+    icon: string;
+    is_active: boolean;
+    created_at: string;
+}
+
+export default function AdminSportsPage() {
+    const [sports, setSports] = useState<Sport[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [searchQuery, setSearchQuery] = useState("");
+    const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+    const [isEditing, setIsEditing] = useState<Sport | null>(null);
+    const [formLoading, setFormLoading] = useState(false);
+    
+    // Form State
+    const [name, setName] = useState("");
+    const [slug, setSlug] = useState("");
+    const [icon, setIcon] = useState("Activity");
+
+    // Alert/Confirmation Popup State
+    const [popup, setPopup] = useState<{
+        type: "success" | "error" | "confirm" | "warning" | "info";
+        title: string;
+        message: string;
+        onConfirm?: () => void;
+    } | null>(null);
+
+    const showAlert = (type: "success" | "error" | "info", title: string, message: string) => {
+        setPopup({ type, title, message });
+    };
+
+    const showConfirm = (title: string, message: string, onConfirm: () => void) => {
+        setPopup({ type: "confirm", title, message, onConfirm });
+    };
+
+    useEffect(() => {
+        loadSports();
+    }, []);
+
+    useEffect(() => {
+        if (name && !isEditing) {
+            setSlug(name.toLowerCase().replace(/ /g, '-').replace(/[^\w-]/g, ''));
+        }
+    }, [name, isEditing]);
+
+    const loadSports = async () => {
+        setLoading(true);
+        try {
+            const { data, error } = await supabase
+                .from("sports")
+                .select("*")
+                .order("name", { ascending: true });
+            
+            if (error) throw error;
+            setSports(data || []);
+        } catch (err) {
+            console.error("Failed to load sports:", err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleSave = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setFormLoading(true);
+        try {
+            if (isEditing) {
+                const { error } = await supabase
+                    .from("sports")
+                    .update({ name, slug, icon })
+                    .eq("id", isEditing.id);
+                if (error) throw error;
+            } else {
+                const { error } = await supabase
+                    .from("sports")
+                    .insert([{ name, slug, icon, is_active: true }]);
+                if (error) throw error;
+            }
+            
+            await loadSports();
+            closeModal();
+        } catch (err) {
+            console.error("Failed to save sport:", err);
+            alert("Error saving sport. Check if slug or name is unique.");
+        } finally {
+            setFormLoading(false);
+        }
+    };
+
+    const toggleStatus = async (sport: Sport) => {
+        try {
+            const { error } = await supabase
+                .from("sports")
+                .update({ is_active: !sport.is_active })
+                .eq("id", sport.id);
+            
+            if (error) throw error;
+            setSports(sports.map(s => s.id === sport.id ? { ...s, is_active: !s.is_active } : s));
+        } catch (err) {
+            console.error("Failed to toggle status:", err);
+        }
+    };
+
+    const deleteSport = async (id: string) => {
+        showConfirm(
+            "Delete Category",
+            "Are you sure you want to delete this sport? This cannot be undone and may affect trainers associated with it.",
+            async () => {
+                try {
+                    const { error } = await supabase
+                        .from("sports")
+                        .delete()
+                        .eq("id", id);
+                    
+                    if (error) throw error;
+                    setSports(sports.filter(s => s.id !== id));
+                    showAlert("success", "Deleted", "The sport category has been removed.");
+                } catch (err) {
+                    console.error("Failed to delete sport:", err);
+                    showAlert("error", "Delete Failed", "Could not delete sport. It might be linked to existing profiles or bookings.");
+                }
+            }
+        );
+    };
+
+    const openModal = (sport?: Sport) => {
+        if (sport) {
+            setIsEditing(sport);
+            setName(sport.name);
+            setSlug(sport.slug);
+            setIcon(sport.icon || "Activity");
+        } else {
+            setIsEditing(null);
+            setName("");
+            setSlug("");
+            setIcon("Activity");
+        }
+        setIsAddModalOpen(true);
+    };
+
+    const closeModal = () => {
+        setIsAddModalOpen(false);
+        setIsEditing(null);
+        setName("");
+        setSlug("");
+        setIcon("Activity");
+    };
+
+    const filteredSports = sports.filter(s => 
+        s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        s.slug.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
+    return (
+        <div className="space-y-8 max-w-[1200px]">
+            {/* Header */}
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
+                <div>
+                    <h1 className="text-3xl font-black text-text-main tracking-tight mb-2">Sports Categories</h1>
+                    <p className="text-sm font-medium text-text-main/60">Manage the global catalog of sports available on AirTrainr.</p>
+                </div>
+                <button 
+                    onClick={() => openModal()}
+                    className="flex items-center gap-2 px-6 py-3 rounded-full bg-primary text-bg font-black text-sm hover:shadow-[0_0_10px_rgba(163,255,18,0.2)] transition-all"
+                >
+                    <Plus size={18} strokeWidth={3} /> Add New Sport
+                </button>
+            </div>
+
+            {/* Filters */}
+            <div className="flex flex-col md:flex-row gap-4 items-center justify-between bg-surface border border-white/5 p-4 rounded-2xl">
+                <div className="relative w-full md:w-96">
+                    <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-main/40" />
+                    <input 
+                        type="text"
+                        placeholder="Search categories..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full bg-bg border border-white/5 rounded-xl pl-12 pr-4 py-3 text-sm font-bold text-text-main focus:outline-none focus:border-primary/50 transition-colors"
+                    />
+                </div>
+                <div className="text-xs font-bold text-text-main/40 uppercase tracking-widest">
+                    Total: <span className="text-primary">{sports.length}</span> Categories
+                </div>
+            </div>
+
+            {/* List */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {loading ? (
+                    <div className="col-span-full flex justify-center py-20">
+                        <Loader2 className="w-10 h-10 text-primary animate-spin" />
+                    </div>
+                ) : filteredSports.length === 0 ? (
+                    <div className="col-span-full text-center py-20 bg-surface rounded-3xl border border-dashed border-white/10">
+                        <Trophy size={48} className="mx-auto text-text-main/20 mb-4" />
+                        <h3 className="text-lg font-bold text-text-main/40">No sports found</h3>
+                    </div>
+                ) : (
+                    filteredSports.map(sport => (
+                        <div key={sport.id} className={`bg-surface border ${sport.is_active ? 'border-white/5' : 'border-red-500/20 opacity-60'} rounded-2xl p-6 hover:border-gray-700 transition-all group`}>
+                            <div className="flex justify-between items-start mb-6">
+                                <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${sport.is_active ? 'bg-primary/10 text-primary' : 'bg-red-500/10 text-red-500'}`}>
+                                    <Trophy size={24} />
+                                </div>
+                                <div className="flex gap-1">
+                                    <button 
+                                        onClick={() => openModal(sport)}
+                                        className="p-2 text-text-main/40 hover:text-primary transition-colors hover:bg-white/5 rounded-lg"
+                                    >
+                                        <Edit2 size={16} />
+                                    </button>
+                                    <button 
+                                        onClick={() => toggleStatus(sport)}
+                                        className={`p-2 transition-colors hover:bg-white/5 rounded-lg ${sport.is_active ? 'text-text-main/40 hover:text-red-500' : 'text-primary'}`}
+                                        title={sport.is_active ? "Deactivate" : "Activate"}
+                                    >
+                                        {sport.is_active ? <EyeOff size={16} /> : <Eye size={16} />}
+                                    </button>
+                                    <button 
+                                        onClick={() => deleteSport(sport.id)}
+                                        className="p-2 text-text-main/40 hover:text-red-500 transition-colors hover:bg-white/5 rounded-lg"
+                                    >
+                                        <Trash2 size={16} />
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div>
+                                <h3 className="text-xl font-black text-text-main tracking-tight group-hover:text-primary transition-colors flex items-center gap-2">
+                                    {sport.name}
+                                    {!sport.is_active && <span className="text-[10px] bg-red-500/10 text-red-500 px-2 py-0.5 rounded uppercase tracking-widest font-black">Inactive</span>}
+                                </h3>
+                                <div className="text-text-main/40 text-xs font-bold uppercase tracking-widest mt-1">/{sport.slug}</div>
+                                <div className="mt-4 flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-text-main/20">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-current"></span>
+                                    Added {new Date(sport.created_at).toLocaleDateString()}
+                                </div>
+                            </div>
+                        </div>
+                    ))
+                )}
+            </div>
+
+            {/* Modal */}
+            {isAddModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                    <div className="absolute inset-0 bg-bg/80 backdrop-blur-sm" onClick={closeModal}></div>
+                    <div className="relative bg-surface border border-white/10 w-full max-w-md rounded-3xl p-8 shadow-2xl overflow-hidden">
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 blur-3xl rounded-full translate-x-1/2 -translate-y-1/2"></div>
+                        
+                        <h2 className="text-2xl font-black text-text-main mb-6 flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+                                {isEditing ? <Edit2 size={20} /> : <Plus size={20} strokeWidth={3} />}
+                            </div>
+                            {isEditing ? "Edit Sport" : "Add Sport"}
+                        </h2>
+
+                        <form onSubmit={handleSave} className="space-y-6">
+                            <div>
+                                <label className="block text-xs font-black uppercase tracking-widest text-text-main/40 mb-2">Sport Name</label>
+                                <input 
+                                    type="text" 
+                                    value={name}
+                                    onChange={(e) => setName(e.target.value)}
+                                    placeholder="e.g. Pickleball"
+                                    required
+                                    className="w-full bg-bg border border-white/5 rounded-xl px-4 py-3 text-sm font-bold text-text-main focus:outline-none focus:border-primary/50 transition-colors"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-black uppercase tracking-widest text-text-main/40 mb-2">URL Slug</label>
+                                <input 
+                                    type="text" 
+                                    value={slug}
+                                    onChange={(e) => setSlug(e.target.value)}
+                                    placeholder="e.g. pickleball"
+                                    required
+                                    className="w-full bg-bg border border-white/5 rounded-xl px-4 py-3 text-sm font-bold text-text-main focus:outline-none focus:border-primary/50 transition-colors"
+                                />
+                                <p className="text-[10px] text-text-main/20 mt-2 font-medium">Used for filtering and URLs. Unique identifier.</p>
+                            </div>
+
+                            <div className="flex gap-3 pt-4">
+                                <button 
+                                    type="button"
+                                    onClick={closeModal}
+                                    className="flex-1 px-6 py-4 rounded-xl border border-white/5 text-text-main/60 font-black text-sm hover:bg-white/5 transition-colors"
+                                >
+                                    Cancel
+                                </button>
+                                <button 
+                                    type="submit"
+                                    disabled={formLoading}
+                                    className="flex-1 px-6 py-4 rounded-xl bg-primary text-bg font-black text-sm hover:brightness-110 transition-all flex items-center justify-center gap-2"
+                                >
+                                    {formLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : (isEditing ? "Update" : "Create")}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            <PopupModal 
+                isOpen={!!popup}
+                onClose={() => setPopup(null)}
+                type={popup?.type || "info"}
+                title={popup?.title || ""}
+                message={popup?.message || ""}
+                onConfirm={popup?.onConfirm}
+            />
+        </div>
+    );
+}

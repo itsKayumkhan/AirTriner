@@ -33,11 +33,36 @@ export default function ProfilePage() {
         }
     }, []);
 
+    const [statusData, setStatusData] = useState({
+        isPerformanceVerified: false,
+        isPro: false,
+        totalSessions: 0,
+        disputeCount: 0
+    });
+
     const loadProfile = async (u: AuthUser) => {
         const { data: userData } = await supabase.from("users").select("*").eq("id", u.id).single();
 
         if (u.role === "trainer" && u.trainerProfile) {
             const { data: tp } = await supabase.from("trainer_profiles").select("*").eq("user_id", u.id).single();
+            
+            // Fetch performance metrics
+            const { data: disputes } = await supabase
+                .from("disputes")
+                .select("id, booking:bookings!inner(trainer_id)")
+                .eq("booking.trainer_id", u.id);
+            
+            const dc = (disputes || []).length;
+            const ts = tp?.total_sessions || 0;
+            const isPerfVerified = ts >= 3 && dc === 0 && Number(tp?.completion_rate) >= 95 && Number(tp?.reliability_score) >= 95;
+
+            setStatusData({
+                isPerformanceVerified: isPerfVerified,
+                isPro: ts > 0 && !isPerfVerified,
+                totalSessions: ts,
+                disputeCount: dc
+            });
+
             setForm({
                 firstName: userData?.first_name || "",
                 lastName: userData?.last_name || "",
@@ -194,10 +219,27 @@ export default function ProfilePage() {
                             <span className="px-4 py-1.5 rounded-full bg-primary/10 text-primary text-xs font-black uppercase tracking-widest border border-primary/20 shadow-[0_0_10px_rgba(163,255,18,0.1)]">
                                 {user?.role}
                             </span>
-                            {isTrainer && user?.trainerProfile?.is_verified && (
-                                <span className="px-4 py-1.5 rounded-full bg-green-500/10 text-green-500 text-xs font-black uppercase tracking-widest border border-green-500/20 flex items-center gap-1.5">
-                                    <CheckCircle size={14} strokeWidth={3} /> Verified
-                                </span>
+                            {isTrainer && (
+                                <div className="flex gap-2 items-center flex-wrap">
+                                    {statusData.isPerformanceVerified ? (
+                                        <span className="px-4 py-1.5 rounded-full bg-primary/10 text-primary text-xs font-black uppercase tracking-widest border border-primary/20 flex items-center gap-1.5 shadow-[0_0_10px_rgba(163,255,18,0.1)]">
+                                            <CheckCircle size={14} strokeWidth={3} /> Performance Verified
+                                        </span>
+                                    ) : statusData.totalSessions > 0 ? (
+                                        <span className="px-4 py-1.5 rounded-full bg-blue-500/10 text-blue-400 text-xs font-black uppercase tracking-widest border border-blue-500/20">
+                                            Pro Coach
+                                        </span>
+                                    ) : (
+                                        <span className="px-4 py-1.5 rounded-full bg-emerald-500/10 text-emerald-500 text-xs font-black uppercase tracking-widest border border-emerald-500/20">
+                                            New Trainer
+                                        </span>
+                                    )}
+                                    {user?.trainerProfile?.is_verified && !statusData.isPerformanceVerified && (
+                                        <span className="px-4 py-1.5 rounded-full bg-white/5 text-text-main/40 text-[10px] font-bold uppercase tracking-widest border border-white/5">
+                                            Admin Approved
+                                        </span>
+                                    )}
+                                </div>
                             )}
                         </div>
                     </div>

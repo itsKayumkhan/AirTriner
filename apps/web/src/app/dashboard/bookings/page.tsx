@@ -19,6 +19,7 @@ type RescheduleInfo = {
 type BookingWithUser = BookingRow & {
     other_user?: { first_name: string; last_name: string; email: string };
     reschedule_request?: RescheduleInfo | null;
+    review?: { rating: number; review_text: string | null } | null;
 };
 
 export default function BookingsPage() {
@@ -34,6 +35,7 @@ export default function BookingsPage() {
     const [reviewRating, setReviewRating] = useState(5);
     const [reviewText, setReviewText] = useState("");
     const [submittingReview, setSubmittingReview] = useState(false);
+    const [isReviewReadOnly, setIsReviewReadOnly] = useState(false);
 
     // Reschedule dialog state
     const [rescheduleBooking, setRescheduleBooking] = useState<BookingWithUser | null>(null);
@@ -48,6 +50,33 @@ export default function BookingsPage() {
             loadBookings(session);
         }
     }, []);
+
+    // Subscribe to realtime booking status changes
+    useEffect(() => {
+        if (!user) return;
+
+        const column = user.role === "trainer" ? "trainer_id" : "athlete_id";
+        const subscription = supabase
+            .channel(`bookings:${user.id}`)
+            .on(
+                "postgres_changes",
+                {
+                    event: "UPDATE",
+                    schema: "public",
+                    table: "bookings",
+                    filter: `${column}=eq.${user.id}`,
+                },
+                () => {
+                    // Refetch all bookings when any booking is updated
+                    loadBookings(user);
+                }
+            )
+            .subscribe();
+
+        return () => {
+            subscription.unsubscribe();
+        };
+    }, [user]);
 
     const loadBookings = async (u: AuthUser) => {
         try {
@@ -93,11 +122,20 @@ export default function BookingsPage() {
                 });
             }
 
+            // Fetch reviews for these bookings
+            const { data: reviewData } = await supabase
+                .from("reviews")
+                .select("booking_id, rating, review_text")
+                .in("booking_id", allBookings.map((b) => b.id));
+
+            const reviewMap = new Map((reviewData || []).map((r) => [r.booking_id, r]));
+
             setBookings(
                 allBookings.map((b) => ({
                     ...b,
                     other_user: usersMap.get(u.role === "trainer" ? b.athlete_id : b.trainer_id) as BookingWithUser["other_user"],
                     reschedule_request: rescheduleMap.get(b.id) || null,
+                    review: reviewMap.get(b.id) || null,
                 }))
             );
         } catch (err) {
@@ -145,7 +183,22 @@ export default function BookingsPage() {
         try {
             const updates: Record<string, unknown> = { status: newStatus, updated_at: new Date().toISOString() };
 
-            await supabase.from("bookings").update(updates).eq("id", bookingId);
+            const { data, error } = await supabase
+                .from("bookings")
+                .update(updates)
+                .eq("id", bookingId)
+                .select("*");
+
+            if (error) {
+                console.error(`Error updating booking ${bookingId} to ${newStatus}:`, error);
+                alert(`Failed to update status: ${error.message}`);
+                return;
+            }
+
+            if (!data || data.length === 0) {
+                alert("Failed to update status: Permission denied or record not found.");
+                return;
+            }
 
             // Get booking details for notification
             const booking = bookings.find((b) => b.id === bookingId);
@@ -217,8 +270,11 @@ export default function BookingsPage() {
             setBookings((prev) =>
                 prev.map((b) => (b.id === bookingId ? { ...b, status: newStatus as BookingRow["status"] } : b))
             );
-        } catch (err) {
+            
+            alert(`Booking successfully marked as ${newStatus}!`);
+        } catch (err: any) {
             console.error("Failed to update booking:", err);
+            alert(`Error: ${err.message || "Unknown error"}`);
         } finally {
             setActionLoading(null);
         }
@@ -306,8 +362,16 @@ export default function BookingsPage() {
         }
     };
 
-    const openReviewModal = (booking: BookingWithUser) => {
+    const openReviewModal = (booking: BookingWithUser, readOnly: boolean = false) => {
         setReviewBooking(booking);
+        setIsReviewReadOnly(readOnly);
+        if (readOnly && booking.review) {
+            setReviewRating(booking.review.rating);
+            setReviewText(booking.review.review_text || "");
+        } else {
+            setReviewRating(5);
+            setReviewText("");
+        }
         setReviewModalOpen(true);
     };
 
@@ -465,7 +529,7 @@ export default function BookingsPage() {
                                                     </button>
                                                 </>
                                             )}
-                                            {booking.status === "pending" && !isTrainer && !isPast && (
+                                            {booking.status === "pending" && !isTrainer && (
                                                 <button
                                                     onClick={() => setCancelBooking(booking)}
                                                     className="px-4 py-2.5 rounded-xl bg-[#12141A] border border-red-500/20 text-red-500 text-xs font-bold hover:bg-red-500/10 transition-colors"
@@ -481,15 +545,28 @@ export default function BookingsPage() {
                                                 >
                                                     Mark Complete
                                                 </button>
+                                            )}                                            {booking.status === "completed" && (
+                                                <>
+                                                    {booking.review ? (
+                                                        <button
+                                                            onClick={() => openReviewModal(booking, true)}
+                                                            className="flex items-center gap-2 px-6 py-3.5 rounded-2xl bg-[#272A35] text-white font-black text-[13px] uppercase tracking-widest hover:bg-[#323644] transition-all border border-white/5 active:scale-95 group/btn"
+                                                        >
+                                                            <FileText size={16} className="text-primary group-hover/btn:scale-110 transition-transform" />
+                                                            View Review
+                                                        </button>
+                                                    ) : !isTrainer ? (
+                                                        <button
+                                                            onClick={() => openReviewModal(booking, false)}
+                                                            className="flex items-center gap-2 px-8 py-3.5 rounded-2xl bg-gradient-to-br from-orange-500 to-orange-600 text-white font-black text-[13px] uppercase tracking-widest hover:shadow-[0_8px_20px_rgba(249,115,22,0.3)] transition-all hover:-translate-y-0.5 active:scale-95 group/btn border border-orange-400/20"
+                                                        >
+                                                            <Star size={16} className="fill-current group-hover/btn:rotate-12 transition-transform" />
+                                                            Leave Review
+                                                        </button>
+                                                    ) : null}
+                                                </>
                                             )}
-                                            {booking.status === "completed" && !isTrainer && (
-                                                <button
-                                                    onClick={() => openReviewModal(booking)}
-                                                    className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-400 to-amber-600 text-bg text-xs font-black uppercase tracking-widest hover:shadow-[0_0_15px_rgba(251,191,36,0.4)] transition-all flex items-center justify-center gap-2"
-                                                >
-                                                    <Star size={16} className="fill-current" /> Leave Review
-                                                </button>
-                                            )}
+
 
                                             {/* Reschedule Response — Accept/Decline for the other party */}
                                             {booking.status === "reschedule_requested" && booking.reschedule_request && booking.reschedule_request.initiated_by !== user?.id && (
@@ -590,6 +667,7 @@ export default function BookingsPage() {
                 setText={setReviewText}
                 onSubmit={submitReview}
                 isSubmitting={submittingReview}
+                readOnly={isReviewReadOnly}
             />
 
             {/* Reschedule Dialog */}

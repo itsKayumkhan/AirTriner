@@ -23,6 +23,14 @@ type TrainerWithUser = TrainerProfileRow & {
     sessions_count: number;
     cover_image: string;
     recent_reviews: Review[];
+    dispute_count: number;
+    is_performance_verified: boolean;
+};
+
+type AvailabilitySlot = {
+    id: string;
+    start_time: string;
+    end_time: string;
 };
 
 // Sports-specific wide images (NO GYM IMAGES to align with user's feedback)
@@ -143,6 +151,9 @@ export default function BookTrainerPage() {
         return `${yyyy}-${mm}-${dd}`;
     });
     const [selectedTime, setSelectedTime] = useState<string>("");
+    const [selectedSport, setSelectedSport] = useState<string>("");
+    const [slots, setSlots] = useState<string[]>([]);
+    const [slotsLoading, setSlotsLoading] = useState(false);
 
     useEffect(() => {
         const session = getSession();
@@ -154,6 +165,52 @@ export default function BookTrainerPage() {
         if (trainerId) loadTrainer();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [trainerId, router]);
+
+    // Fetch availability slots when date changes
+    useEffect(() => {
+        if (trainerId && selectedDate) {
+            loadAvailability(selectedDate);
+        }
+    }, [trainerId, selectedDate]);
+
+    const formatTimeTo12h = (time24: string) => {
+        const [hours, minutes] = time24.split(':');
+        let h = parseInt(hours, 10);
+        const ampm = h >= 12 ? 'PM' : 'AM';
+        h = h % 12;
+        h = h ? h : 12; // the hour '0' should be '12'
+        return `${h.toString().padStart(2, '0')}:${minutes} ${ampm}`;
+    };
+
+    const loadAvailability = async (dateStr: string) => {
+        setSlotsLoading(true);
+        try {
+            const date = new Date(dateStr);
+            const dayOfWeek = date.getDay(); // 0 is Sunday, 1 is Monday...
+
+            const { data, error } = await supabase
+                .from("availability_slots")
+                .select("start_time, end_time")
+                .eq("trainer_id", trainerId)
+                .eq("day_of_week", dayOfWeek)
+                .eq("is_blocked", false)
+                .order("start_time");
+
+            if (error) throw error;
+
+            const formattedSlots = (data || []).map(s => formatTimeTo12h(s.start_time));
+            setSlots(formattedSlots);
+            
+            // Clear selected time if it's no longer available
+            if (selectedTime && !formattedSlots.includes(selectedTime)) {
+                setSelectedTime("");
+            }
+        } catch (err) {
+            console.error("Failed to load availability:", err);
+        } finally {
+            setSlotsLoading(false);
+        }
+    };
 
     const loadTrainer = async () => {
         try {
@@ -195,6 +252,20 @@ export default function BookTrainerPage() {
                 .eq("trainer_id", profile.user_id)
                 .eq("status", "completed");
             
+            // Re-fetching dispute count more reliably via join
+            const { data: disputesData } = await supabase
+                .from("disputes")
+                .select("id, booking:bookings!inner(trainer_id)")
+                .eq("booking.trainer_id", profile.user_id);
+            
+            const finalDisputeCount = (disputesData || []).length;
+
+            const isPerformanceVerified = 
+                (bookingsCount || 0) >= 3 && 
+                finalDisputeCount === 0 && 
+                Number(profile.completion_rate) >= 95 && 
+                Number(profile.reliability_score) >= 95;
+            
             setTrainer({
                 ...profile,
                 user: userData as TrainerWithUser["user"],
@@ -202,7 +273,9 @@ export default function BookTrainerPage() {
                 review_count: profile.total_reviews || 0,
                 sessions_count: bookingsCount || 0,
                 cover_image: getSportCover(profile.sports),
-                recent_reviews: (reviewsData || []) as unknown as Review[]
+                recent_reviews: (reviewsData || []) as unknown as Review[],
+                dispute_count: finalDisputeCount,
+                is_performance_verified: isPerformanceVerified
             });
         } catch (err) {
             console.error(err);
@@ -212,11 +285,27 @@ export default function BookTrainerPage() {
     };
 
     const handleBook = async () => {
+        if (!selectedSport) {
+            alert("Please select a sport.");
+            return;
+        }
         if (!selectedTime) {
-            alert("Please select a time slot first.");
+            alert("Please select a time slot.");
             return;
         }
         if (!user || !trainer) return;
+
+        // Block past time slot bookings
+        const [chkTime, chkMod] = selectedTime.split(" ");
+        const [chkH, chkM] = chkTime.split(":");
+        let chkHrs = parseInt(chkH, 10);
+        if (chkMod === "PM" && chkHrs < 12) chkHrs += 12;
+        if (chkMod === "AM" && chkHrs === 12) chkHrs = 0;
+        const checkDate = new Date(`${selectedDate}T${chkHrs.toString().padStart(2, "0")}:${chkM}:00`);
+        if (checkDate <= new Date()) {
+            alert("You cannot book a past time slot. Please select a future date and time.");
+            return;
+        }
 
         setProcessing(true);
 
@@ -230,13 +319,47 @@ export default function BookTrainerPage() {
             if (modifier === "AM" && hrs === 12) hrs = 0;
 
             const scheduledAt = new Date(`${selectedDate}T${hrs.toString().padStart(2, "0")}:${minutes}:00`);
+            const durationMinutes = 60;
+
+            // === Double Booking Prevention ===
+            // Check for overlapping bookings for this trainer
+            const requestedStart = scheduledAt.getTime();
+            const requestedEnd = requestedStart + durationMinutes * 60 * 1000;
+
+            // Get all active bookings for this trainer on the same day (±1 day buffer)
+            const dayStart = new Date(scheduledAt);
+            dayStart.setHours(0, 0, 0, 0);
+            const dayEnd = new Date(scheduledAt);
+            dayEnd.setHours(23, 59, 59, 999);
+
+            const { data: existingBookings } = await supabase
+                .from("bookings")
+                .select("scheduled_at, duration_minutes")
+                .eq("trainer_id", trainer.user_id)
+                .in("status", ["pending", "confirmed", "reschedule_requested"])
+                .gte("scheduled_at", dayStart.toISOString())
+                .lte("scheduled_at", dayEnd.toISOString());
+
+            // Check for time-range overlaps
+            const hasOverlap = (existingBookings || []).some(b => {
+                const existingStart = new Date(b.scheduled_at).getTime();
+                const existingEnd = existingStart + (b.duration_minutes || 60) * 60 * 1000;
+                return requestedStart < existingEnd && requestedEnd > existingStart;
+            });
+
+            if (hasOverlap) {
+                alert("This trainer already has a booking during this time slot. Please select a different time.");
+                setProcessing(false);
+                return;
+            }
+            // === End Double Booking Prevention ===
 
             const insertData = {
                 athlete_id: user.id,
                 trainer_id: trainer.user_id,
-                sport: trainer.sports?.[0] || 'general',
+                sport: selectedSport,
                 scheduled_at: scheduledAt.toISOString(),
-                duration_minutes: 60,
+                duration_minutes: durationMinutes,
                 status: 'pending',
                 price: trainer.hourly_rate || 0,
                 platform_fee: (trainer.hourly_rate || 0) * 0.1, // 10% fee example
@@ -266,7 +389,17 @@ export default function BookTrainerPage() {
         return <div className="text-text-main text-center mt-20 text-xl font-bold">Trainer not found</div>;
     }
 
-    const slots = ["08:00 AM", "10:30 AM", "02:00 PM", "04:30 PM"];
+    // Check if a time slot is in the past for the selected date
+    const isSlotInPast = (time: string) => {
+        const [timeStr, modifier] = time.split(" ");
+        const [hours, minutes] = timeStr.split(":");
+        let hrs = parseInt(hours, 10);
+        if (modifier === "PM" && hrs < 12) hrs += 12;
+        if (modifier === "AM" && hrs === 12) hrs = 0;
+
+        const slotDate = new Date(`${selectedDate}T${hrs.toString().padStart(2, "0")}:${minutes}:00`);
+        return slotDate <= new Date();
+    };
 
     return (
         <div className="max-w-[1280px] mx-auto pb-20 px-4 md:px-8 mt-4">
@@ -293,10 +426,12 @@ export default function BookTrainerPage() {
                             </div>
                         )}
                     </div>
-                    {/* Verification checkmark */}
-                    <div className="absolute -bottom-2 -right-2 bg-primary rounded-full p-1 border-[4px] border-[#0F1115] shadow-[0_0_10px_rgba(163,255,18,0.5)]">
-                        <BadgeCheck size={20} className="text-bg" />
-                    </div>
+                    {/* Verification checkmark - only if performance metrics are met */}
+                    {trainer.is_performance_verified && (
+                        <div className="absolute -bottom-2 -right-2 bg-primary rounded-full p-1 border-[4px] border-[#0F1115] shadow-[0_0_10px_rgba(163,255,18,0.5)]">
+                            <BadgeCheck size={20} className="text-bg" />
+                        </div>
+                    )}
                 </div>
 
                 {/* Name & Titles */}
@@ -305,7 +440,13 @@ export default function BookTrainerPage() {
                         {trainer.user?.first_name} {trainer.user?.last_name}
                     </h1>
                     <div className="flex items-center gap-4 text-sm font-bold">
-                        <span className="text-primary tracking-widest uppercase">Elite Performance</span>
+                        {trainer.is_performance_verified ? (
+                            <span className="text-primary tracking-widest uppercase">Verified Performance</span>
+                        ) : trainer.sessions_count > 0 ? (
+                            <span className="text-blue-400 tracking-widest uppercase">Pro Trainer</span>
+                        ) : (
+                            <span className="text-emerald-400 tracking-widest uppercase">New Trainer</span>
+                        )}
                         {trainer.city && (
                             <span className="text-text-main/60 flex items-center gap-1.5">
                                 <MapPin size={14} /> {trainer.city}, {trainer.state}
@@ -344,7 +485,11 @@ export default function BookTrainerPage() {
                             <div className="text-[10px] text-text-main/40 font-bold uppercase tracking-widest mt-1">YEARS EXP.</div>
                         </div>
                         <div>
-                            <div className="text-3xl font-black text-text-main mb-3">{(trainer.sessions_count / 1000).toFixed(1)}k</div>
+                            <div className="text-3xl font-black text-text-main mb-3">
+                                {trainer.sessions_count >= 1000 
+                                    ? (trainer.sessions_count / 1000).toFixed(1) + "k" 
+                                    : trainer.sessions_count}
+                            </div>
                             <div className="text-[10px] text-text-main/40 font-bold uppercase tracking-widest mt-1">SESSIONS</div>
                         </div>
                     </div>
@@ -463,23 +608,56 @@ export default function BookTrainerPage() {
                             </div>
                         </div>
 
-                        {/* Time Slots */}
-                        <div className="mb-8">
-                            <h4 className="text-[10px] text-text-main/40 font-bold uppercase tracking-[0.15em] mb-4">AVAILABLE SLOTS</h4>
+                        {/* Sport Selection */}
+                        <div className="mb-10">
+                            <h4 className="text-[10px] text-text-main/40 font-bold uppercase tracking-[0.15em] mb-4">SELECT SPORT</h4>
                             <div className="grid grid-cols-2 gap-3">
-                                {slots.map(time => (
+                                {trainer.sports.map(sport => (
                                     <button
-                                        key={time}
-                                        onClick={() => setSelectedTime(time)}
-                                        className={`py-3.5 rounded-xl text-xs font-black transition-all border
-                                            ${selectedTime === time
+                                        key={sport}
+                                        onClick={() => setSelectedSport(sport)}
+                                        className={`py-3 px-4 rounded-xl text-[11px] font-black transition-all border text-center uppercase tracking-wider
+                                            ${selectedSport === sport
                                                 ? "bg-transparent border-primary border-[2px] text-white shadow-[0_0_15px_rgba(163,255,18,0.15)]"
                                                 : "bg-[#272A35] border-transparent text-white/80 hover:bg-[#323644]"}`}
                                     >
-                                        {time}
+                                        {SPORT_LABELS[sport] || sport.replace(/_/g, " ")}
                                     </button>
                                 ))}
                             </div>
+                        </div>
+
+                        {/* Time Slots */}
+                        <div className="mb-8">
+                            <h4 className="text-[10px] text-text-main/40 font-bold uppercase tracking-[0.15em] mb-4">AVAILABLE SLOTS</h4>
+                            {slotsLoading ? (
+                                <div className="flex justify-center py-4">
+                                    <div className="w-6 h-6 border-2 border-primary/20 border-t-primary rounded-full animate-spin"></div>
+                                </div>
+                            ) : slots.length === 0 ? (
+                                <div className="text-center py-6 bg-[#12141A] rounded-2xl border border-white/5">
+                                    <p className="text-text-main/40 text-[11px] font-bold uppercase tracking-widest">No slots available for this day</p>
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-2 gap-3">
+                                    {slots.map(time => {
+                                        const pastSlot = isSlotInPast(time);
+                                        if (pastSlot) return null; // Hide past slots as per user request
+                                        return (
+                                            <button
+                                                key={time}
+                                                onClick={() => setSelectedTime(time)}
+                                                className={`py-3.5 rounded-xl text-xs font-black transition-all border
+                                                    ${selectedTime === time
+                                                        ? "bg-transparent border-primary border-[2px] text-white shadow-[0_0_15px_rgba(163,255,18,0.15)]"
+                                                        : "bg-[#272A35] border-transparent text-white/80 hover:bg-[#323644]"}`}
+                                            >
+                                                {time}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            )}
                         </div>
 
                         {/* Actions */}

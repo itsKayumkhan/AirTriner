@@ -327,7 +327,7 @@ export default function Home() {
                     </p>
 
                     <div style={{ display: "flex", gap: "16px", justifyContent: "center", flexWrap: "wrap", marginBottom: "48px" }}>
-                        <a href="/trainers" style={{
+                        <a href="/dashboard/search" style={{
                             padding: "16px 32px", background: "var(--primary)", color: "var(--color-bg)",
                             borderRadius: "var(--radius-full)", fontWeight: 800, fontSize: "14px", textDecoration: "none",
                             textTransform: "uppercase", letterSpacing: "1px", transition: "all 0.2s"

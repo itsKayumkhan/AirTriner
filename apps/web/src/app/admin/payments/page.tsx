@@ -1,19 +1,181 @@
 "use client";
 
-import { Download, Wallet, Percent, TrendingUp, TrendingDown, Info, MoreHorizontal } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Download, Wallet, Percent, TrendingUp, TrendingDown, Info, MoreHorizontal, Loader2, CheckCircle, Clock, AlertTriangle, Shield } from "lucide-react";
+import { supabase } from "@/lib/supabase";
+import PopupModal from "@/components/common/PopupModal";
 
 export default function AdminPaymentsPage() {
-    const stats = [
-        { title: "Total Platform Volume", value: "$1,240,500.00", req: "+12.5%", desc: "vs last month", icon: <Wallet size={24} />, isNegative: false },
-        { title: "Commissions Earned", value: "$186,075.00", req: "+8.2%", desc: "vs last month", icon: <Percent size={24} />, isNegative: false },
-        { title: "Pending Payouts", value: "$42,300.00", req: "-2.4%", desc: "from yesterday", icon: <TrendingDown size={24} />, isNegative: true },
-    ];
+    const [transactions, setTransactions] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [processing, setProcessing] = useState<string | null>(null);
+    const [totalVolume, setTotalVolume] = useState(0);
+    const [totalCommissions, setTotalCommissions] = useState(0);
+    const [pendingPayouts, setPendingPayouts] = useState(0);
+    const [heldCount, setHeldCount] = useState(0);
+    const [releasedCount, setReleasedCount] = useState(0);
+    const [refundedCount, setRefundedCount] = useState(0);
 
-    const transactions = [
-        { id: "#TRX-942850", customer: "John Doe", initials: "JD", date: "Oct 24, 2023", amount: "$1,200.00", status: "Completed" },
-        { id: "#TRX-942849", customer: "Sarah Chen", initials: "SC", date: "Oct 24, 2023", amount: "$450.00", status: "Completed" },
-        { id: "#TRX-942848", customer: "Marcus Thorne", initials: "MT", date: "Oct 23, 2023", amount: "$85.00", status: "Pending" },
-        { id: "#TRX-942847", customer: "Elena White", initials: "EW", date: "Oct 23, 2023", amount: "$250.00", status: "Completed" },
+    // Alert/Confirmation Popup State
+    const [popup, setPopup] = useState<{
+        type: "success" | "error" | "confirm" | "warning" | "info";
+        title: string;
+        message: string;
+        onConfirm?: () => void;
+    } | null>(null);
+
+    const showAlert = (type: "success" | "error" | "info", title: string, message: string) => {
+        setPopup({ type, title, message });
+    };
+
+    const showConfirm = (title: string, message: string, onConfirm: () => void) => {
+        setPopup({ type: "confirm", title, message, onConfirm });
+    };
+
+    useEffect(() => {
+        loadData();
+    }, []);
+
+    const loadData = async () => {
+        setLoading(true);
+        try {
+            // Fetch payment transactions with booking details
+            const { data: ptData, error: ptError } = await supabase
+                .from("payment_transactions")
+                .select(`
+                    id, booking_id, stripe_payment_intent_id, stripe_transfer_id,
+                    amount, platform_fee, trainer_payout, status, hold_until, released_at, created_at,
+                    bookings (id, athlete_id, trainer_id, sport, scheduled_at)
+                `)
+                .order("created_at", { ascending: false });
+
+            if (ptError) throw ptError;
+
+            if (ptData && ptData.length > 0) {
+                // Collect user IDs
+                const userIds = new Set<string>();
+                ptData.forEach((pt: any) => {
+                    if (pt.bookings) {
+                        userIds.add(pt.bookings.athlete_id);
+                        userIds.add(pt.bookings.trainer_id);
+                    }
+                });
+
+                // Fetch user names
+                const { data: usersData } = await supabase
+                    .from("users")
+                    .select("id, first_name, last_name")
+                    .in("id", Array.from(userIds));
+
+                const usersMap = new Map(
+                    (usersData || []).map((u: any) => [u.id, { name: `${u.first_name} ${u.last_name}`.trim(), initials: `${u.first_name?.[0] || ""}${u.last_name?.[0] || ""}`.toUpperCase() }])
+                );
+
+                // Calculate aggregates
+                let vol = 0, comm = 0, pending = 0;
+                let held = 0, released = 0, refunded = 0;
+
+                ptData.forEach((pt: any) => {
+                    const amt = Number(pt.amount || 0);
+                    const fee = Number(pt.platform_fee || 0);
+                    vol += amt;
+                    comm += fee;
+                    if (pt.status === "held") { pending += Number(pt.trainer_payout || 0); held++; }
+                    if (pt.status === "released") released++;
+                    if (pt.status === "refunded") refunded++;
+                });
+
+                setTotalVolume(vol);
+                setTotalCommissions(comm);
+                setPendingPayouts(pending);
+                setHeldCount(held);
+                setReleasedCount(released);
+                setRefundedCount(refunded);
+
+                // Format transactions for table
+                const formatted = ptData.map((pt: any) => {
+                    const athleteInfo = usersMap.get(pt.bookings?.athlete_id) || { name: "Unknown", initials: "?" };
+                    const trainerInfo = usersMap.get(pt.bookings?.trainer_id) || { name: "Unknown", initials: "?" };
+                    return {
+                        id: pt.id,
+                        displayId: `#TRX-${pt.id.substring(0, 6).toUpperCase()}`,
+                        customer: athleteInfo.name,
+                        initials: athleteInfo.initials,
+                        trainer: trainerInfo.name,
+                        trainerInitials: trainerInfo.initials,
+                        date: new Date(pt.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+                        amount: `$${Number(pt.amount || 0).toFixed(2)}`,
+                        trainerPayout: `$${Number(pt.trainer_payout || 0).toFixed(2)}`,
+                        platformFee: `$${Number(pt.platform_fee || 0).toFixed(2)}`,
+                        status: pt.status,
+                        bookingId: pt.booking_id,
+                        holdUntil: pt.hold_until ? new Date(pt.hold_until).toLocaleDateString() : null,
+                    };
+                });
+
+                setTransactions(formatted);
+            } else {
+                setTransactions([]);
+                setTotalVolume(0);
+                setTotalCommissions(0);
+                setPendingPayouts(0);
+            }
+        } catch (err) {
+            console.error("Failed to load payments:", err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleReleasePayout = async (txId: string, bookingId: string) => {
+        showConfirm(
+            "Release Payout",
+            "Are you sure you want to release this payout to the trainer? This action will transfer the funds to their account.",
+            async () => {
+                setProcessing(txId);
+                try {
+                    const { error } = await supabase
+                        .from("payment_transactions")
+                        .update({ status: "released", released_at: new Date().toISOString() })
+                        .eq("id", txId);
+
+                    if (error) throw error;
+
+                    loadData();
+                    showAlert("success", "Payout Released", "The funds have been successfully released to the trainer.");
+                } catch (err) {
+                    console.error(err);
+                    showAlert("error", "Error", "Failed to release payout. Please try again later.");
+                } finally {
+                    setProcessing(null);
+                }
+            }
+        );
+    };
+
+    const handleExportCSV = () => {
+        const csvHeaders = ["Transaction ID", "Customer", "Trainer", "Date", "Amount", "Platform Fee", "Trainer Payout", "Status"];
+        const csvRows = transactions.map(t =>
+            [t.displayId, t.customer, t.trainer, t.date, t.amount, t.platformFee, t.trainerPayout, t.status].join(",")
+        );
+        const csvContent = [csvHeaders.join(","), ...csvRows].join("\n");
+        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = `payments_report_${new Date().toISOString().split("T")[0]}.csv`;
+        link.click();
+    };
+
+    // Calculate distribution percentages
+    const totalTx = heldCount + releasedCount + refundedCount || 1;
+    const heldPct = Math.round((heldCount / totalTx) * 100);
+    const releasedPct = Math.round((releasedCount / totalTx) * 100);
+    const refundedPct = Math.round((refundedCount / totalTx) * 100);
+
+    const stats = [
+        { title: "Total Platform Volume", value: `$${totalVolume.toLocaleString("en-US", { minimumFractionDigits: 2 })}`, req: "+12.5%", desc: "vs last month", icon: <Wallet size={24} />, isNegative: false },
+        { title: "Commissions Earned", value: `$${totalCommissions.toLocaleString("en-US", { minimumFractionDigits: 2 })}`, req: "+8.2%", desc: "vs last month", icon: <Percent size={24} />, isNegative: false },
+        { title: "Pending Payouts", value: `$${pendingPayouts.toLocaleString("en-US", { minimumFractionDigits: 2 })}`, req: `${heldCount} held`, desc: "awaiting release", icon: <TrendingDown size={24} />, isNegative: true },
     ];
 
     return (
@@ -26,7 +188,10 @@ export default function AdminPaymentsPage() {
                     <p className="text-sm font-medium text-text-main/60">Real-time overview of platform volume and payout distribution.</p>
                 </div>
                 <div className="flex items-center gap-3">
-                    <button className="flex items-center gap-2 px-6 py-3 rounded-full bg-primary text-bg font-black text-sm hover:shadow-[0_0_10px_rgba(163,255,18,0.2)] transition-all">
+                    <button
+                        onClick={handleExportCSV}
+                        className="flex items-center gap-2 px-6 py-3 rounded-full bg-primary text-bg font-black text-sm hover:shadow-[0_0_10px_rgba(163,255,18,0.2)] transition-all"
+                    >
                         <Download size={18} strokeWidth={3} /> Export Report
                     </button>
                 </div>
@@ -39,7 +204,7 @@ export default function AdminPaymentsPage() {
                         <div className="flex justify-between items-start mb-4">
                             <div>
                                 <div className="text-text-main/60 text-sm font-bold tracking-wide mb-1">{stat.title}</div>
-                                <div className="text-3xl font-black text-text-main">{stat.value}</div>
+                                <div className="text-3xl font-black text-text-main">{loading ? "..." : stat.value}</div>
                             </div>
                             <div className="w-12 h-12 rounded-xl bg-gray-800/50 flex items-center justify-center text-gray-600 transition-colors group-hover:text-primary group-hover:bg-primary/10">
                                 {stat.icon}
@@ -59,7 +224,7 @@ export default function AdminPaymentsPage() {
             {/* Charts & Distribution */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-                {/* Revenue Trends */}
+                {/* Revenue Trends - keep the same visual bar chart */}
                 <div className="lg:col-span-2 bg-surface border border-white/5 rounded-[24px] p-6 flex flex-col">
                     <div className="flex justify-between items-center mb-6">
                         <div>
@@ -92,38 +257,38 @@ export default function AdminPaymentsPage() {
                     </div>
                 </div>
 
-                {/* Payout Distribution */}
+                {/* Payout Distribution - Now Live */}
                 <div className="lg:col-span-1 bg-surface border border-white/5 rounded-[24px] p-6 flex flex-col">
                     <h2 className="text-lg font-black text-text-main mb-6">Payout Distribution</h2>
 
                     <div className="space-y-6 flex-1">
                         <div>
                             <div className="flex justify-between items-center mb-2">
-                                <span className="text-text-main/80 text-sm font-bold">Subscription Fees</span>
-                                <span className="text-text-main font-black">65%</span>
+                                <span className="text-text-main/80 text-sm font-bold flex items-center gap-2"><CheckCircle size={14} className="text-primary" /> Released</span>
+                                <span className="text-text-main font-black">{loading ? "..." : `${releasedPct}%`}</span>
                             </div>
                             <div className="h-2.5 bg-gray-800 rounded-full overflow-hidden">
-                                <div className="h-full bg-primary rounded-full shadow-[0_0_10px_rgba(163,255,18,0.3)] w-[65%]"></div>
+                                <div className="h-full bg-primary rounded-full shadow-[0_0_10px_rgba(163,255,18,0.3)] transition-all duration-700" style={{ width: `${releasedPct}%` }}></div>
                             </div>
                         </div>
 
                         <div>
                             <div className="flex justify-between items-center mb-2">
-                                <span className="text-text-main/80 text-sm font-bold">Marketplace Commission</span>
-                                <span className="text-text-main font-black">20%</span>
+                                <span className="text-text-main/80 text-sm font-bold flex items-center gap-2"><Clock size={14} className="text-yellow-500" /> Held (Escrow)</span>
+                                <span className="text-text-main font-black">{loading ? "..." : `${heldPct}%`}</span>
                             </div>
                             <div className="h-2.5 bg-gray-800 rounded-full overflow-hidden">
-                                <div className="h-full bg-[#1e3a8a] rounded-full w-[20%]"></div>
+                                <div className="h-full bg-yellow-500 rounded-full transition-all duration-700" style={{ width: `${heldPct}%` }}></div>
                             </div>
                         </div>
 
                         <div>
                             <div className="flex justify-between items-center mb-2">
-                                <span className="text-text-main/80 text-sm font-bold">Direct Payouts</span>
-                                <span className="text-text-main font-black">15%</span>
+                                <span className="text-text-main/80 text-sm font-bold flex items-center gap-2"><AlertTriangle size={14} className="text-red-500" /> Refunded</span>
+                                <span className="text-text-main font-black">{loading ? "..." : `${refundedPct}%`}</span>
                             </div>
                             <div className="h-2.5 bg-gray-800 rounded-full overflow-hidden flex">
-                                <div className="h-full bg-[#3f6212] rounded-full w-[15%]"></div>
+                                <div className="h-full bg-red-500 rounded-full transition-all duration-700" style={{ width: `${refundedPct}%` }}></div>
                             </div>
                         </div>
                     </div>
@@ -131,7 +296,7 @@ export default function AdminPaymentsPage() {
                     <div className="mt-8 bg-surface border border-white/5 rounded-xl p-4 flex gap-3 text-sm">
                         <Info size={18} className="text-primary flex-shrink-0 mt-0.5" />
                         <p className="text-text-main/60 font-medium leading-relaxed">
-                            Automatic payouts are processed every Friday at 12:00 PM UTC.
+                            Release held payouts manually below, or configure automatic payout timing.
                         </p>
                     </div>
                 </div>
@@ -152,6 +317,7 @@ export default function AdminPaymentsPage() {
                             <tr className="border-b border-white/5 text-[10px] uppercase font-black tracking-widest text-text-main/40">
                                 <th className="pb-4 font-black">Transaction ID</th>
                                 <th className="pb-4 font-black">Customer</th>
+                                <th className="pb-4 font-black">Trainer</th>
                                 <th className="pb-4 font-black">Date</th>
                                 <th className="pb-4 font-black">Amount</th>
                                 <th className="pb-4 font-black">Status</th>
@@ -159,39 +325,89 @@ export default function AdminPaymentsPage() {
                             </tr>
                         </thead>
                         <tbody className="text-sm">
-                            {transactions.map((t, i) => (
-                                <tr key={i} className="border-b border-white/5/50 hover:bg-white/5 transition-colors">
-                                    <td className="py-4 font-medium text-text-main/60">{t.id}</td>
-                                    <td className="py-4">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-8 h-8 rounded-full bg-[#272A35] text-text-main/80 flex items-center justify-center font-bold text-xs border border-gray-700">
-                                                {t.initials}
-                                            </div>
-                                            <span className="font-bold text-text-main tracking-wide">{t.customer}</span>
-                                        </div>
-                                    </td>
-                                    <td className="py-4 text-text-main/60 font-medium">{t.date}</td>
-                                    <td className="py-4 font-black text-text-main text-base">{t.amount}</td>
-                                    <td className="py-4">
-                                        <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${t.status === "Completed"
-                                                ? "bg-primary/10 text-primary border-primary/20"
-                                                : "bg-[#272A35] text-text-main/80 border-gray-700"
-                                            }`}>
-                                            {t.status}
-                                        </span>
-                                    </td>
-                                    <td className="py-4 text-right">
-                                        <button className="text-text-main/40 hover:text-text-main transition-colors">
-                                            <MoreHorizontal size={20} />
-                                        </button>
+                            {loading ? (
+                                <tr>
+                                    <td colSpan={7} className="text-center py-12">
+                                        <Loader2 size={24} className="mx-auto animate-spin text-primary opacity-50 mb-2" />
+                                        <p className="text-text-main/40 text-sm font-bold tracking-widest uppercase">Loading Transactions</p>
                                     </td>
                                 </tr>
-                            ))}
+                            ) : transactions.length === 0 ? (
+                                <tr>
+                                    <td colSpan={7} className="text-center py-12">
+                                        <div className="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center mx-auto mb-3">
+                                            <Wallet size={20} className="text-text-main/40" />
+                                        </div>
+                                        <p className="text-text-main font-bold">No transactions yet</p>
+                                        <p className="text-sm text-text-main/40">Transactions will appear here once bookings are paid.</p>
+                                    </td>
+                                </tr>
+                            ) : (
+                                transactions.map((t) => (
+                                    <tr key={t.id} className="border-b border-white/5/50 hover:bg-white/5 transition-colors">
+                                        <td className="py-4 font-medium text-text-main/60">{t.displayId}</td>
+                                        <td className="py-4">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-8 h-8 rounded-full bg-[#272A35] text-text-main/80 flex items-center justify-center font-bold text-xs border border-gray-700">
+                                                    {t.initials}
+                                                </div>
+                                                <span className="font-bold text-text-main tracking-wide">{t.customer}</span>
+                                            </div>
+                                        </td>
+                                        <td className="py-4">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-8 h-8 rounded-full bg-[#1e3a8a]/30 text-text-main/80 flex items-center justify-center font-bold text-xs border border-[#2563eb]/20">
+                                                    {t.trainerInitials}
+                                                </div>
+                                                <span className="font-medium text-text-main/80">{t.trainer}</span>
+                                            </div>
+                                        </td>
+                                        <td className="py-4 text-text-main/60 font-medium">{t.date}</td>
+                                        <td className="py-4 font-black text-text-main text-base">{t.amount}</td>
+                                        <td className="py-4">
+                                            <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${
+                                                t.status === "released"
+                                                    ? "bg-primary/10 text-primary border-primary/20"
+                                                    : t.status === "held"
+                                                    ? "bg-yellow-500/10 text-yellow-500 border-yellow-500/20"
+                                                    : t.status === "refunded"
+                                                    ? "bg-red-500/10 text-red-500 border-red-500/20"
+                                                    : "bg-[#272A35] text-text-main/80 border-gray-700"
+                                            }`}>
+                                                {t.status}
+                                            </span>
+                                        </td>
+                                        <td className="py-4 text-right">
+                                            {t.status === "held" ? (
+                                                <button
+                                                    onClick={() => handleReleasePayout(t.id, t.bookingId)}
+                                                    disabled={processing === t.id}
+                                                    className="px-4 py-2 rounded-full bg-primary/10 text-primary border border-primary/20 text-[10px] font-black uppercase tracking-widest hover:bg-primary hover:text-bg transition-all disabled:opacity-50"
+                                                >
+                                                    {processing === t.id ? <Loader2 size={14} className="inline animate-spin" /> : "Release"}
+                                                </button>
+                                            ) : (
+                                                <button className="text-text-main/40 hover:text-text-main transition-colors">
+                                                    <MoreHorizontal size={20} />
+                                                </button>
+                                            )}
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
                         </tbody>
                     </table>
                 </div>
             </div>
 
+            <PopupModal 
+                isOpen={!!popup}
+                onClose={() => setPopup(null)}
+                type={popup?.type || "info"}
+                title={popup?.title || ""}
+                message={popup?.message || ""}
+                onConfirm={popup?.onConfirm}
+            />
         </div>
     );
 }

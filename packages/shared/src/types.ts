@@ -20,6 +20,7 @@ export enum SkillLevel {
 export enum BookingStatus {
     PENDING = 'pending',
     CONFIRMED = 'confirmed',
+    REJECTED = 'rejected',
     COMPLETED = 'completed',
     CANCELLED = 'cancelled',
     NO_SHOW = 'no_show',

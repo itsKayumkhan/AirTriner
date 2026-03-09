@@ -156,7 +156,8 @@ export default function SubAccountsPage() {
         try {
             const { error } = await supabase.from("sub_accounts").delete().eq("id", id);
             if (error) throw error;
-            setAccounts((prev) => prev.filter((a) => a.id !== id));
+            // Refetch from server to ensure UI is in sync with database
+            if (user) await loadAccounts(user);
         } catch (err) {
             console.error("Delete failed:", err);
             setDeleteError("Failed to delete sub-account. Please try again.");

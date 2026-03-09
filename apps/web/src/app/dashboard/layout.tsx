@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getSession, clearSession, AuthUser } from "@/lib/auth";
+import { getSession, clearSession, verifySessionStatus, AuthUser } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
@@ -42,6 +42,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 return;
             }
 
+            // Real-time suspension check
+            const isValid = await verifySessionStatus(session.id);
+            if (!isValid) {
+                await clearSession();
+                alert("Your account has been suspended. You will be logged out.");
+                router.push("/auth/login");
+                return;
+            }
+
             if (session.role === "admin") {
                 router.push("/admin");
                 return;
@@ -52,7 +61,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         };
 
         checkAuth();
-    }, [router]);
+    }, [router, pathname]);
 
     // Fetch and subscribe to unread notifications count
     useEffect(() => {
@@ -220,7 +229,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     </div>
 
                     <div className="flex items-center gap-4">
-                        <IconButton icon={<User size={18} />} onClick={() => router.push(user.role === 'trainer' ? '/dashboard/coach/setup' : '/dashboard/profile')} />
+                        <IconButton icon={<User size={18} />} onClick={() => router.push(user.role === 'trainer' ? '/dashboard/trainer/setup' : '/dashboard/profile')} />
                         <IconButton icon={<HelpCircle size={18} />} />
 
                         <div className="relative group ml-4 cursor-pointer">

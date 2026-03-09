@@ -19,6 +19,7 @@ interface ReviewModalProps {
     setText: (text: string) => void;
     onSubmit: () => Promise<void>;
     isSubmitting: boolean;
+    readOnly?: boolean;
 }
 
 export const ReviewModal: React.FC<ReviewModalProps> = ({
@@ -31,6 +32,7 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
     setText,
     onSubmit,
     isSubmitting,
+    readOnly = false,
 }) => {
     if (!isOpen || !booking) return null;
 
@@ -44,7 +46,7 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
             <div className="bg-[#1A1C23] border border-white/10 rounded-[28px] p-8 md:p-10 w-full max-w-[500px] animate-in fade-in zoom-in-95 duration-200 shadow-2xl">
                 <div className="flex items-center justify-between mb-8">
                     <h3 className="text-2xl font-black font-display uppercase tracking-wider text-white">
-                        Leave a Review
+                        {readOnly ? "View Review" : "Leave a Review"}
                     </h3>
                     <button
                         onClick={onClose}
@@ -56,11 +58,11 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
 
                 <div className="mb-6">
                     <p className="text-[15px] font-medium text-text-main/70 mb-6 bg-[#12141A] p-4 rounded-xl border border-white/5 leading-relaxed">
-                        How was your session with{" "}
-                        <span className="font-bold text-white">
-                            {booking.other_user?.first_name}
-                        </span>
-                        ?
+                        {readOnly ? (
+                            <>Review for your session with <span className="font-bold text-white">{booking.other_user?.first_name}</span></>
+                        ) : (
+                            <>How was your session with <span className="font-bold text-white">{booking.other_user?.first_name}</span>?</>
+                        )}
                     </p>
 
                     {/* Star Rating */}
@@ -68,8 +70,9 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
                         {[1, 2, 3, 4, 5].map((star) => (
                             <button
                                 key={star}
-                                onClick={() => setRating(star)}
-                                className={`text-5xl transition-all duration-200 hover:scale-110 active:scale-95 ${
+                                onClick={() => !readOnly && setRating(star)}
+                                disabled={readOnly}
+                                className={`text-5xl transition-all duration-200 ${!readOnly ? 'hover:scale-110 active:scale-95 cursor-pointer' : 'cursor-default'} ${
                                     star <= rating
                                         ? "text-amber-500 drop-shadow-[0_0_10px_rgba(245,158,11,0.4)]"
                                         : "text-white/5 hover:text-white/20"
@@ -83,30 +86,46 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
                     {/* Review Text */}
                     <div className="mb-8">
                         <label className="block text-xs font-bold text-text-main/50 uppercase tracking-widest mb-3">
-                            Your Review{" "}
-                            <span className="text-text-main/30 lowercase font-medium tracking-normal">
-                                (optional)
-                            </span>
+                            {readOnly ? "Review Details" : "Your Review"}{" "}
+                            {!readOnly && (
+                                <span className="text-text-main/30 lowercase font-medium tracking-normal">
+                                    (optional)
+                                </span>
+                            )}
                         </label>
                         <textarea
                             value={text}
-                            onChange={(e) => setText(e.target.value)}
-                            placeholder="Share your experience (what went well, what could be improved?)..."
-                            className="w-full bg-[#12141A] border border-white/10 rounded-xl text-[15px] text-white p-5 min-h-[140px] outline-none focus:border-primary/50 focus:bg-[#1A1C23] transition-all resize-y custom-scrollbar placeholder:text-text-main/20"
+                            readOnly={readOnly}
+                            onChange={(e) => !readOnly && setText(e.target.value)}
+                            placeholder={readOnly ? "No comments provided." : "Share your experience (what went well, what could be improved?)..."}
+                            className={`w-full bg-[#12141A] border border-white/10 rounded-xl text-[15px] text-white p-5 min-h-[140px] outline-none transition-all resize-y custom-scrollbar placeholder:text-text-main/20 ${
+                                !readOnly ? 'focus:border-primary/50 focus:bg-[#1A1C23]' : ''
+                            }`}
                         />
                     </div>
 
-                    <button
-                        onClick={onSubmit}
-                        disabled={isSubmitting}
-                        className={`w-full py-4 rounded-xl text-[13px] font-black uppercase tracking-widest transition-all shadow-lg ${
-                            isSubmitting
-                                ? "bg-white/5 text-text-main/40 cursor-not-allowed border border-white/5"
-                                : "bg-primary text-bg hover:shadow-[0_0_20px_rgba(163,255,18,0.4)] hover:-translate-y-0.5"
-                        }`}
-                    >
-                        {isSubmitting ? "Submitting..." : "Submit Review"}
-                    </button>
+                    {!readOnly && (
+                        <button
+                            onClick={onSubmit}
+                            disabled={isSubmitting}
+                            className={`w-full py-4 rounded-xl text-[13px] font-black uppercase tracking-widest transition-all shadow-lg ${
+                                isSubmitting
+                                    ? "bg-white/5 text-text-main/40 cursor-not-allowed border border-white/5"
+                                    : "bg-primary text-bg hover:shadow-[0_0_20px_rgba(163,255,18,0.4)] hover:-translate-y-0.5"
+                            }`}
+                        >
+                            {isSubmitting ? "Submitting..." : "Submit Review"}
+                        </button>
+                    )}
+
+                    {readOnly && (
+                        <button
+                            onClick={onClose}
+                            className="w-full py-4 rounded-xl text-[13px] font-black uppercase tracking-widest transition-all shadow-lg bg-[#272A35] text-white hover:bg-[#323644]"
+                        >
+                            Close
+                        </button>
+                    )}
                 </div>
             </div>
         </div>

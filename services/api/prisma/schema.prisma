@@ -407,6 +407,7 @@ enum SkillLevel {
 enum BookingStatus {
   pending
   confirmed
+  rejected
   completed
   cancelled
   no_show

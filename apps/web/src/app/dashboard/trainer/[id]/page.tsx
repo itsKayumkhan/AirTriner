@@ -8,6 +8,7 @@ import { supabase, TrainerProfileRow, ReviewRow } from "@/lib/supabase";
 
 type TrainerData = TrainerProfileRow & {
     user: { first_name: string; last_name: string; email: string };
+    is_performance_verified: boolean;
 };
 
 type ReviewWithReviewer = ReviewRow & {
@@ -21,6 +22,7 @@ export default function TrainerProfilePage() {
     const [trainer, setTrainer] = useState<TrainerData | null>(null);
     const [reviews, setReviews] = useState<ReviewWithReviewer[]>([]);
     const [loading, setLoading] = useState(true);
+    const [requireVerification, setRequireVerification] = useState(true);
 
     const trainerId = params.id as string;
 
@@ -32,7 +34,17 @@ export default function TrainerProfilePage() {
 
     const loadTrainer = async () => {
         try {
-            // Get trainer profile
+            // 1. Fetch Platform Settings
+            const { data: settings } = await supabase
+                .from("platform_settings")
+                .select("require_trainer_verification")
+                .single();
+            
+            if (settings) {
+                setRequireVerification(settings.require_trainer_verification);
+            }
+
+            // 2. Get trainer profile
             const { data: tp } = await supabase
                 .from("trainer_profiles")
                 .select("*")
@@ -44,19 +56,34 @@ export default function TrainerProfilePage() {
                 return;
             }
 
-            // Get user info
+            // 3. Get user info
             const { data: userData } = await supabase
                 .from("users")
                 .select("first_name, last_name, email")
                 .eq("id", trainerId)
                 .single();
 
+            // 4. Get Dispute count
+            const { data: disputesData } = await supabase
+                .from("disputes")
+                .select("id, booking:bookings!inner(trainer_id)")
+                .eq("booking.trainer_id", trainerId);
+            
+            const disputeCount = (disputesData || []).length;
+
+            const isPerformanceVerified = 
+                (tp.total_sessions || 0) >= 3 && 
+                disputeCount === 0 && 
+                Number(tp.completion_rate) >= 95 && 
+                Number(tp.reliability_score) >= 95;
+
             setTrainer({
                 ...(tp as TrainerProfileRow),
                 user: userData as { first_name: string; last_name: string; email: string },
+                is_performance_verified: isPerformanceVerified
             });
 
-            // Get reviews
+            // 4. Get reviews
             const { data: reviewData } = await supabase
                 .from("reviews")
                 .select("*")
@@ -129,9 +156,14 @@ export default function TrainerProfilePage() {
                                 <h1 style={{ fontSize: "26px", fontWeight: 800, fontFamily: "var(--font-display)" }}>
                                     {trainer.user.first_name} {trainer.user.last_name}
                                 </h1>
-                                {trainer.is_verified && (
-                                    <span style={{ padding: "4px 12px", borderRadius: "var(--radius-full)", background: "#d1fae5", color: "#059669", fontSize: "12px", fontWeight: 600 }}>
-                                        <CheckCircle className="inline-block w-4 h-4 mr-1 text-primary" /> Verified
+                                {trainer.is_performance_verified && (
+                                    <span style={{ padding: "4px 12px", borderRadius: "var(--radius-full)", background: "rgba(163,255,18,0.1)", color: "var(--primary)", fontSize: "12px", fontWeight: 700, border: "1px solid rgba(163,255,18,0.2)" }}>
+                                        <CheckCircle className="inline-block w-4 h-4 mr-1 text-primary" /> Performance Verified
+                                    </span>
+                                )}
+                                {!trainer.is_performance_verified && trainer.total_sessions > 0 && (
+                                    <span style={{ padding: "4px 12px", borderRadius: "var(--radius-full)", background: "rgba(96,165,250,0.1)", color: "#60a5fa", fontSize: "12px", fontWeight: 700, border: "1px solid rgba(96,165,250,0.2)" }}>
+                                        Pro Coach
                                     </span>
                                 )}
                             </div>
@@ -235,7 +267,16 @@ export default function TrainerProfilePage() {
                             3% platform fee applies at checkout
                         </p>
 
-                        {user?.role === "athlete" ? (
+                        {requireVerification && !trainer.is_verified ? (
+                            <div style={{ padding: "16px", borderRadius: "var(--radius-md)", background: "var(--gray-50)", border: "1px solid var(--gray-200)", textAlign: "center" }}>
+                                <p style={{ fontSize: "13px", color: "var(--gray-500)", fontWeight: 600 }}>
+                                    Booking Unavailable
+                                </p>
+                                <p style={{ fontSize: "12px", color: "var(--gray-400)", marginTop: "4px" }}>
+                                    This trainer is awaiting verification from the admin.
+                                </p>
+                            </div>
+                        ) : user?.role === "athlete" ? (
                             <a
                                 href="/dashboard/search"
                                 style={{
@@ -272,7 +313,7 @@ export default function TrainerProfilePage() {
                             </div>
                             <div style={{ display: "flex", justifyContent: "space-between" }}>
                                 <span style={{ fontSize: "13px", color: "var(--gray-500)" }}>Total Sessions</span>
-                                <span style={{ fontSize: "13px", fontWeight: 600 }}>{trainer.total_reviews || 0}+</span>
+                                <span style={{ fontSize: "13px", fontWeight: 600 }}>{trainer.total_sessions || 0}+</span>
                             </div>
                         </div>
                     </div>

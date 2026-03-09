@@ -4,11 +4,24 @@ import { useState, useEffect } from "react";
 import { Download, Plus, Search, Calendar, ChevronDown, FilterX, MoreVertical } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
+const SPORTS_LIST = [
+    "Personal Training", "Yoga", "Pilates", "Tennis", "Golf", "Swimming",
+    "Cycling", "Running", "Football", "Basketball", "Baseball", "Hockey",
+    "Soccer", "Volleyball", "Martial Arts", "Boxing", "Dance", "Gymnastics",
+    "Weightlifting", "CrossFit", "Rowing", "Surfing", "Snowboarding", "Skiing", "Meditation"
+].sort();
+
+
 export default function AdminBookingsPage() {
     const [searchQuery, setSearchQuery] = useState("");
     const [activeTab, setActiveTab] = useState("All");
     const [rawBookings, setRawBookings] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const [currentPage, setCurrentPage] = useState(1);
+    const [dateFilter, setDateFilter] = useState("All Time");
+    const [sportFilter, setSportFilter] = useState("All");
+    const itemsPerPage = 8;
+
 
     useEffect(() => {
         const loadBookings = async () => {
@@ -54,11 +67,70 @@ export default function AdminBookingsPage() {
         loadBookings();
     }, []);
 
+    const isDateInRange = (dateStr: string, range: string) => {
+        if (range === "All Time") return true;
+        const date = new Date(dateStr);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const targetDate = new Date(date);
+        targetDate.setHours(0, 0, 0, 0);
+
+        if (range === "Today") return targetDate.getTime() === today.getTime();
+        if (range === "Last 7 Days") return today.getTime() - targetDate.getTime() <= (7 * 24 * 60 * 60 * 1000) && targetDate.getTime() <= today.getTime();
+        if (range === "Last 30 Days") return today.getTime() - targetDate.getTime() <= (30 * 24 * 60 * 60 * 1000) && targetDate.getTime() <= today.getTime();
+        if (range === "This Month") return targetDate.getMonth() === today.getMonth() && targetDate.getFullYear() === today.getFullYear();
+        
+        return true;
+    };
+
     const bookings = rawBookings.filter(b => {
-        if (activeTab !== "All" && b.status !== activeTab) return false;
+        if (activeTab === "Upcoming" && b.rawStatus !== "pending" && b.rawStatus !== "confirmed") return false;
+        if (activeTab === "Completed" && b.rawStatus !== "completed") return false;
+        if (activeTab === "Cancelled" && b.rawStatus !== "cancelled") return false;
+        if (sportFilter !== "All" && b.category.toUpperCase() !== sportFilter.toUpperCase()) return false;
+        if (!isDateInRange(b.date, dateFilter)) return false;
         if (searchQuery && !b.athlete.toLowerCase().includes(searchQuery.toLowerCase()) && !b.trainer.toLowerCase().includes(searchQuery.toLowerCase())) return false;
         return true;
     });
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [activeTab, searchQuery, dateFilter, sportFilter]);
+
+    const totalPages = Math.ceil(bookings.length / itemsPerPage);
+    const paginatedBookings = bookings.slice(
+        (currentPage - 1) * itemsPerPage,
+        currentPage * itemsPerPage
+    );
+
+    const handleExportCSV = () => {
+        const headers = ["Booking ID", "Athlete", "Trainer", "Date", "Time", "Category", "Status"];
+        
+        const exportData = bookings.map(b => [
+            b.id,
+            b.athlete,
+            b.trainer,
+            b.date,
+            b.time,
+            b.category,
+            b.rawStatus
+        ]);
+
+        const csvContent = [
+            headers.join(","),
+            ...exportData.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(","))
+        ].join("\n");
+
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement("a");
+        const url = URL.createObjectURL(blob);
+        link.setAttribute("href", url);
+        link.setAttribute("download", `bookings_export_${new Date().toISOString().split('T')[0]}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
 
     return (
         <div className="space-y-8 max-w-[1200px]">
@@ -70,7 +142,10 @@ export default function AdminBookingsPage() {
                     <p className="text-sm font-medium text-text-main/60">Manage platform-wide training appointments and athlete sessions.</p>
                 </div>
                 <div className="flex items-center gap-3">
-                    <button className="flex items-center gap-2 px-5 py-2.5 rounded-full border border-gray-700 bg-surface text-sm font-bold text-text-main/80 hover:text-text-main hover:border-gray-500 transition-colors">
+                    <button 
+                        onClick={handleExportCSV}
+                        className="flex items-center gap-2 px-5 py-2.5 rounded-full border border-gray-700 bg-surface text-sm font-bold text-text-main/80 hover:text-text-main hover:border-gray-500 transition-colors"
+                    >
                         <Download size={16} /> Export CSV
                     </button>
                     <button className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-primary text-bg font-black text-sm hover:shadow-[0_0_10px_rgba(163,255,18,0.2)] transition-all">
@@ -83,15 +158,38 @@ export default function AdminBookingsPage() {
             <div className="flex flex-wrap items-center justify-between gap-4 py-4 border-b border-white/5">
 
                 <div className="flex flex-wrap items-center gap-4">
-                    <button className="flex items-center gap-3 bg-surface border border-white/5 rounded-full px-5 py-2.5 text-sm font-bold text-text-main/80">
-                        <Calendar size={16} /> Oct 12 - Oct 19, 2023 <ChevronDown size={14} className="ml-2" />
-                    </button>
-                    <button className="flex items-center gap-3 bg-surface border border-white/5 rounded-full px-5 py-2.5 text-sm font-bold text-text-main/80">
-                        <div className="w-4 h-4 rounded-full bg-gray-700 flex items-center justify-center">
+                    <div className="relative group">
+                        <Calendar size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-main/80 pointer-events-none" />
+                        <select
+                            value={dateFilter}
+                            onChange={(e) => setDateFilter(e.target.value)}
+                            className="appearance-none bg-surface border border-white/5 rounded-full pl-11 pr-10 py-2.5 text-sm font-bold text-text-main/80 w-48 focus:outline-none focus:border-gray-600 transition-colors cursor-pointer"
+                        >
+                            <option value="All Time">All Time</option>
+                            <option value="Today">Today</option>
+                            <option value="Last 7 Days">Last 7 Days</option>
+                            <option value="Last 30 Days">Last 30 Days</option>
+                            <option value="This Month">This Month</option>
+                        </select>
+                        <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-text-main/40 pointer-events-none" />
+                    </div>
+
+                    <div className="relative group">
+                        <div className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-gray-700 flex items-center justify-center pointer-events-none">
                             <div className="w-1.5 h-1.5 rounded-full bg-gray-400"></div>
                         </div>
-                        Sport: All Categories <ChevronDown size={14} className="ml-2" />
-                    </button>
+                        <select
+                            value={sportFilter}
+                            onChange={(e) => setSportFilter(e.target.value)}
+                            className="appearance-none bg-surface border border-white/5 rounded-full pl-11 pr-10 py-2.5 text-sm font-bold text-text-main/80 w-56 focus:outline-none focus:border-gray-600 transition-colors cursor-pointer"
+                        >
+                            <option value="All">Sport: All Categories</option>
+                            {SPORTS_LIST.map(sport => (
+                                <option key={sport} value={sport}>{sport}</option>
+                            ))}
+                        </select>
+                        <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-text-main/40 pointer-events-none" />
+                    </div>
                 </div>
 
                 <div className="flex items-center gap-6">
@@ -107,7 +205,16 @@ export default function AdminBookingsPage() {
                             </button>
                         ))}
                     </div>
-                    <button className="text-text-main/60 hover:text-text-main text-xs font-bold flex items-center gap-1.5 transition-colors">
+                    <button 
+                        onClick={() => {
+                            setActiveTab("All");
+                            setSearchQuery("");
+                            setDateFilter("All Time");
+                            setSportFilter("All");
+                            setCurrentPage(1);
+                        }}
+                        className="text-text-main/60 hover:text-text-main text-xs font-bold flex items-center gap-1.5 transition-colors"
+                    >
                         <FilterX size={14} /> Clear Filters
                     </button>
                 </div>
@@ -129,7 +236,7 @@ export default function AdminBookingsPage() {
                             </tr>
                         </thead>
                         <tbody className="text-sm">
-                            {bookings.map((b, i) => (
+                            {paginatedBookings.map((b, i) => (
                                 <tr key={b.id} className="border-b border-white/5/50 hover:bg-white/5 transition-colors">
                                     <td className="px-6 py-5 text-text-main/60 font-medium">{b.id}</td>
                                     <td className="px-6 py-5">
@@ -166,20 +273,40 @@ export default function AdminBookingsPage() {
                 </div>
 
                 {/* Pagination */}
-                <div className="px-6 py-4 flex items-center justify-between border-t border-white/5 bg-surface">
-                    <div className="text-xs font-bold text-text-main/40 tracking-wide">
-                        Showing <span className="text-text-main">1</span> to <span className="text-text-main">10</span> of <span className="text-text-main">1,248</span> results
+                {bookings.length > 0 && (
+                    <div className="px-6 py-4 flex items-center justify-between border-t border-white/5 bg-surface">
+                        <div className="text-xs font-bold text-text-main/40 tracking-wide">
+                            Showing <span className="text-text-main">{(currentPage - 1) * itemsPerPage + 1}</span> to <span className="text-text-main">{Math.min(currentPage * itemsPerPage, bookings.length)}</span> of <span className="text-text-main">{bookings.length}</span> results
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <button 
+                                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                                disabled={currentPage === 1}
+                                className="w-8 h-8 flex items-center justify-center text-text-main/40 hover:text-text-main disabled:opacity-30 disabled:cursor-not-allowed"
+                            >‹</button>
+                            
+                            {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                                <button
+                                    key={page}
+                                    onClick={() => setCurrentPage(page)}
+                                    className={`w-8 h-8 rounded-full font-black transition-all ${
+                                        currentPage === page 
+                                        ? "bg-primary text-bg shadow-[0_0_10px_rgba(163,255,18,0.3)]" 
+                                        : "text-text-main/60 hover:text-text-main"
+                                    }`}
+                                >
+                                    {page}
+                                </button>
+                            ))}
+
+                            <button 
+                                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                                disabled={currentPage === totalPages || totalPages === 0}
+                                className="w-8 h-8 flex items-center justify-center text-text-main/40 hover:text-text-main disabled:opacity-30 disabled:cursor-not-allowed"
+                            >›</button>
+                        </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                        <button className="w-8 h-8 flex items-center justify-center text-text-main/40 hover:text-text-main disabled:opacity-50">‹</button>
-                        <button className="w-8 h-8 rounded-full bg-primary text-bg font-black shadow-[0_0_10px_rgba(163,255,18,0.3)]">1</button>
-                        <button className="w-8 h-8 rounded-full text-text-main/60 font-bold hover:text-text-main">2</button>
-                        <button className="w-8 h-8 rounded-full text-text-main/60 font-bold hover:text-text-main">3</button>
-                        <span className="text-gray-600 px-1">...</span>
-                        <button className="w-8 h-8 rounded-full text-text-main/60 font-bold hover:text-text-main">125</button>
-                        <button className="w-8 h-8 flex items-center justify-center text-text-main/40 hover:text-text-main">›</button>
-                    </div>
-                </div>
+                )}
             </div>
 
         </div>

@@ -17,7 +17,7 @@ const prisma = new PrismaClient();
 
 // Valid state transitions
 const VALID_TRANSITIONS: Record<string, string[]> = {
-    [BookingStatus.PENDING]: [BookingStatus.CONFIRMED, BookingStatus.CANCELLED],
+    [BookingStatus.PENDING]: [BookingStatus.CONFIRMED, BookingStatus.CANCELLED, BookingStatus.REJECTED],
     [BookingStatus.CONFIRMED]: [BookingStatus.COMPLETED, BookingStatus.CANCELLED, BookingStatus.NO_SHOW, BookingStatus.RESCHEDULE_REQUESTED],
     [BookingStatus.RESCHEDULE_REQUESTED]: [BookingStatus.CONFIRMED, BookingStatus.CANCELLED],
     [BookingStatus.COMPLETED]: [BookingStatus.DISPUTED],
@@ -43,17 +43,32 @@ export class BookingService {
             throw new NotFoundError('Trainer not found or not available');
         }
 
-        // Check scheduling conflict
-        const existingBooking = await prisma.booking.findFirst({
+        // Check scheduling conflict using time-range overlap
+        const requestedStart = new Date(data.scheduledAt);
+        const requestedDuration = data.durationMinutes || 60;
+        const requestedEnd = new Date(requestedStart.getTime() + requestedDuration * 60 * 1000);
+
+        // Fetch all active bookings for this trainer in a reasonable time window
+        const nearbyBookings = await prisma.booking.findMany({
             where: {
                 trainerId: data.trainerId,
                 status: { in: ['pending', 'confirmed'] },
-                scheduledAt: new Date(data.scheduledAt),
+                scheduledAt: {
+                    gte: new Date(requestedStart.getTime() - 24 * 60 * 60 * 1000),
+                    lte: new Date(requestedEnd.getTime() + 24 * 60 * 60 * 1000),
+                },
             },
         });
 
-        if (existingBooking) {
-            throw new BadRequestError('Trainer already has a booking at this time');
+        // Check for actual time-range overlaps
+        const hasOverlap = nearbyBookings.some(b => {
+            const existingStart = new Date(b.scheduledAt).getTime();
+            const existingEnd = existingStart + b.durationMinutes * 60 * 1000;
+            return requestedStart.getTime() < existingEnd && requestedEnd.getTime() > existingStart;
+        });
+
+        if (hasOverlap) {
+            throw new BadRequestError('Trainer already has a booking during this time slot');
         }
 
         // Calculate pricing

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { getSession, AuthUser } from "@/lib/auth";
 import { supabase, BookingRow } from "@/lib/supabase";
-import { Calendar, Clock, CheckCircle, Wallet, Star, MessageSquare, TrendingUp, Search, Activity, ArrowUpRight, Hand, Inbox } from "lucide-react";
+import { Calendar, Clock, CheckCircle, Wallet, Star, MessageSquare, TrendingUp, Search, Activity, ArrowUpRight, Hand, Inbox, AlertTriangle } from "lucide-react";
 import Link from "next/link";
 
 interface Stats {
@@ -28,13 +28,34 @@ export default function DashboardOverview() {
     const [recentBookings, setRecentBookings] = useState<(BookingRow & { other_user?: { first_name: string; last_name: string } })[]>([]);
     const [loading, setLoading] = useState(true);
 
+    const [requireVerification, setRequireVerification] = useState(true);
+
     useEffect(() => {
         const session = getSession();
         if (session) {
             setUser(session);
             loadDashboardData(session);
+            fetchSettings();
         }
     }, []);
+
+    const fetchSettings = async () => {
+        const [settingsRes, profileRes] = await Promise.all([
+            supabase.from("platform_settings").select("require_trainer_verification").single(),
+            user ? supabase.from("trainer_profiles").select("*").eq("user_id", user.id).single() : Promise.resolve({ data: null })
+        ]);
+        
+        if (settingsRes.data) {
+            setRequireVerification(settingsRes.data.require_trainer_verification);
+        }
+
+        if (profileRes.data && user) {
+            const updatedUser = { ...user, trainerProfile: profileRes.data };
+            setUser(updatedUser);
+            // We don't necessarily need to update local storage on every dashboard load, 
+            // but it helps keep it in sync.
+        }
+    };
 
     const loadDashboardData = async (u: AuthUser) => {
         try {
@@ -134,6 +155,22 @@ export default function DashboardOverview() {
 
     return (
         <div className="space-y-8 pb-8 max-w-[1200px]">
+            {/* Verification Notice for Trainers */}
+            {isTrainer && requireVerification && user?.trainerProfile && !user.trainerProfile.is_verified && (
+                <div className="p-6 bg-blue-500/10 border border-blue-500/20 rounded-[24px] flex items-start gap-4 animate-in fade-in slide-in-from-top-4 duration-500 shadow-sm">
+                    <div className="w-12 h-12 rounded-2xl bg-blue-500/20 flex items-center justify-center shrink-0">
+                        <AlertTriangle className="text-blue-400 w-6 h-6" />
+                    </div>
+                    <div>
+                        <h3 className="text-blue-400 font-bold text-lg mb-1">Action Required: Profile Verification</h3>
+                        <p className="text-text-main/70 text-sm leading-relaxed max-w-2xl font-medium">
+                            Your profile is currently hidden from athletes because the platform requires an admin to verify your account. 
+                            Ensure your <Link href="/dashboard/trainer/setup" className="text-primary hover:underline">profile setup</Link> is complete, and an admin will review it for approval.
+                        </p>
+                    </div>
+                </div>
+            )}
+
             {/* Header Section */}
             <div className="relative overflow-hidden rounded-[24px] bg-surface border border-white/5">
                 <div className="relative p-8 sm:p-10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
