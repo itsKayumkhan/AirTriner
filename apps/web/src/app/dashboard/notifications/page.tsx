@@ -68,7 +68,50 @@ export default function NotificationsPage() {
     const handleOfferResponse = async (notificationId: string, offerId: string, response: "accepted" | "declined") => {
         setIsResponding(true);
         try {
-            // Update the training offer status
+            // 1. Get the full offer details to get the proposed date and price
+            const { data: offer, error: fetchError } = await supabase
+                .from("training_offers")
+                .select("*")
+                .eq("id", offerId)
+                .single();
+
+            if (fetchError || !offer) throw new Error("Could not find offer details");
+
+            if (response === "accepted") {
+                // 2. Create the booking with the CORRECT scheduled date
+                const proposed = offer.proposed_dates as any || {};
+                const scheduledAt = proposed.scheduledAt || new Date().toISOString();
+                
+                // Calculate fees (standard platform fee is 3% or whatever is in shared, here we'll use numeric for safety)
+                const price = Number(offer.price);
+                const platformFee = Math.round(price * 0.03 * 100) / 100;
+                const totalPaid = price + platformFee;
+
+                const { error: bookingError } = await supabase
+                    .from("bookings")
+                    .insert({
+                        athlete_id: offer.athlete_id,
+                        trainer_id: offer.trainer_id,
+                        sport: offer.sport || "General Training",
+                        scheduled_at: scheduledAt,
+                        duration_minutes: offer.session_length_min || 60,
+                        price: price,
+                        platform_fee: platformFee,
+                        total_paid: totalPaid,
+                        status: "pending",
+                        athlete_notes: `Accepted offer: ${offer.message || ""}`,
+                        status_history: [{
+                            to: "pending",
+                            by: user?.id,
+                            at: new Date().toISOString(),
+                            reason: "Accepted Trainer Offer"
+                        }]
+                    });
+
+                if (bookingError) throw bookingError;
+            }
+
+            // 3. Update the training offer status
             const { error: offerError } = await supabase
                 .from("training_offers")
                 .update({ status: response })

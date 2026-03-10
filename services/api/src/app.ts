@@ -18,6 +18,8 @@ import userRoutes from './modules/users/user.routes';
 import bookingRoutes from './modules/bookings/booking.routes';
 import matchingRoutes from './modules/matching/matching.routes';
 import paymentRoutes from './modules/payments/payment.routes';
+import messageRoutes from './modules/messages/message.routes';
+import offerRoutes from './modules/offers/offer.routes';
 import { startReminderCron } from './jobs/reminder.cron';
 
 const app: Express = express();
@@ -92,6 +94,8 @@ app.use(`${apiPrefix}/users`, userRoutes);
 app.use(`${apiPrefix}/bookings`, bookingRoutes);
 app.use(`${apiPrefix}/discover`, matchingRoutes);
 app.use(`${apiPrefix}/payments`, paymentRoutes);
+app.use(`${apiPrefix}/messages`, messageRoutes);
+app.use(`${apiPrefix}/offers`, offerRoutes);
 
 // ---- 404 Handler ----
 app.use((_req, res) => {

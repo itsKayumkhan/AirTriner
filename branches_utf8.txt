@@ -1,0 +1,8 @@
+﻿  add-the-model-to-view-the-offer
+  admin-panel-ui-changes
+* advertising-feature
+  bug-fixing-and-connect-to-the-database
+  feature-1-by-asmit
+  home-page-component-responsive-and-implemented-the-trainer-avaliability-logic
+  implement-the-review-and-rating-features
+  main

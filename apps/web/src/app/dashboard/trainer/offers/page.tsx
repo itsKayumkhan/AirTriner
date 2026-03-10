@@ -14,6 +14,7 @@ interface Athlete {
     athlete_profile: {
         sports: string[];
         skill_level: string;
+        address_line1: string | null;
         city: string | null;
         state: string | null;
     } | null;
@@ -54,7 +55,9 @@ export default function TrainingOffersPage() {
         rate: "",
         introDiscount: false,
         discountPercent: "20",
+        date: "",
         timeSlot: "",
+        sport: "",
     });
 
     useEffect(() => {
@@ -72,7 +75,7 @@ export default function TrainingOffersPage() {
             // Load athletes
             const { data: athleteData } = await supabase
                 .from("users")
-                .select("id, first_name, last_name, avatar_url, athlete_profiles(sports, skill_level, city, state)")
+                .select("id, first_name, last_name, avatar_url, athlete_profiles(sports, skill_level, address_line1, city, state)")
                 .eq("role", "athlete")
                 .limit(50);
 
@@ -82,8 +85,8 @@ export default function TrainingOffersPage() {
                     first_name: a.first_name as string,
                     last_name: a.last_name as string,
                     avatar_url: a.avatar_url as string | null,
-                    athlete_profile: Array.isArray(a.athlete_profiles) && a.athlete_profiles.length > 0
-                        ? a.athlete_profiles[0] as Athlete['athlete_profile']
+                    athlete_profile: a.athlete_profiles 
+                        ? (Array.isArray(a.athlete_profiles) ? a.athlete_profiles[0] : a.athlete_profiles) as Athlete['athlete_profile']
                         : null,
                 })));
             }
@@ -136,6 +139,11 @@ export default function TrainingOffersPage() {
 
         const finalRateToUse = hasCustomRate ? numericRate : finalTrainerRate;
 
+        if (!offerData.date) {
+            setOfferError("Please select a date for the session.");
+            return;
+        }
+
         if (!offerData.timeSlot.trim()) {
             setOfferError("Please select or enter a preferred time slot.");
             return;
@@ -154,8 +162,12 @@ export default function TrainingOffersPage() {
                 message: offerData.message || null,
                 price: finalRate,
                 session_length_min: offerData.sessionType === "private" ? 60 : 60,
-                sport: selectedAthlete.athlete_profile?.sports?.[0] || null,
-                proposed_dates: { time_slot: offerData.timeSlot, session_type: offerData.sessionType },
+                sport: offerData.sport || selectedAthlete.athlete_profile?.sports?.[0] || null,
+                proposed_dates: { 
+                    time_slot: offerData.timeSlot, 
+                    session_type: offerData.sessionType,
+                    scheduledAt: offerData.date
+                },
             }).select("id").single();
             if (offerError) throw offerError;
 
@@ -169,12 +181,13 @@ export default function TrainingOffersPage() {
                     offer_id: insertedOffer.id,
                     trainer_id: user.id,
                     trainer_name: `${user.firstName} ${user.lastName}`,
-                    sport: selectedAthlete.athlete_profile?.sports?.[0] || "",
+                    sport: offerData.sport || selectedAthlete.athlete_profile?.sports?.[0] || "",
                     session_type: offerData.sessionType,
                     rate: finalRate,
                     original_rate: finalRateToUse,
                     has_discount: offerData.introDiscount,
                     time_slot: offerData.timeSlot,
+                    scheduledAt: offerData.date,
                 },
             });
 
@@ -182,7 +195,7 @@ export default function TrainingOffersPage() {
             setShowNewOffer(false);
             setOfferError("");
             setSelectedAthlete(null);
-            setOfferData({ message: "", sessionType: "private", rate: "", introDiscount: false, discountPercent: "20", timeSlot: "" });
+            setOfferData({ message: "", sessionType: "private", rate: "", introDiscount: false, discountPercent: "20", date: "", timeSlot: "", sport: "" });
 
             // Reload
             if (user) loadData(user);
@@ -297,10 +310,12 @@ export default function TrainingOffersPage() {
                                         <div className="min-w-0">
                                             <h3 className="font-bold text-white text-[17px] truncate">{athlete.first_name} {athlete.last_name}</h3>
                                             <p className="text-[13px] text-text-main/50 flex items-center gap-1.5 mt-0.5 truncate">
-                                                <MapPin size={12} className="shrink-0" />
+                                                <MapPin size={12} className="shrink-0 text-primary/70" />
                                                 <span className="truncate">
                                                     {athlete.athlete_profile?.city && athlete.athlete_profile?.state ? (
                                                         `${athlete.athlete_profile.city}, ${athlete.athlete_profile.state}`
+                                                    ) : athlete.athlete_profile?.address_line1 ? (
+                                                        athlete.athlete_profile.address_line1
                                                     ) : (
                                                         "Location not set"
                                                     )}
@@ -310,21 +325,26 @@ export default function TrainingOffersPage() {
                                     </div>
 
                                     {/* Sports Tags */}
-                                    <div className="flex flex-wrap gap-2 mb-6 flex-1">
+                                    <div className="flex flex-wrap gap-2 mb-6">
                                         {(athlete.athlete_profile?.sports || []).slice(0, 3).map((s: string) => (
-                                            <span key={s} className="px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-white/5 text-text-main/80 border border-white/5">
+                                            <span key={s} className="inline-flex items-center px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-white/5 text-text-main/70 border border-white/5 whitespace-nowrap">
                                                 {s.replace(/_/g, " ")}
                                             </span>
                                         ))}
                                         {athlete.athlete_profile?.skill_level && (
-                                            <span className="px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-primary/10 text-primary border border-primary/10">
+                                            <span className="inline-flex items-center px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-primary/10 text-primary border border-primary/10 whitespace-nowrap">
                                                 {athlete.athlete_profile.skill_level}
                                             </span>
                                         )}
                                     </div>
 
                                     <button
-                                        onClick={(e) => { e.stopPropagation(); setSelectedAthlete(athlete); setShowNewOffer(true); }}
+                                        onClick={(e) => { 
+                                            e.stopPropagation(); 
+                                            setSelectedAthlete(athlete); 
+                                            setOfferData(prev => ({ ...prev, sport: athlete.athlete_profile?.sports?.[0] || "" }));
+                                            setShowNewOffer(true); 
+                                        }}
                                         className="w-full py-3.5 rounded-xl border border-white/5 bg-[#272A35] text-white font-bold text-sm flex items-center justify-center gap-2 group-hover:bg-primary group-hover:text-bg group-hover:border-primary transition-colors"
                                     >
                                         <Send size={15} /> Send Offer
@@ -422,6 +442,12 @@ export default function TrainingOffersPage() {
                                     <p className="text-[12px] text-text-main/50 uppercase tracking-widest font-bold mt-1">
                                         {(selectedAthlete.athlete_profile?.sports || []).slice(0, 2).map((s: string) => s.replace(/_/g, " ")).join(", ") || "Athletic Training"}
                                     </p>
+                                    <p className="text-[11px] text-text-main/40 font-medium flex items-center gap-1 mt-1">
+                                        <MapPin size={10} className="text-primary/50" />
+                                        {selectedAthlete.athlete_profile?.city && selectedAthlete.athlete_profile?.state 
+                                            ? `${selectedAthlete.athlete_profile.city}, ${selectedAthlete.athlete_profile.state}`
+                                            : selectedAthlete.athlete_profile?.address_line1 || "Location not set"}
+                                    </p>
                                 </div>
                             </div>
 
@@ -443,6 +469,25 @@ export default function TrainingOffersPage() {
                                         rows={2}
                                         className="w-full bg-[#12141A] border border-white/5 rounded-xl p-4 text-white text-sm outline-none focus:border-primary/50 resize-none transition-colors placeholder:text-text-main/30"
                                     />
+                                </div>
+
+                                <div>
+                                    <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-3">
+                                        Select Sport
+                                    </label>
+                                    <select
+                                        value={offerData.sport}
+                                        onChange={(e) => setOfferData(prev => ({ ...prev, sport: e.target.value }))}
+                                        className="w-full bg-[#12141A] border border-white/5 rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-primary/50 transition-colors appearance-none"
+                                        style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 16px center' }}
+                                    >
+                                        {(selectedAthlete.athlete_profile?.sports || []).map((s: string) => (
+                                            <option key={s} value={s}>{s.replace(/_/g, " ")}</option>
+                                        ))}
+                                        {(!selectedAthlete.athlete_profile?.sports || selectedAthlete.athlete_profile.sports.length === 0) && (
+                                            <option value="">Athletic Training</option>
+                                        )}
+                                    </select>
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-4">
@@ -467,6 +512,21 @@ export default function TrainingOffersPage() {
                                             onChange={(e) => setOfferData(prev => ({ ...prev, rate: e.target.value }))}
                                             placeholder={user?.trainerProfile?.hourly_rate?.toString() || "50"}
                                             className="w-full bg-[#12141A] border border-white/5 rounded-2xl px-5 py-3.5 text-white text-sm outline-none focus:border-primary/50 transition-colors placeholder:text-text-main/30"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">Session Date</label>
+                                    <div className="relative">
+                                        <Calendar className="absolute left-5 top-1/2 -translate-y-1/2 text-primary/50" size={16} />
+                                        <input
+                                            type="date"
+                                            value={offerData.date}
+                                            min={new Date().toISOString().split('T')[0]}
+                                            onChange={(e) => setOfferData(prev => ({ ...prev, date: e.target.value }))}
+                                            className="w-full bg-[#12141A] border border-white/5 rounded-2xl pl-12 pr-5 py-3.5 text-white text-sm outline-none focus:border-primary/50 transition-colors"
+                                            required
                                         />
                                     </div>
                                 </div>

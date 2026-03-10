@@ -10,6 +10,13 @@ export enum UserRole {
     ADMIN = 'admin',
 }
 
+export enum OfferStatus {
+    PENDING = 'pending',
+    ACCEPTED = 'accepted',
+    DECLINED = 'declined',
+    EXPIRED = 'expired',
+}
+
 export enum SkillLevel {
     BEGINNER = 'beginner',
     INTERMEDIATE = 'intermediate',
@@ -67,6 +74,10 @@ export enum NotificationType {
     MESSAGE_RECEIVED = 'MESSAGE_RECEIVED',
     UPCOMING_SESSION_REMINDER_24H = 'UPCOMING_SESSION_REMINDER_24H',
     UPCOMING_SESSION_REMINDER_1H = 'UPCOMING_SESSION_REMINDER_1H',
+    VERIFICATION_REVOKED = 'VERIFICATION_REVOKED',
+    OFFER_RECEIVED = 'OFFER_RECEIVED',
+    OFFER_ACCEPTED = 'OFFER_ACCEPTED',
+    OFFER_DECLINED = 'OFFER_DECLINED',
 }
 
 export enum DisputeStatus {
