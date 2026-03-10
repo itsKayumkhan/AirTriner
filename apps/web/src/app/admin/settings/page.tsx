@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { getSession, AuthUser } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { Settings, Save, RefreshCw, Shield, Bell, Globe, CreditCard, Users, Calendar, AlertOctagon } from "lucide-react";
+import PopupModal from "@/components/common/PopupModal";
 
 interface PlatformSettings {
     platform_fee_percentage: number;
@@ -30,7 +31,16 @@ export default function AdminSettingsPage() {
         support_email: "support@airtrainer.com",
         maintenance_mode: false,
     });
-    const [notification, setNotification] = useState<{message: string; type: "success" | "error"} | null>(null);
+    const [popup, setPopup] = useState<{
+        type: "success" | "error" | "confirm" | "warning" | "info";
+        title: string;
+        message: string;
+        onConfirm?: () => void;
+    } | null>(null);
+
+    const showAlert = (type: "success" | "error" | "info", title: string, message: string) => {
+        setPopup({ type, title, message });
+    };
 
     useEffect(() => {
         const session = getSession();
@@ -41,15 +51,37 @@ export default function AdminSettingsPage() {
     }, []);
 
     const loadSettings = async () => {
+        setLoading(true);
         try {
-            // Load from localStorage for demonstration
-            const savedSettings = localStorage.getItem('airtrainer_platform_settings');
-            if (savedSettings) {
-                setSettings(JSON.parse(savedSettings));
+            const { data, error } = await supabase
+                .from("platform_settings")
+                .select("*")
+                .single();
+
+            if (error) {
+                if (error.code === "PGRST116") {
+                    console.log("No settings found, using defaults");
+                } else {
+                    throw error;
+                }
             }
-            setLoading(false);
+
+            if (data) {
+                setSettings({
+                    platform_fee_percentage: data.platform_fee_percentage,
+                    max_booking_distance: data.max_booking_distance,
+                    auto_approve_trainers: data.auto_approve_trainers,
+                    require_trainer_verification: data.require_trainer_verification,
+                    cancellation_policy_hours: data.cancellation_policy_hours,
+                    dispute_resolution_days: data.dispute_resolution_days,
+                    support_email: data.support_email,
+                    maintenance_mode: data.maintenance_mode,
+                });
+            }
         } catch (err) {
             console.error("Failed to load settings:", err);
+            showAlert("error", "Error", "Failed to load settings from server");
+        } finally {
             setLoading(false);
         }
     };
@@ -57,16 +89,21 @@ export default function AdminSettingsPage() {
     const saveSettings = async () => {
         setSaving(true);
         try {
-            // Save to localStorage simulation
-            await new Promise(resolve => setTimeout(resolve, 800)); 
-            localStorage.setItem('airtrainer_platform_settings', JSON.stringify(settings));
-            
-            setNotification({ message: "Settings saved successfully!", type: "success" });
-            setTimeout(() => setNotification(null), 3000);
-        } catch (err) {
+            const { error } = await supabase
+                .from("platform_settings")
+                .upsert({
+                    id: '00000000-0000-0000-0000-000000000001',
+                    ...settings,
+                    updated_at: new Date().toISOString(),
+                });
+
+            if (error) throw error;
+
+            showAlert("success", "Settings Saved", "Your platform configuration has been updated successfully.");
+        } catch (err: any) {
             console.error("Failed to save settings:", err);
-            setNotification({ message: "Failed to save settings", type: "error" });
-            setTimeout(() => setNotification(null), 3000);
+            const errorMsg = err.message || "Make sure you have admin permissions.";
+            showAlert("error", "Save Failed", errorMsg);
         } finally {
             setSaving(false);
         }
@@ -105,7 +142,7 @@ export default function AdminSettingsPage() {
                         className="flex items-center justify-center gap-2 w-full md:w-auto px-8 py-3.5 rounded-2xl bg-primary text-bg font-black text-sm uppercase tracking-widest hover:shadow-[0_0_30px_rgba(163,255,18,0.4)] hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:shadow-none"
                     >
                         {saving ? (
-                            <><RefreshCw size={18} className="animate-spin" /> Committing...</>
+                            <><RefreshCw size={18} className="animate-spin" /> Saving...</>
                         ) : (
                             <><Save size={18} strokeWidth={3} /> Save Configuration</>
                         )}
@@ -113,20 +150,8 @@ export default function AdminSettingsPage() {
                 </div>
             </div>
 
-            {/* Notification */}
-            {notification && (
-                <div className={`p-4 rounded-xl font-bold flex items-center gap-3 transition-all animate-in fade-in slide-in-from-top-4 ${
-                    notification.type === "success" 
-                        ? "bg-green-500/10 text-green-500 border border-green-500/20" 
-                        : "bg-red-500/10 text-red-500 border border-red-500/20"
-                }`}>
-                    {notification.type === "success" ? <Globe size={20} /> : <AlertOctagon size={20} />}
-                    {notification.message}
-                </div>
-            )}
-
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                
+
                 {/* Platform Configuration */}
                 <div className="bg-gradient-to-br from-surface to-surface/50 border border-white/5 rounded-[24px] p-8 shadow-2xl relative overflow-hidden group hover:border-white/10 transition-colors">
                     <div className="flex items-center gap-4 mb-8">
@@ -138,7 +163,7 @@ export default function AdminSettingsPage() {
                             <p className="text-xs font-semibold uppercase tracking-widest text-text-main/40 mt-1">Financials & Meta</p>
                         </div>
                     </div>
-                    
+
                     <div className="space-y-6">
                         <div className="relative">
                             <label className="block text-[10px] font-black uppercase tracking-widest text-text-main/60 mb-2 ml-1">
@@ -153,6 +178,7 @@ export default function AdminSettingsPage() {
                                 onChange={(e) => handleSettingChange('platform_fee_percentage', Number(e.target.value))}
                                 className="w-full bg-[#12141A] border border-white/5 rounded-xl px-5 py-3.5 text-sm font-bold text-text-main focus:outline-none focus:border-primary/50 shadow-inner transition-colors"
                             />
+                            <p className="text-[11px] text-text-main/40 mt-2 font-medium px-1">Percentage charged on each transaction</p>
                         </div>
 
                         <div className="relative">
@@ -167,6 +193,7 @@ export default function AdminSettingsPage() {
                                 onChange={(e) => handleSettingChange('max_booking_distance', Number(e.target.value))}
                                 className="w-full bg-[#12141A] border border-white/5 rounded-xl px-5 py-3.5 text-sm font-bold text-text-main focus:outline-none focus:border-primary/50 shadow-inner transition-colors"
                             />
+                            <p className="text-[11px] text-text-main/40 mt-2 font-medium px-1">Maximum distance for trainer-athlete matching</p>
                         </div>
 
                         <div className="relative">
@@ -179,6 +206,7 @@ export default function AdminSettingsPage() {
                                 onChange={(e) => handleSettingChange('support_email', e.target.value)}
                                 className="w-full bg-[#12141A] border border-white/5 rounded-xl px-5 py-3.5 text-sm font-bold text-text-main focus:outline-none focus:border-primary/50 shadow-inner transition-colors"
                             />
+                            <p className="text-[11px] text-text-main/40 mt-2 font-medium px-1">Email displayed to users for support</p>
                         </div>
 
                         <div className="pt-4 border-t border-white/5 mt-6">
@@ -216,7 +244,7 @@ export default function AdminSettingsPage() {
                             <p className="text-xs font-semibold uppercase tracking-widest text-text-main/40 mt-1">Provider Validation</p>
                         </div>
                     </div>
-                    
+
                     <div className="space-y-4">
                         <div className="flex items-center justify-between p-5 rounded-xl bg-[#12141A] border border-white/5 hover:border-white/10 transition-colors">
                             <div className="pr-4">
@@ -267,7 +295,7 @@ export default function AdminSettingsPage() {
                             <p className="text-xs font-semibold uppercase tracking-widest text-text-main/40 mt-1">Cancellations & Rules</p>
                         </div>
                     </div>
-                    
+
                     <div className="space-y-6">
                         <div className="relative">
                             <label className="block text-[10px] font-black uppercase tracking-widest text-text-main/60 mb-2 ml-1">
@@ -312,7 +340,7 @@ export default function AdminSettingsPage() {
                             <p className="text-xs font-semibold uppercase tracking-widest text-text-main/40 mt-1">Infrastructure Health</p>
                         </div>
                     </div>
-                    
+
                     <div className="flex flex-col gap-4 flex-1 justify-center">
                         <div className="flex items-center justify-between p-4 bg-[#12141A] border border-white/5 rounded-xl">
                             <p className="font-black text-sm uppercase tracking-widest text-text-main/80">Edge Database</p>
@@ -334,8 +362,16 @@ export default function AdminSettingsPage() {
                         </div>
                     </div>
                 </div>
-
             </div>
+
+            <PopupModal
+                isOpen={!!popup}
+                onClose={() => setPopup(null)}
+                type={popup?.type || "info"}
+                title={popup?.title || ""}
+                message={popup?.message || ""}
+                onConfirm={popup?.onConfirm}
+            />
         </div>
     );
 }

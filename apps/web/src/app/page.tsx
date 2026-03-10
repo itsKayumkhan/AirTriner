@@ -327,7 +327,7 @@ export default function Home() {
                     </p>
 
                     <div style={{ display: "flex", gap: "16px", justifyContent: "center", flexWrap: "wrap", marginBottom: "48px" }}>
-                        <a href="/trainers" style={{
+                        <a href="/dashboard/search" style={{
                             padding: "16px 32px", background: "var(--primary)", color: "var(--color-bg)",
                             borderRadius: "var(--radius-full)", fontWeight: 800, fontSize: "14px", textDecoration: "none",
                             textTransform: "uppercase", letterSpacing: "1px", transition: "all 0.2s"
@@ -757,12 +757,12 @@ export default function Home() {
 
             {/* REVIEWS SECTION */}
             <section style={{ padding: "100px 24px", background: "var(--color-bg)" }}>
-                <div style={{ maxWidth: "1200px", margin: "0 auto", display: "grid", gridTemplateColumns: "1fr 1.5fr", gap: "64px", alignItems: "center" }}>
-                    <div>
+                <div className="reviews-container" style={{ maxWidth: "1200px", margin: "0 auto", display: "grid", gridTemplateColumns: "1fr 1.5fr", gap: "64px", alignItems: "center" }}>
+                    <div className="reviews-text">
                         <h2 style={{ fontSize: "48px", fontWeight: 900, fontFamily: "var(--font-display)", textTransform: "uppercase", lineHeight: 1.1, marginBottom: "32px" }}>
                             REAL STORIES<br />FROM REAL<br />PEOPLE
                         </h2>
-                        <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "16px" }} className="reviews-social">
                             <div style={{ display: "flex", marginLeft: "10px" }}>
                                 {[1, 2, 3].map(i => (
                                     <div key={i} style={{ width: "40px", height: "40px", borderRadius: "50%", background: "var(--gray-800)", marginLeft: "-10px", border: "2px solid var(--color-bg)" }}></div>
@@ -774,8 +774,8 @@ export default function Home() {
                         </div>
                     </div>
 
-                    <div style={{ position: "relative" }}>
-                        <div style={{
+                    <div className="reviews-card-wrapper" style={{ position: "relative" }}>
+                        <div className="reviews-card" style={{
                             background: "var(--surface)", border: "2px solid var(--primary)", borderRadius: "var(--radius-xl)",
                             padding: "48px", position: "relative", boxShadow: "0 0 30px rgba(163,255,18,0.1)",
                             transition: "all 0.3s ease"
@@ -803,9 +803,9 @@ export default function Home() {
             {/* FOOTER */}
             <footer style={{ background: "var(--surface)", borderTop: "1px solid var(--gray-900)", padding: "80px 24px 40px" }}>
                 <div style={{ maxWidth: "1400px", margin: "0 auto" }}>
-                    <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr 1fr", gap: "64px", marginBottom: "80px" }}>
-                        {/* Brand */}
-                        <div>
+                    <div className="footer-grid" style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr 1fr", gap: "64px", marginBottom: "80px" }}>
+                        <div className="footer-col footer-brand">
+                            {/* Brand */}
                             <a href="/" style={{ display: "flex", alignItems: "center", gap: "10px", textDecoration: "none", marginBottom: "24px" }}>
                                 <div style={{
                                     width: "32px", height: "32px", background: "var(--primary)", borderRadius: "50%",
@@ -820,7 +820,7 @@ export default function Home() {
                             <p style={{ color: "var(--gray-400)", fontSize: "14px", lineHeight: 1.6, maxWidth: "300px", marginBottom: "24px" }}>
                                 The ultimate marketplace for athletes and coaches to connect, train, and dominate their field. Built for true sports competition.
                             </p>
-                            <div style={{ display: "flex", gap: "16px" }}>
+                            <div style={{ display: "flex", gap: "16px" }} className="footer-social">
                                 {/* Social icons placeholder */}
                                 <div style={{ width: "36px", height: "36px", borderRadius: "50%", background: "var(--gray-900)", display: "flex", alignItems: "center", justifyContent: "center", color: "white" }}>
                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M24 4.557c-.883.392-1.832.656-2.828.775 1.017-.609 1.798-1.574 2.165-2.724-.951.564-2.005.974-3.127 1.195-.897-.957-2.178-1.555-3.594-1.555-3.179 0-5.515 2.966-4.797 6.045-4.091-.205-7.719-2.165-10.148-5.144-1.29 2.213-.669 5.108 1.523 6.574-.806-.026-1.566-.247-2.229-.616-.054 2.281 1.581 4.415 3.949 4.89-.693.188-1.452.232-2.224.084.626 1.956 2.444 3.379 4.6 3.419-2.07 1.623-4.678 2.348-7.29 2.04 2.179 1.397 4.768 2.212 7.548 2.212 9.142 0 14.307-7.721 13.995-14.646.962-.695 1.797-1.562 2.457-2.549z" /></svg>
@@ -832,7 +832,7 @@ export default function Home() {
                         </div>
 
                         {/* Links 1 */}
-                        <div>
+                        <div className="footer-col">
                             <h4 style={{ fontSize: "12px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "1px", marginBottom: "24px", color: "white" }}>COMPANY</h4>
                             <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "16px" }}>
                                 {["About Us", "Careers", "Press Kit", "Contact"].map(link => (
@@ -842,7 +842,7 @@ export default function Home() {
                         </div>
 
                         {/* Links 2 */}
-                        <div>
+                        <div className="footer-col">
                             <h4 style={{ fontSize: "12px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "1px", marginBottom: "24px", color: "white" }}>RESOURCES</h4>
                             <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "16px" }}>
                                 {["Help Center", "Safety Guides", "Become a Partner", "Privacy Policy"].map(link => (
@@ -852,12 +852,70 @@ export default function Home() {
                         </div>
                     </div>
 
-                    <div style={{ padding: "32px 0 0", borderTop: "1px solid var(--gray-800)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "16px" }}>
+                    <div className="footer-bottom" style={{ padding: "32px 0 0", borderTop: "1px solid var(--gray-800)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "16px" }}>
                         <p style={{ color: "var(--gray-500)", fontSize: "12px", letterSpacing: "0.5px" }}>© 2026 AIRTRAINR MARKETPLACE INC.</p>
                         <p style={{ color: "var(--gray-500)", fontSize: "12px", letterSpacing: "0.5px" }}>POWERED BY <strong style={{ color: "white" }}>ELITE PERFORMANCE TECH</strong></p>
                     </div>
                 </div>
             </footer>
+
+            {/* FINAL RESPONSIVE OVERRIDES */}
+            <style>{`
+                @media (max-width: 968px) {
+                    .reviews-container {
+                        grid-template-columns: 1fr !important;
+                        gap: 48px !important;
+                    }
+                    .reviews-text {
+                        text-align: center;
+                        display: flex;
+                        flex-direction: column;
+                        align-items: center;
+                    }
+                    .reviews-text h2 {
+                        font-size: clamp(32px, 8vw, 48px) !important;
+                        margin-bottom: 24px !important;
+                    }
+                    .reviews-social {
+                        justify-content: center !important;
+                    }
+                    .reviews-card {
+                        padding: 32px 24px !important;
+                    }
+                    
+                    .footer-grid {
+                        grid-template-columns: 1fr !important;
+                        gap: 48px !important;
+                        text-align: center;
+                    }
+                    .footer-col {
+                        display: flex;
+                        flex-direction: column;
+                        align-items: center;
+                    }
+                    .footer-brand p {
+                        margin-left: auto !important;
+                        margin-right: auto !important;
+                    }
+                    .footer-social {
+                        justify-content: center !important;
+                    }
+                    .footer-col h4 {
+                        margin-bottom: 16px !important;
+                    }
+                    .footer-bottom {
+                        flex-direction: column !important;
+                        text-align: center !important;
+                        gap: 12px !important;
+                    }
+                }
+                
+                @media (max-width: 640px) {
+                    .reviews-card p {
+                        font-size: 16px !important;
+                    }
+                }
+            `}</style>
         </div>
     );
 }

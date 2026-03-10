@@ -12,6 +12,8 @@ type TrainerWithUser = TrainerProfileRow & {
     review_count: number;
     matchScore: number;
     cover_image: string; // assigned randomly based on sport
+    dispute_count: number;
+    is_performance_verified: boolean;
 };
 
 const SPORT_IMAGES: Record<string, string[]> = {
@@ -74,6 +76,21 @@ const SORT_OPTIONS = [
     { value: "rating", label: "Highest Rated" },
 ];
 
+// Haversine formula for calculating distance in miles
+const calculateDistance = (lat1: number | null, lon1: number | null, lat2: number | null, lon2: number | null): number => {
+    if (!lat1 || !lon1 || !lat2 || !lon2) return 9999;
+    
+    const R = 3958.8; // Earth's radius in miles
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = 
+        Math.sin(dLat/2) * Math.sin(dLat/2) +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+        Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+};
+
 export default function SearchTrainersPage() {
     const [user, setUser] = useState<AuthUser | null>(null);
     const [trainers, setTrainers] = useState<TrainerWithUser[]>([]);
@@ -85,6 +102,8 @@ export default function SearchTrainersPage() {
     const [minRating, setMinRating] = useState<number>(0);
     const [locationFilter, setLocationFilter] = useState<string>("");
     const [sortBy, setSortBy] = useState<string>("match");
+    const [skillFilter, setSkillFilter] = useState<string>("any");
+    const [timeFilter, setTimeFilter] = useState<string>("any");
 
     // Pagination
     const [currentPage, setCurrentPage] = useState(1);
@@ -113,51 +132,113 @@ export default function SearchTrainersPage() {
 
     const loadTrainers = async (session: AuthUser) => {
         try {
-            const { data: profiles } = await supabase
+            // 1. Fetch Platform Settings
+            const { data: settings } = await supabase
+                .from("platform_settings")
+                .select("require_trainer_verification")
+                .single();
+            
+            const requireVerification = settings?.require_trainer_verification ?? true;
+
+            // 2. Fetch Trainer Profiles
+            let query = supabase
                 .from("trainer_profiles")
                 .select("*")
                 .in("subscription_status", ["trial", "active"]);
+            
+            // Apply verification filter if required
+            if (requireVerification) {
+                query = query.eq("verification_status", "verified");
+            }
+
+            const { data: profiles } = await query;
 
             if (!profiles || profiles.length === 0) { setTrainers([]); setLoading(false); return; }
 
             const userIds = profiles.map((p: TrainerProfileRow) => p.user_id);
             const { data: users } = await supabase
                 .from("users")
-                .select("id, first_name, last_name, avatar_url")
+                .select("id, first_name, last_name, avatar_url, role")
                 .in("id", userIds);
 
-            const { data: reviews } = await supabase
-                .from("reviews")
-                .select("reviewee_id, rating")
-                .in("reviewee_id", userIds);
+            const usersMap = new Map((users || []).map((u: { id: string, first_name: string, last_name: string, avatar_url: string | null, role: string }) => [u.id, u]));
 
-            const usersMap = new Map((users || []).map((u: { id: string, first_name: string, last_name: string, avatar_url: string | null }) => [u.id, u]));
-
-            const ratingMap = new Map<string, { sum: number; count: number }>();
-            (reviews || []).forEach((r: { reviewee_id: string, rating: number }) => {
-                const existing = ratingMap.get(r.reviewee_id) || { sum: 0, count: 0 };
-                ratingMap.set(r.reviewee_id, { sum: existing.sum + r.rating, count: existing.count + 1 });
+            // 4. Fetch Disputes for verification logic (Feature 7.2)
+            const { data: disputesData } = await supabase
+                .from("disputes")
+                .select("booking:bookings!inner(trainer_id)")
+                .in("booking.trainer_id", userIds);
+            
+            const disputeCounts = new Map<string, number>();
+            (disputesData || []).forEach((d: any) => {
+                const tid = d.booking.trainer_id;
+                disputeCounts.set(tid, (disputeCounts.get(tid) || 0) + 1);
             });
 
             // Calculate match scores
             const athleteProfile = session.athleteProfile;
-            const enriched: TrainerWithUser[] = (profiles as TrainerProfileRow[]).map((p) => {
+            const enriched: TrainerWithUser[] = (profiles as TrainerProfileRow[])
+                .filter(p => {
+                    const u = usersMap.get(p.user_id);
+                    return u?.role === "trainer"; // Only show actual trainers, matching admin panel
+                })
+                .map((p) => {
+                const disputeCount = disputeCounts.get(p.user_id) || 0;
+                
+                // Feature 7.2 Verification Logic:
+                // 3+ sessions, no disputes, 95%+ completion/reliability
+                const isPerformanceVerified = 
+                    p.total_sessions >= 3 && 
+                    disputeCount === 0 && 
+                    Number(p.completion_rate) >= 95 && 
+                    Number(p.reliability_score) >= 95;
+
                 let matchScore = 50;
+                
                 if (athleteProfile) {
+                    // Sport overlap
                     const sportOverlap = (athleteProfile.sports || []).filter((s: string) => (p.sports || []).includes(s));
-                    if (sportOverlap.length > 0) matchScore += 30;
-                    if (athleteProfile.city && p.city && athleteProfile.city.toLowerCase() === p.city.toLowerCase()) matchScore += 15;
+                    if (sportOverlap.length > 0) matchScore += 20;
+
+                    // Location / Distance Match
+                    const distance = calculateDistance(
+                        athleteProfile.latitude, athleteProfile.longitude,
+                        p.latitude, p.longitude
+                    );
+                    
+                    if (athleteProfile.city && p.city && athleteProfile.city.toLowerCase() === p.city.toLowerCase()) {
+                        matchScore += 15; // Exact city match
+                    } else if (distance <= (p.travel_radius_miles || 20)) {
+                        matchScore += 10; // Within travel radius
+                    } else if (distance <= 50) {
+                        matchScore += 5; // Nearby
+                    }
+
+                    // Skill Level Match
+                    if (athleteProfile.skill_level && p.target_skill_levels?.includes(athleteProfile.skill_level)) {
+                        matchScore += 10;
+                    }
+
+                    // Availability Match (Optional check if athlete has preferred times)
+                    if (athleteProfile.preferredTrainingTimes && p.preferredTrainingTimes) {
+                        const timeOverlap = athleteProfile.preferredTrainingTimes.some(t => p.preferredTrainingTimes?.includes(t));
+                        if (timeOverlap) matchScore += 10;
+                    }
                 }
+
+                const rating = p.average_rating || 0;
+                if (rating >= 4.8) matchScore += 10;
+                else if (rating >= 4.5) matchScore += 5;
 
                 return {
                     ...p,
                     user: usersMap.get(p.user_id) as TrainerWithUser["user"],
-                    avg_rating: ratingMap.has(p.user_id)
-                        ? Math.round((ratingMap.get(p.user_id)!.sum / ratingMap.get(p.user_id)!.count) * 10) / 10
-                        : 0, 
-                    review_count: ratingMap.get(p.user_id)?.count || 0,
+                    avg_rating: rating,
+                    review_count: p.total_reviews || 0,
                     matchScore: Math.min(100, matchScore),
-                    cover_image: getSportImage(p.sports)
+                    cover_image: getSportImage(p.sports),
+                    dispute_count: disputeCount,
+                    is_performance_verified: isPerformanceVerified
                 };
             });
 
@@ -174,6 +255,11 @@ export default function SearchTrainersPage() {
             if (sportFilter !== "All Sports" && !(t.sports || []).some((s: string) => s.toLowerCase() === sportFilter.toLowerCase())) return false;
             if (Number(t.hourly_rate) > maxRate) return false;
             if (minRating > 0 && t.avg_rating < minRating) return false;
+            
+            // Exact Filters
+            if (skillFilter !== "any" && !t.target_skill_levels?.includes(skillFilter as any)) return false;
+            if (timeFilter !== "any" && !t.preferredTrainingTimes?.includes(timeFilter as any)) return false;
+
             if (locationFilter) {
                 const loc = `${t.city || ""} ${t.state || ""}`.toLowerCase();
                 if (!loc.includes(locationFilter.toLowerCase())) return false;
@@ -189,12 +275,12 @@ export default function SearchTrainersPage() {
         }
 
         return result;
-    }, [trainers, sportFilter, maxRate, minRating, locationFilter, sortBy]);
+    }, [trainers, sportFilter, maxRate, minRating, locationFilter, sortBy, skillFilter, timeFilter]);
 
     // Reset to page 1 when filters change
     useEffect(() => {
         setCurrentPage(1);
-    }, [sportFilter, maxRate, minRating, locationFilter, sortBy]);
+    }, [sportFilter, maxRate, minRating, locationFilter, sortBy, skillFilter, timeFilter]);
 
     const totalPages = Math.ceil(filteredTrainers.length / itemsPerPage);
     const paginatedTrainers = filteredTrainers.slice(
@@ -269,12 +355,43 @@ export default function SearchTrainersPage() {
                                 <button
                                     key={r}
                                     onClick={() => setMinRating(r)}
-                                    className={`flex-1 py-3 text-xs font-bold rounded-xl transition-colors ${minRating === r ? "bg-primary text-bg shadow-[0_0_10px_rgba(163,255,18,0.3)]" : "bg-[#272A35] text-text-main/60 hover:text-text-main"}`}
+                                    className={`flex-1 py-2 text-[11px] font-bold rounded-lg transition-colors ${minRating === r ? "bg-primary text-bg shadow-[0_0_10px_rgba(163,255,18,0.3)]" : "bg-[#272A35] text-text-main/60 hover:text-text-main"}`}
                                 >
                                     {r === 0 ? "Any" : `${r}+`} {minRating === r && r !== 0 && "★"}
                                 </button>
                             ))}
                         </div>
+                    </div>
+
+                    {/* Skill Level */}
+                    <div className="flex-1 min-w-[120px]">
+                        <label className="block text-[10px] font-bold text-text-main/40 uppercase tracking-widest mb-3">Skill Level</label>
+                        <select
+                            value={skillFilter}
+                            onChange={(e) => setSkillFilter(e.target.value)}
+                            className="w-full bg-[#272A35] border-none text-text-main text-sm rounded-xl px-4 py-3 outline-none focus:ring-1 focus:ring-primary appearance-none cursor-pointer"
+                        >
+                            <option value="any">Any Level</option>
+                            <option value="beginner">Beginner</option>
+                            <option value="intermediate">Intermediate</option>
+                            <option value="advanced">Advanced</option>
+                            <option value="pro">Pro</option>
+                        </select>
+                    </div>
+
+                    {/* Time */}
+                    <div className="flex-1 min-w-[120px]">
+                        <label className="block text-[10px] font-bold text-text-main/40 uppercase tracking-widest mb-3">Time</label>
+                        <select
+                            value={timeFilter}
+                            onChange={(e) => setTimeFilter(e.target.value)}
+                            className="w-full bg-[#272A35] border-none text-text-main text-sm rounded-xl px-4 py-3 outline-none focus:ring-1 focus:ring-primary appearance-none cursor-pointer"
+                        >
+                            <option value="any">Any Time</option>
+                            <option value="morning">Morning</option>
+                            <option value="afternoon">Afternoon</option>
+                            <option value="evening">Evening</option>
+                        </select>
                     </div>
 
                 </div>
@@ -320,12 +437,12 @@ export default function SearchTrainersPage() {
 
                             {/* Top left badge */}
                             <div className="absolute top-4 left-4">
-                                {idx % 3 === 0 ? (
-                                    <span className="bg-primary text-bg text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider shadow-[0_0_10px_rgba(163,255,18,0.4)]">Elite</span>
-                                ) : trainer.is_verified ? (
-                                    <span className="bg-emerald-400 text-bg text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider shadow-[0_0_10px_rgba(52,211,153,0.4)]">Verified</span>
+                                {trainer.is_performance_verified ? (
+                                    <span className="bg-primary text-bg text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider shadow-[0_0_10px_rgba(163,255,18,0.4)]">Verified</span>
+                                ) : trainer.total_sessions > 0 ? (
+                                    <span className="bg-blue-400 text-bg text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider shadow-[0_0_10px_rgba(96,165,250,0.4)]">Pro</span>
                                 ) : (
-                                    <span className="bg-blue-400 text-bg text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider shadow-[0_0_10px_rgba(96,165,250,0.4)]">New</span>
+                                    <span className="bg-emerald-400 text-bg text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider shadow-[0_0_10px_rgba(52,211,153,0.4)]">New</span>
                                 )}
                             </div>
 

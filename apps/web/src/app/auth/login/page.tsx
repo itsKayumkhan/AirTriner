@@ -2,10 +2,12 @@
 
 import { useState } from "react";
 import { loginUser } from "@/lib/auth";
+import { Eye, EyeOff } from "lucide-react";
 
 export default function LoginPage() {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
+    const [showPassword, setShowPassword] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
 
@@ -114,7 +116,7 @@ export default function LoginPage() {
                             </div>
                             <div style={{ position: "relative" }}>
                                 <input
-                                    type="password"
+                                    type={showPassword ? "text" : "password"}
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
                                     placeholder="••••••••"
@@ -126,8 +128,12 @@ export default function LoginPage() {
                                     onFocus={(e) => { e.currentTarget.style.borderColor = "var(--primary)"; e.currentTarget.style.background = "rgba(163,255,18,0.02)"; }}
                                     onBlur={(e) => { e.currentTarget.style.borderColor = "var(--gray-800)"; e.currentTarget.style.background = "rgba(255,255,255,0.03)"; }}
                                 />
-                                <button type="button" style={{ position: "absolute", right: "16px", top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: "var(--gray-500)", cursor: "pointer" }}>
-                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" /><circle cx="12" cy="12" r="3" /></svg>
+                                <button 
+                                    type="button" 
+                                    onClick={() => setShowPassword(!showPassword)}
+                                    style={{ position: "absolute", right: "16px", top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: "var(--gray-500)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+                                >
+                                    {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
                                 </button>
                             </div>
                         </div>

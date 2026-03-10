@@ -20,10 +20,12 @@ export enum SkillLevel {
 export enum BookingStatus {
     PENDING = 'pending',
     CONFIRMED = 'confirmed',
+    REJECTED = 'rejected',
     COMPLETED = 'completed',
     CANCELLED = 'cancelled',
     NO_SHOW = 'no_show',
     DISPUTED = 'disputed',
+    RESCHEDULE_REQUESTED = 'reschedule_requested',
 }
 
 export enum PaymentStatus {
@@ -63,6 +65,8 @@ export enum NotificationType {
     VERIFICATION_UPDATE = 'VERIFICATION_UPDATE',
     SUBSCRIPTION_EXPIRING = 'SUBSCRIPTION_EXPIRING',
     MESSAGE_RECEIVED = 'MESSAGE_RECEIVED',
+    UPCOMING_SESSION_REMINDER_24H = 'UPCOMING_SESSION_REMINDER_24H',
+    UPCOMING_SESSION_REMINDER_1H = 'UPCOMING_SESSION_REMINDER_1H',
 }
 
 export enum DisputeStatus {

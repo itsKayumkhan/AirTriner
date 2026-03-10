@@ -1,6 +1,6 @@
 "use client";
 
-import { Leaf, Dumbbell, TrendingUp, Trophy, Star, Users } from "lucide-react";
+import { Leaf, Dumbbell, TrendingUp, Trophy, Star, Users, Eye, EyeOff } from "lucide-react";
 import { useState } from "react";
 import { registerUser } from "@/lib/auth";
 import { useRouter } from "next/navigation";
@@ -27,6 +27,7 @@ export default function RegisterPage() {
     const [fullName, setFullName] = useState("");
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
+    const [showPassword, setShowPassword] = useState(false);
 
     // Step 2
     const [selectedSports, setSelectedSports] = useState<string[]>([]);
@@ -191,8 +192,23 @@ export default function RegisterPage() {
                                     <span style={{ fontSize: "11px", color: "var(--gray-500)" }}>Min. 8 characters</span>
                                 </div>
                                 <div style={{ position: "relative" }}>
-                                    <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" required minLength={8} style={{ ...inputStyle, paddingLeft: "40px" }} />
+                                    <input 
+                                        type={showPassword ? "text" : "password"} 
+                                        value={password} 
+                                        onChange={e => setPassword(e.target.value)} 
+                                        placeholder="••••••••" 
+                                        required 
+                                        minLength={8} 
+                                        style={{ ...inputStyle, paddingLeft: "40px" }} 
+                                    />
                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--gray-500)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ position: "absolute", left: "12px", top: "16px" }}><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
+                                    <button 
+                                        type="button" 
+                                        onClick={() => setShowPassword(!showPassword)}
+                                        style={{ position: "absolute", right: "16px", top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: "var(--gray-500)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+                                    >
+                                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                    </button>
                                 </div>
                             </div>
 

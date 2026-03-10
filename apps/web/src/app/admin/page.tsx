@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { Users, Dumbbell, DollarSign, CalendarCheck, Search, Filter, Download } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
@@ -54,6 +55,34 @@ export default function AdminDashboardPage() {
         };
         loadData();
     }, []);
+
+    const handleExportCSV = () => {
+        const headers = ["Transaction ID", "Athlete", "Trainer", "Date", "Amount", "Status"];
+        
+        const exportData = transactions.map(t => [
+            t.id,
+            t.athlete,
+            t.trainer,
+            t.date,
+            t.amount,
+            t.status
+        ]);
+
+        const csvContent = [
+            headers.join(","),
+            ...exportData.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(","))
+        ].join("\n");
+
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement("a");
+        const url = URL.createObjectURL(blob);
+        link.setAttribute("href", url);
+        link.setAttribute("download", `transactions_export_${new Date().toISOString().split('T')[0]}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
 
     const statCards = [
         { title: "Total Athletes", value: stats.athletes.toLocaleString(), req: "+12.5%", icon: <Users size={20} className="text-blue-500" />, iconBg: "bg-blue-500/10" },
@@ -120,10 +149,10 @@ export default function AdminDashboardPage() {
                     <div className="h-64 flex items-end justify-between gap-2 mt-8 pt-4 border-b border-white/5/50 pb-2">
                         {["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"].map((month, i) => {
                             const heights = [30, 45, 35, 60, 100, 50, 45, 65, 40, 60, 45, 75];
-                            const isHigh = i === 4; // MAY
+                            const isHigh = i === new Date().getMonth(); // highlight current month
                             return (
-                                <div key={month} className="flex-1 flex flex-col items-center gap-4 group">
-                                    <div className="w-full flex-1 flex items-end justify-center">
+                                <div key={month} className="h-full flex-1 flex flex-col items-center gap-4 group">
+                                    <div className="w-full h-full flex items-end justify-center">
                                         <div
                                             style={{ height: `${heights[i]}%` }}
                                             className={`w-8 md:w-12 rounded-t-xl transition-all duration-500 ease-out group-hover:bg-primary/80 ${isHigh ? "bg-primary shadow-[0_0_15px_rgba(163,255,18,0.25)]" : "bg-[#272A35]"}`}
@@ -140,7 +169,7 @@ export default function AdminDashboardPage() {
                 <div className="lg:col-span-1 bg-surface border border-white/5 rounded-[24px] p-6 flex flex-col">
                     <div className="flex justify-between items-center mb-8">
                         <h2 className="text-lg font-black text-text-main">Activity Log</h2>
-                        <button className="text-primary text-xs font-bold uppercase tracking-widest">View All</button>
+                        <Link href="/admin/bookings" className="text-primary text-xs font-bold uppercase tracking-widest hover:underline">View All</Link>
                     </div>
                     <div className="space-y-6 flex-1">
                         {activities.map((act, i) => (
@@ -170,7 +199,10 @@ export default function AdminDashboardPage() {
                         <button className="flex items-center gap-2 px-4 py-2 rounded-full border border-gray-700 text-xs font-bold text-text-main/80 hover:text-text-main transition-colors">
                             <Filter size={14} /> Filter
                         </button>
-                        <button className="flex items-center gap-2 px-4 py-2 rounded-full border border-gray-700 text-xs font-bold text-text-main/80 hover:text-text-main transition-colors">
+                        <button 
+                            onClick={handleExportCSV}
+                            className="flex items-center gap-2 px-4 py-2 rounded-full border border-gray-700 text-xs font-bold text-text-main/80 hover:text-text-main transition-colors"
+                        >
                             <Download size={14} /> Export CSV
                         </button>
                     </div>

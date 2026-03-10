@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { getSession, AuthUser } from "@/lib/auth";
 import { supabase, BookingRow } from "@/lib/supabase";
-import { Calendar, Clock, CheckCircle, Wallet, Star, MessageSquare, TrendingUp, Search, Activity, ArrowUpRight, Hand, Inbox } from "lucide-react";
+import { Calendar, Clock, CheckCircle, Wallet, Star, MessageSquare, TrendingUp, Search, Activity, ArrowUpRight, Hand, Inbox, AlertTriangle } from "lucide-react";
 import Link from "next/link";
 import { useTrainer } from "@/context/TrainerContext";
 import { useAthlete } from "@/context/AthleteContext";
@@ -20,8 +20,8 @@ interface Stats {
 
 export default function DashboardOverview() {
     const { user } = useAuth();
-    
-    // We conditionally use context based on role. 
+
+    // We conditionally use context based on role.
     // To avoid hooks rules violation, we call both but rely on the one matching the role.
     const isTrainer = user?.role === "trainer";
     const trainerContext = useTrainer();
@@ -30,6 +30,25 @@ export default function DashboardOverview() {
     const loading = isTrainer ? trainerContext.loading : athleteContext.loading;
     const stats: any = isTrainer ? trainerContext.stats : athleteContext.stats;
     const recentBookings = isTrainer ? trainerContext.recentBookings : athleteContext.recentBookings;
+
+    const [requireVerification, setRequireVerification] = useState(true);
+
+    useEffect(() => {
+        if (user) {
+            fetchSettings();
+        }
+    }, [user]);
+
+    const fetchSettings = async () => {
+        const settingsRes = await supabase
+            .from("platform_settings")
+            .select("require_trainer_verification")
+            .single();
+
+        if (settingsRes.data) {
+            setRequireVerification(settingsRes.data.require_trainer_verification);
+        }
+    };
 
     if (loading) {
         return (
@@ -69,6 +88,22 @@ export default function DashboardOverview() {
 
     return (
         <div className="space-y-8 pb-8 max-w-[1200px]">
+            {/* Verification Notice for Trainers */}
+            {isTrainer && requireVerification && user?.trainerProfile && !user.trainerProfile.is_verified && (
+                <div className="p-6 bg-blue-500/10 border border-blue-500/20 rounded-[24px] flex items-start gap-4 animate-in fade-in slide-in-from-top-4 duration-500 shadow-sm">
+                    <div className="w-12 h-12 rounded-2xl bg-blue-500/20 flex items-center justify-center shrink-0">
+                        <AlertTriangle className="text-blue-400 w-6 h-6" />
+                    </div>
+                    <div>
+                        <h3 className="text-blue-400 font-bold text-lg mb-1">Action Required: Profile Verification</h3>
+                        <p className="text-text-main/70 text-sm leading-relaxed max-w-2xl font-medium">
+                            Your profile is currently hidden from athletes because the platform requires an admin to verify your account.
+                            Ensure your <Link href="/dashboard/trainer/setup" className="text-primary hover:underline">profile setup</Link> is complete, and an admin will review it for approval.
+                        </p>
+                    </div>
+                </div>
+            )}
+
             {/* Header Section */}
             <div className="relative overflow-hidden rounded-[24px] bg-surface border border-white/5">
                 <div className="relative p-8 sm:p-10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
@@ -147,7 +182,7 @@ export default function DashboardOverview() {
                             </div>
                         ) : (
                             <div className="flex flex-col">
-                                {recentBookings.map((booking) => {
+                                {recentBookings.map((booking: any) => {
                                     const status = statusStyles[booking.status] || statusStyles.pending;
                                     const date = new Date(booking.scheduled_at);
 

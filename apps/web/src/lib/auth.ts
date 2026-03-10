@@ -41,6 +41,20 @@ export async function clearSession() {
     await supabase.auth.signOut();
 }
 
+/**
+ * Verifies if the user session is still valid (account not suspended)
+ */
+export async function verifySessionStatus(userId: string): Promise<boolean> {
+    const { data, error } = await supabase
+        .from('users')
+        .select('deleted_at')
+        .eq('id', userId)
+        .single();
+    
+    if (error || !data) return false;
+    return data.deleted_at === null;
+}
+
 // Login: check email+password using real Supabase Auth
 export async function loginUser(email: string, password: string): Promise<AuthUser> {
     const cleanEmail = email.toLowerCase().trim();
@@ -62,7 +76,6 @@ export async function loginUser(email: string, password: string): Promise<AuthUs
         .eq('id', authData.user.id)
         .single();
 
-    // Fallback if the trigger didn't fire, try matching by email
     if (error || !user) {
         const { data: fallbackUser } = await supabase
             .from('users')
@@ -78,6 +91,12 @@ export async function loginUser(email: string, password: string): Promise<AuthUs
     }
 
     const u = user as UserRow;
+
+    // Check if account is suspended
+    if (u.deleted_at) {
+        await supabase.auth.signOut();
+        throw new Error('Your account has been suspended. Please contact support.');
+    }
 
     // Fetch profile (Trainer or Athlete)
     let trainerProfile: TrainerProfileRow | null = null;
@@ -199,14 +218,22 @@ export async function registerUser(data: {
     let athleteProfile: AthleteProfileRow | null = null;
 
     if (data.role === 'trainer') {
+        // Check if auto-approve is enabled
+        const { data: settings } = await supabase
+            .from('platform_settings')
+            .select('auto_approve_trainers')
+            .single();
+        
+        const autoApprove = settings?.auto_approve_trainers || false;
+
         const { data: tp } = await supabase
             .from('trainer_profiles')
             .insert({
                 user_id: u.id,
                 sports: data.sports || [],
                 trial_started_at: new Date().toISOString(),
-                verification_status: 'pending',
-                is_verified: false,
+                verification_status: autoApprove ? 'approved' : 'pending',
+                is_verified: autoApprove,
             })
             .select()
             .single();

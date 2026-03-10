@@ -52,6 +52,9 @@ export type TrainerProfileRow = {
     latitude: number | null;
     longitude: number | null;
     travel_radius_miles: number;
+    trainingTypes: string[] | null;
+    preferredTrainingTimes: ('morning'|'afternoon'|'evening')[] | null;
+    target_skill_levels: ('beginner'|'intermediate'|'advanced'|'pro')[] | null;
     created_at: string;
 };
 
@@ -66,6 +69,7 @@ export type AthleteProfileRow = {
     latitude: number | null;
     longitude: number | null;
     travel_radius_miles: number;
+    preferredTrainingTimes: ('morning'|'afternoon'|'evening')[] | null;
     created_at: string;
 };
 
@@ -81,7 +85,7 @@ export type BookingRow = {
     latitude: number | null;
     longitude: number | null;
     address: string | null;
-    status: 'pending' | 'confirmed' | 'completed' | 'cancelled' | 'no_show' | 'disputed';
+    status: 'pending' | 'confirmed' | 'completed' | 'cancelled' | 'no_show' | 'disputed' | 'reschedule_requested' | 'rejected';
     athlete_notes: string | null;
     trainer_notes: string | null;
     price: number;
