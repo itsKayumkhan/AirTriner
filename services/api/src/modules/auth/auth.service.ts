@@ -11,7 +11,6 @@ import {
     UnauthorizedError,
     BadRequestError,
     ConflictError,
-    GeoRestrictedError,
     AgeVerificationError,
 } from '../../common/errors';
 import { logger } from '../../common/logger';
@@ -232,19 +231,19 @@ export class AuthService {
             userId: user.id,
             email: user.email,
             role: user.role as UserRole,
-            subAccountAccess: subAccounts.map((sa) => sa.id),
+            subAccountAccess: subAccounts.map((sa: any) => sa.id),
         };
 
         // Generate access token (15 min)
         const accessToken = jwt.sign(payload, config.jwtAccessSecret, {
-            expiresIn: config.jwtAccessExpiry,
+            expiresIn: config.jwtAccessExpiry as any,
         });
 
         // Generate refresh token (7 days)
         const refreshToken = jwt.sign(
             { userId: user.id, tokenId: uuidv4() },
             config.jwtRefreshSecret,
-            { expiresIn: config.jwtRefreshExpiry }
+            { expiresIn: config.jwtRefreshExpiry as any }
         );
 
         // Store refresh token in DB

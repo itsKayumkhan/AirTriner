@@ -7,7 +7,7 @@ import { paymentService } from './payment.service';
 import { authenticate, authorize, asyncHandler } from '../../common/middleware';
 import { UserRole, ApiResponse } from '@airtrainr/shared';
 
-const router = Router();
+const router: ReturnType<typeof Router> = Router();
 
 /**
  * POST /api/v1/payments/booking/:id

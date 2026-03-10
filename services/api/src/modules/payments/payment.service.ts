@@ -7,11 +7,9 @@ import { logger } from '../../common/logger';
 import { PaymentError, NotFoundError } from '../../common/errors';
 import config from '../../config';
 import {
-    PLATFORM_FEE_PERCENTAGE,
     HOLD_HOURS_NEW_TRAINER,
     HOLD_HOURS_ESTABLISHED_TRAINER,
     ESTABLISHED_TRAINER_THRESHOLD,
-    TRAINER_SUBSCRIPTION_ANNUAL,
     TRAINER_TRIAL_DAYS,
 } from '@airtrainr/shared';
 
