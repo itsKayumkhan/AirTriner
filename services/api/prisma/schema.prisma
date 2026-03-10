@@ -207,6 +207,8 @@ model Booking {
   platformFee          Decimal       @map("platform_fee") @db.Decimal(10, 2)
   totalPaid            Decimal       @map("total_paid") @db.Decimal(10, 2)
   statusHistory        Json?         @map("status_history")
+  cancellationReason   String?       @map("cancellation_reason") @db.Text
+  cancelledAt          DateTime?     @map("cancelled_at")
   createdAt            DateTime      @default(now()) @map("created_at")
   updatedAt            DateTime      @updatedAt @map("updated_at")
 
