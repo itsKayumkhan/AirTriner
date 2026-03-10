@@ -110,20 +110,22 @@ app.use(errorHandler);
 // ---- Start Server ----
 const PORT = config.port;
 
-app.listen(PORT, () => {
-    logger.info(`
-╔═══════════════════════════════════════════════════════╗
-║                                                       ║
-║       🏋️  AirTrainr API Server                       ║
-║       Running on port ${PORT}                          ║
-║       Environment: ${config.nodeEnv}                   ║
-║       API Version: ${config.apiVersion}                ║
-║                                                       ║
-╚═══════════════════════════════════════════════════════╝
-  `);
+if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+    app.listen(PORT, () => {
+        logger.info(`
+    ╔═══════════════════════════════════════════════════════╗
+    ║                                                       ║
+    ║       🏋️  AirTrainr API Server                       ║
+    ║       Running on port ${PORT}                          ║
+    ║       Environment: ${config.nodeEnv}                   ║
+    ║       API Version: ${config.apiVersion}                ║
+    ║                                                       ║
+    ╚═══════════════════════════════════════════════════════╝
+    `);
 
-    // Start background jobs
-    startReminderCron();
-});
+        // Start background jobs
+        startReminderCron();
+    });
+}
 
 export default app;

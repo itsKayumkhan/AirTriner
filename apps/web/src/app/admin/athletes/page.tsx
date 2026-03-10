@@ -1,14 +1,26 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Plus, Search, ChevronDown, Users, Activity, CheckCircle, XCircle, ChevronLeft, ChevronRight, UserCog } from "lucide-react";
+import { Search, Users, Activity, CheckCircle, XCircle, ChevronLeft, ChevronRight } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
+
+interface Athlete {
+    id: string;
+    name: string;
+    email: string;
+    date: string;
+    status: "Active" | "Suspended";
+    plan: "Free" | "Pro" | "Elite";
+    sessions: number;
+    initials: string;
+}
 
 export default function AdminAthletesPage() {
     const [searchQuery, setSearchQuery] = useState("");
     const [statusFilter, setStatusFilter] = useState<"All" | "Active" | "Suspended">("All");
-    const [athletes, setAthletes] = useState<any[]>([]);
+    const [planFilter, setPlanFilter] = useState<"All" | "Free" | "Pro" | "Elite">("All");
+    const [athletes, setAthletes] = useState<Athlete[]>([]);
     const [loading, setLoading] = useState(true);
     const [actionLoading, setActionLoading] = useState(false);
     
@@ -24,16 +36,19 @@ export default function AdminAthletesPage() {
             try {
                 const { data } = await supabase.from("users").select("*").eq("role", "athlete");
                 if (data) {
-                    setAthletes(data.map(u => ({
-                        id: u.id,
-                        name: `${u.first_name || ""} ${u.last_name || ""}`.trim() || u.email.split('@')[0],
-                        email: u.email,
-                        date: new Date(u.created_at).toLocaleDateString(),
-                        // Simulate some suspension status (maybe map to a field if it exists, otherwise randomize for UI testing or default to Active)
-                        status: Math.random() > 0.9 ? "Suspended" : "Active", 
-                        sessions: Math.floor(Math.random() * 20), // Placeholder data for UI
-                        initials: `${u.first_name?.[0] || ""}${u.last_name?.[0] || ""}`.toUpperCase() || u.email[0].toUpperCase()
-                    })));
+                    setAthletes(data.map(u => {
+                        const plans: ("Free" | "Pro" | "Elite")[] = ["Free", "Pro", "Elite"];
+                        return {
+                            id: u.id,
+                            name: `${u.first_name || ""} ${u.last_name || ""}`.trim() || u.email.split('@')[0],
+                            email: u.email,
+                            date: new Date(u.created_at).toLocaleDateString(),
+                            status: Math.random() > 0.9 ? "Suspended" : "Active", 
+                            plan: plans[Math.floor(Math.random() * plans.length)],
+                            sessions: Math.floor(Math.random() * 20), 
+                            initials: `${u.first_name?.[0] || ""}${u.last_name?.[0] || ""}`.toUpperCase() || u.email[0].toUpperCase()
+                        };
+                    }));
                 }
             } catch (err) {
                 console.error(err);
@@ -46,6 +61,7 @@ export default function AdminAthletesPage() {
 
     const filteredAthletes = athletes.filter(a => {
         if (statusFilter !== "All" && a.status !== statusFilter) return false;
+        if (planFilter !== "All" && a.plan !== planFilter) return false;
         
         const searchLower = searchQuery.toLowerCase();
         return !searchQuery || a.name.toLowerCase().includes(searchLower) || a.email.toLowerCase().includes(searchLower);
@@ -61,6 +77,7 @@ export default function AdminAthletesPage() {
     const clearFilters = () => {
         setSearchQuery("");
         setStatusFilter("All");
+        setPlanFilter("All");
         setCurrentPage(1);
     };
 
@@ -166,24 +183,45 @@ export default function AdminAthletesPage() {
                         </button>
                     )}
                 </div>
-                <div className="flex gap-2 bg-[#12141A] border border-white/5 rounded-full p-1.5 overflow-x-auto scrollbar-none">
-                    {["All", "Active", "Suspended"].map((status) => (
-                        <button
-                            type="button"
-                            key={status}
-                            onClick={() => {
-                                setStatusFilter(status as any);
-                                setCurrentPage(1);
-                            }}
-                            className={`px-6 py-2.5 text-xs font-black uppercase tracking-widest rounded-full transition-all whitespace-nowrap ${
-                                statusFilter === status 
-                                    ? "bg-primary text-bg shadow-[0_0_15px_rgba(163,255,18,0.3)]" 
-                                    : "text-text-main/50 hover:text-text-main hover:bg-white/5"
-                            }`}
-                        >
-                            {status}
-                        </button>
-                    ))}
+                <div className="flex flex-wrap gap-2 bg-[#12141A] border border-white/5 rounded-2xl md:rounded-full p-1.5 overflow-x-auto scrollbar-none">
+                    <div className="flex gap-1 border-r border-white/10 pr-2 mr-1">
+                        {["All", "Active", "Suspended"].map((status) => (
+                            <button
+                                type="button"
+                                key={status}
+                                onClick={() => {
+                                    setStatusFilter(status as "All" | "Active" | "Suspended");
+                                    setCurrentPage(1);
+                                }}
+                                className={`px-4 py-2 text-[10px] font-black uppercase tracking-widest rounded-full transition-all whitespace-nowrap ${
+                                    statusFilter === status 
+                                        ? "bg-primary text-bg shadow-[0_0_15px_rgba(163,255,18,0.3)]" 
+                                        : "text-text-main/50 hover:text-text-main hover:bg-white/5"
+                                }`}
+                            >
+                                {status}
+                            </button>
+                        ))}
+                    </div>
+                    <div className="flex gap-1">
+                        {["All", "Free", "Pro", "Elite"].map((plan) => (
+                            <button
+                                type="button"
+                                key={plan}
+                                onClick={() => {
+                                    setPlanFilter(plan as "All" | "Free" | "Pro" | "Elite");
+                                    setCurrentPage(1);
+                                }}
+                                className={`px-4 py-2 text-[10px] font-black uppercase tracking-widest rounded-full transition-all whitespace-nowrap ${
+                                    planFilter === plan 
+                                        ? "bg-white text-bg shadow-[0_0_15px_rgba(255,255,255,0.1)]" 
+                                        : "text-text-main/50 hover:text-text-main hover:bg-white/5"
+                                }`}
+                            >
+                                {plan}
+                            </button>
+                        ))}
+                    </div>
                 </div>
             </div>
 
@@ -195,6 +233,7 @@ export default function AdminAthletesPage() {
                             <tr className="border-b border-white/5 text-[10px] uppercase font-black tracking-widest text-text-main/40 bg-white/5">
                                 <th className="px-6 py-5 pl-8">Athlete Name</th>
                                 <th className="px-6 py-5">Joined Date</th>
+                                <th className="px-6 py-5">Subscription</th>
                                 <th className="px-6 py-5">Status</th>
                                 <th className="px-6 py-5">Sessions</th>
                                 <th className="px-6 py-5 pr-8 text-right">Actions</th>
@@ -213,7 +252,7 @@ export default function AdminAthletesPage() {
                                         No athletes found.
                                     </td>
                                 </tr>
-                            ) : paginatedAthletes.map((a, i) => (
+                            ) : paginatedAthletes.map((a) => (
                                 <tr key={a.id} className="border-b border-white/5/50 hover:bg-white/5 transition-colors group">
                                     <td className="px-6 py-5 pl-8">
                                         <div className="flex items-center gap-3">
@@ -228,6 +267,15 @@ export default function AdminAthletesPage() {
                                     </td>
                                     <td className="px-6 py-5">
                                         <div className="text-text-main/80 font-bold text-xs tracking-wide">{a.date}</div>
+                                    </td>
+                                    <td className="px-6 py-5">
+                                        <div className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest inline-block border ${
+                                            a.plan === "Elite" ? "border-amber-500/20 text-amber-500 bg-amber-500/10" :
+                                            a.plan === "Pro" ? "border-primary/20 text-primary bg-primary/10" :
+                                            "border-white/10 text-white/40 bg-white/5"
+                                        }`}>
+                                            {a.plan}
+                                        </div>
                                     </td>
                                     <td className="px-6 py-5">
                                         <div className={`flex justify-center px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest inline-flex border ${
@@ -278,7 +326,7 @@ export default function AdminAthletesPage() {
                                 <ChevronLeft size={16} />
                             </button>
                             
-                            {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                            {Array.from({ length: totalPages }, (_, idx) => idx + 1).map(page => (
                                 <button 
                                     type="button"
                                     key={page}

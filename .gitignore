@@ -52,3 +52,5 @@ ios/Pods/
 android/.gradle/
 
 .claude
+.vercel
+.env*.local
