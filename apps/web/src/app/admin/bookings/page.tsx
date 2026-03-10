@@ -1,27 +1,34 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Download, Plus, Search, Calendar, ChevronDown, FilterX, MoreVertical } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Download, Plus, Search, Calendar, ChevronDown, FilterX, MoreVertical, XCircle, LayoutGrid, CheckCircle, Clock, X, AlertOctagon, ChevronLeft, ChevronRight, Edit2, Trash2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
-
-const SPORTS_LIST = [
-    "Personal Training", "Yoga", "Pilates", "Tennis", "Golf", "Swimming",
-    "Cycling", "Running", "Football", "Basketball", "Baseball", "Hockey",
-    "Soccer", "Volleyball", "Martial Arts", "Boxing", "Dance", "Gymnastics",
-    "Weightlifting", "CrossFit", "Rowing", "Surfing", "Snowboarding", "Skiing", "Meditation"
-].sort();
-
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
 
 export default function AdminBookingsPage() {
     const [searchQuery, setSearchQuery] = useState("");
     const [activeTab, setActiveTab] = useState("All");
     const [rawBookings, setRawBookings] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
-    const [currentPage, setCurrentPage] = useState(1);
-    const [dateFilter, setDateFilter] = useState("All Time");
-    const [sportFilter, setSportFilter] = useState("All");
-    const itemsPerPage = 8;
+    
+    // Dropdown states
+    const [isDateOpen, setIsDateOpen] = useState(false);
+    const [isSportOpen, setIsSportOpen] = useState(false);
+    const [selectedDate, setSelectedDate] = useState("Any Date");
+    const [selectedSport, setSelectedSport] = useState("All Sports");
+    
+    const dropdownRef = useRef<HTMLDivElement>(null);
 
+    // Modal and Action states
+    const [actionMenuOpen, setActionMenuOpen] = useState<string | null>(null);
+    const [actionLoading, setActionLoading] = useState(false);
+    const [confirmModal, setConfirmModal] = useState<{isOpen: boolean, id: string | null, action: "cancel" | "complete" | null, refId: string}>({isOpen: false, id: null, action: null, refId: ""});
+
+    const actionMenuRef = useRef<HTMLDivElement>(null);
+
+    // Pagination states
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 8;
 
     useEffect(() => {
         const loadBookings = async () => {
@@ -31,31 +38,39 @@ export default function AdminBookingsPage() {
 
                 const userIds = new Set<string>();
                 bData.forEach(b => { userIds.add(b.athlete_id); userIds.add(b.trainer_id); });
-                const { data: usersData } = await supabase.from("users").select("id, first_name, last_name").in("id", Array.from(userIds));
-                const usersMap = new Map((usersData || []).map(u => [u.id, `${u.first_name} ${u.last_name}`]));
+                const { data: usersData } = await supabase.from("users").select("id, first_name, last_name, email").in("id", Array.from(userIds));
+                const usersMap = new Map((usersData || []).map(u => [u.id, {
+                    name: `${u.first_name || ""} ${u.last_name || ""}`.trim() || u.email.split('@')[0],
+                    initials: `${u.first_name?.[0] || ""}${u.last_name?.[0] || ""}`.toUpperCase() || u.email[0].toUpperCase()
+                }]));
 
                 const getStatusStyles = (status: string) => {
-                    if (status === "completed") return { sColor: "text-primary", sBg: "bg-primary/10", sBorder: "border-primary/20", display: "Completed" };
-                    if (status === "cancelled") return { sColor: "text-red-500", sBg: "bg-red-500/10", sBorder: "border-red-500/20", display: "Cancelled" };
-                    if (status === "pending") return { sColor: "text-orange-500", sBg: "bg-orange-500/10", sBorder: "border-orange-500/20", display: "Pending" };
-                    return { sColor: "text-blue-500", sBg: "bg-blue-500/10", sBorder: "border-blue-500/20", display: "Confirmed" };
+                    if (status === "completed") return { sColor: "text-green-500", sBg: "bg-green-500/10", sBorder: "border-green-500/20", display: "Completed", icon: <CheckCircle size={12} /> };
+                    if (status === "cancelled") return { sColor: "text-red-500", sBg: "bg-red-500/10", sBorder: "border-red-500/20", display: "Cancelled", icon: <X size={12} /> };
+                    if (status === "pending") return { sColor: "text-orange-500", sBg: "bg-orange-500/10", sBorder: "border-orange-500/20", display: "Pending", icon: <Clock size={12} /> };
+                    return { sColor: "text-primary", sBg: "bg-primary/10", sBorder: "border-primary/20", display: "Confirmed", icon: <AlertOctagon size={12} /> };
                 };
 
                 setRawBookings(bData.map(b => {
                     const dt = new Date(b.scheduled_at);
                     const styles = getStatusStyles(b.status);
+                    const athInfo = usersMap.get(b.athlete_id) || { name: "Unknown", initials: "U" };
+                    const trnInfo = usersMap.get(b.trainer_id) || { name: "Unknown", initials: "U" };
                     return {
                         id: b.id.substring(0, 8),
-                        athlete: usersMap.get(b.athlete_id) || "Unknown",
-                        trainer: usersMap.get(b.trainer_id) || "Unknown",
-                        date: dt.toLocaleDateString(),
+                        athlete: athInfo.name,
+                        athleteInitials: athInfo.initials,
+                        trainer: trnInfo.name,
+                        trainerInitials: trnInfo.initials,
+                        date: dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
                         time: dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                        category: b.sport || "GENERAL",
+                        category: b.sport || "General",
                         rawStatus: b.status,
                         status: styles.display,
                         sColor: styles.sColor,
                         sBg: styles.sBg,
-                        sBorder: styles.sBorder
+                        sBorder: styles.sBorder,
+                        sIcon: styles.icon
                     };
                 }));
             } catch (err) {
@@ -67,35 +82,35 @@ export default function AdminBookingsPage() {
         loadBookings();
     }, []);
 
-    const isDateInRange = (dateStr: string, range: string) => {
-        if (range === "All Time") return true;
-        const date = new Date(dateStr);
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const targetDate = new Date(date);
-        targetDate.setHours(0, 0, 0, 0);
-
-        if (range === "Today") return targetDate.getTime() === today.getTime();
-        if (range === "Last 7 Days") return today.getTime() - targetDate.getTime() <= (7 * 24 * 60 * 60 * 1000) && targetDate.getTime() <= today.getTime();
-        if (range === "Last 30 Days") return today.getTime() - targetDate.getTime() <= (30 * 24 * 60 * 60 * 1000) && targetDate.getTime() <= today.getTime();
-        if (range === "This Month") return targetDate.getMonth() === today.getMonth() && targetDate.getFullYear() === today.getFullYear();
-        
-        return true;
-    };
+    // Handle outside click for dropdowns and menus
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+                setIsDateOpen(false);
+                setIsSportOpen(false);
+            }
+            if (actionMenuRef.current && !actionMenuRef.current.contains(event.target as Node)) {
+                setActionMenuOpen(null);
+            }
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, []);
 
     const bookings = rawBookings.filter(b => {
-        if (activeTab === "Upcoming" && b.rawStatus !== "pending" && b.rawStatus !== "confirmed") return false;
-        if (activeTab === "Completed" && b.rawStatus !== "completed") return false;
-        if (activeTab === "Cancelled" && b.rawStatus !== "cancelled") return false;
-        if (sportFilter !== "All" && b.category.toUpperCase() !== sportFilter.toUpperCase()) return false;
-        if (!isDateInRange(b.date, dateFilter)) return false;
-        if (searchQuery && !b.athlete.toLowerCase().includes(searchQuery.toLowerCase()) && !b.trainer.toLowerCase().includes(searchQuery.toLowerCase())) return false;
-        return true;
+        if (activeTab !== "All" && b.display !== activeTab && b.rawStatus !== activeTab.toLowerCase()) return false;
+        
+        if (selectedSport !== "All Sports" && b.category.toLowerCase() !== selectedSport.toLowerCase()) return false;
+        
+        // Simple date filtering (assuming today/this week just for visual interaction)
+        if (selectedDate === "Today") {
+            const today = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+            if (b.date !== today) return false;
+        }
+        
+        const searchLower = searchQuery.toLowerCase();
+        return !searchQuery || b.athlete.toLowerCase().includes(searchLower) || b.trainer.toLowerCase().includes(searchLower) || b.id.toLowerCase().includes(searchLower);
     });
-
-    useEffect(() => {
-        setCurrentPage(1);
-    }, [activeTab, searchQuery, dateFilter, sportFilter]);
 
     const totalPages = Math.ceil(bookings.length / itemsPerPage);
     const paginatedBookings = bookings.slice(
@@ -103,168 +118,282 @@ export default function AdminBookingsPage() {
         currentPage * itemsPerPage
     );
 
-    const handleExportCSV = () => {
-        const headers = ["Booking ID", "Athlete", "Trainer", "Date", "Time", "Category", "Status"];
-        
-        const exportData = bookings.map(b => [
-            b.id,
-            b.athlete,
-            b.trainer,
-            b.date,
-            b.time,
-            b.category,
-            b.rawStatus
-        ]);
+    const clearFilters = () => {
+        setSearchQuery("");
+        setActiveTab("All");
+        setSelectedDate("Any Date");
+        setSelectedSport("All Sports");
+        setCurrentPage(1);
+    };
 
-        const csvContent = [
-            headers.join(","),
-            ...exportData.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(","))
-        ].join("\n");
+    const requestAction = (id: string, refId: string, action: "cancel" | "complete") => {
+        setActionMenuOpen(null);
+        setConfirmModal({ isOpen: true, id, refId, action });
+    };
 
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const link = document.createElement("a");
-        const url = URL.createObjectURL(blob);
-        link.setAttribute("href", url);
-        link.setAttribute("download", `bookings_export_${new Date().toISOString().split('T')[0]}.csv`);
-        link.style.visibility = 'hidden';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+    const confirmAction = async () => {
+        const { id, action } = confirmModal;
+        if (!id || !action) return;
+
+        setActionLoading(true);
+        try {
+            const newStatus = action === "cancel" ? "cancelled" : "completed";
+            const { error } = await supabase.from("bookings").update({ status: newStatus }).eq("id", id);
+            
+            if (!error) {
+                // Update local state without full reload
+                setRawBookings(prev => prev.map(b => {
+                    if (b.id !== id.substring(0,8) && b.id !== id) return b;
+                    
+                    const getStatusStyles = (status: string) => {
+                        if (status === "completed") return { sColor: "text-green-500", sBg: "bg-green-500/10", sBorder: "border-green-500/20", display: "Completed", icon: <CheckCircle size={12} /> };
+                        if (status === "cancelled") return { sColor: "text-red-500", sBg: "bg-red-500/10", sBorder: "border-red-500/20", display: "Cancelled", icon: <X size={12} /> };
+                        if (status === "pending") return { sColor: "text-orange-500", sBg: "bg-orange-500/10", sBorder: "border-orange-500/20", display: "Pending", icon: <Clock size={12} /> };
+                        return { sColor: "text-primary", sBg: "bg-primary/10", sBorder: "border-primary/20", display: "Confirmed", icon: <AlertOctagon size={12} /> };
+                    };
+                    
+                    const styles = getStatusStyles(newStatus);
+                    return { ...b, rawStatus: newStatus, status: styles.display, sColor: styles.sColor, sBg: styles.sBg, sBorder: styles.sBorder, sIcon: styles.icon };
+                }));
+            }
+            setConfirmModal({ isOpen: false, id: null, action: null, refId: "" });
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setActionLoading(false);
+        }
     };
 
     return (
-        <div className="space-y-8 max-w-[1200px]">
+        <div className="space-y-8 max-w-[1600px] w-full">
 
             {/* Header */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-8">
-                <div>
-                    <h1 className="text-3xl font-black text-text-main tracking-tight mb-2">Bookings</h1>
-                    <p className="text-sm font-medium text-text-main/60">Manage platform-wide training appointments and athlete sessions.</p>
+                <div className="flex flex-col gap-2">
+                    <h1 className="text-4xl md:text-5xl font-black tracking-tight uppercase leading-none flex items-center gap-4">
+                        <span className="text-text-main">Global</span>
+                        <span className="text-primary border-b-4 border-primary pb-1">Bookings</span>
+                    </h1>
+                    <p className="text-text-main/60 font-medium max-w-xl text-sm md:text-base mt-2">
+                        Manage all platform-wide training appointments, conflicts, and schedules.
+                    </p>
                 </div>
-                <div className="flex items-center gap-3">
-                    <button 
-                        onClick={handleExportCSV}
-                        className="flex items-center gap-2 px-5 py-2.5 rounded-full border border-gray-700 bg-surface text-sm font-bold text-text-main/80 hover:text-text-main hover:border-gray-500 transition-colors"
-                    >
-                        <Download size={16} /> Export CSV
-                    </button>
-                    <button className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-primary text-bg font-black text-sm hover:shadow-[0_0_10px_rgba(163,255,18,0.2)] transition-all">
-                        <Plus size={18} strokeWidth={3} /> Manual Booking
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
+                    <button type="button" onClick={() => alert("Export functionality coming soon!")} className="flex items-center justify-center gap-2 px-5 py-3 rounded-2xl border border-white/10 bg-surface/50 text-sm font-bold text-text-main/80 hover:text-text-main hover:bg-white/5 transition-colors">
+                        <Download size={18} /> Export List
                     </button>
                 </div>
             </div>
 
             {/* Filters Row */}
-            <div className="flex flex-wrap items-center justify-between gap-4 py-4 border-b border-white/5">
-
-                <div className="flex flex-wrap items-center gap-4">
-                    <div className="relative group">
-                        <Calendar size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-main/80 pointer-events-none" />
-                        <select
-                            value={dateFilter}
-                            onChange={(e) => setDateFilter(e.target.value)}
-                            className="appearance-none bg-surface border border-white/5 rounded-full pl-11 pr-10 py-2.5 text-sm font-bold text-text-main/80 w-48 focus:outline-none focus:border-gray-600 transition-colors cursor-pointer"
-                        >
-                            <option value="All Time">All Time</option>
-                            <option value="Today">Today</option>
-                            <option value="Last 7 Days">Last 7 Days</option>
-                            <option value="Last 30 Days">Last 30 Days</option>
-                            <option value="This Month">This Month</option>
-                        </select>
-                        <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-text-main/40 pointer-events-none" />
+            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-surface/50 border border-white/5 p-2 rounded-[24px]">
+                
+                {/* Search */}
+                <div className="relative w-full lg:w-80 flex items-center">
+                    <div className="relative flex-1">
+                        <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-main/40" />
+                        <input
+                            type="text"
+                            placeholder="Search athlete, trainer or ID..."
+                            value={searchQuery}
+                            onChange={e => {
+                                setSearchQuery(e.target.value);
+                                setCurrentPage(1);
+                            }}
+                            className="w-full bg-[#12141A] border border-white/5 rounded-full pl-12 pr-4 py-3 text-sm font-medium text-text-main focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all shadow-inner"
+                        />
                     </div>
-
-                    <div className="relative group">
-                        <div className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-gray-700 flex items-center justify-center pointer-events-none">
-                            <div className="w-1.5 h-1.5 rounded-full bg-gray-400"></div>
-                        </div>
-                        <select
-                            value={sportFilter}
-                            onChange={(e) => setSportFilter(e.target.value)}
-                            className="appearance-none bg-surface border border-white/5 rounded-full pl-11 pr-10 py-2.5 text-sm font-bold text-text-main/80 w-56 focus:outline-none focus:border-gray-600 transition-colors cursor-pointer"
+                    {searchQuery && (
+                        <button 
+                            type="button"
+                            onClick={() => { setSearchQuery(""); setCurrentPage(1); }}
+                            className="p-3 ml-2 bg-red-500/10 text-red-500 hover:bg-red-500/20 rounded-full transition-colors flex-shrink-0"
+                            title="Clear Search"
                         >
-                            <option value="All">Sport: All Categories</option>
-                            {SPORTS_LIST.map(sport => (
-                                <option key={sport} value={sport}>{sport}</option>
-                            ))}
-                        </select>
-                        <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-text-main/40 pointer-events-none" />
-                    </div>
+                            <XCircle size={18} />
+                        </button>
+                    )}
                 </div>
 
-                <div className="flex items-center gap-6">
-                    <div className="flex bg-surface border border-white/5 rounded-full p-1">
+                <div ref={dropdownRef} className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto lg:flex-1 justify-end">
+                    {/* Date Dropdown */}
+                    <div className="relative z-50">
+                        <button 
+                            type="button" 
+                            onClick={() => { setIsDateOpen(!isDateOpen); setIsSportOpen(false); }}
+                            className="flex items-center justify-between gap-3 w-full sm:w-auto bg-[#12141A] border border-white/5 rounded-full px-5 py-3 text-xs uppercase tracking-widest font-bold text-text-main/80 hover:bg-white/5 hover:text-text-main transition-colors whitespace-nowrap"
+                        >
+                            <span className="flex items-center gap-2"><Calendar size={14} className="text-primary"/> {selectedDate}</span> 
+                            <ChevronDown size={14} className={`transition-transform duration-300 ${isDateOpen ? 'rotate-180' : ''}`} />
+                        </button>
+                        
+                        {isDateOpen && (
+                            <div className="absolute top-full right-0 sm:left-0 sm:right-auto lg:right-0 lg:left-auto mt-2 w-48 bg-surface border border-white/10 rounded-2xl shadow-2xl overflow-hidden py-2 backdrop-blur-xl">
+                                {["Any Date", "Today", "This Week", "This Month"].map(opt => (
+                                    <button
+                                        type="button"
+                                        key={opt}
+                                        onClick={() => { setSelectedDate(opt); setIsDateOpen(false); setCurrentPage(1); }}
+                                        className={`w-full text-left px-5 py-2.5 text-xs font-black uppercase tracking-widest transition-colors ${selectedDate === opt ? "bg-primary/10 text-primary border-l-2 border-primary" : "text-text-main/60 hover:bg-white/5 hover:text-text-main border-l-2 border-transparent"}`}
+                                    >
+                                        {opt}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Sport Dropdown */}
+                    <div className="relative z-40">
+                        <button 
+                            type="button" 
+                            onClick={() => { setIsSportOpen(!isSportOpen); setIsDateOpen(false); }}
+                            className="flex items-center justify-between gap-3 w-full sm:w-auto bg-[#12141A] border border-white/5 rounded-full px-5 py-3 text-xs uppercase tracking-widest font-bold text-text-main/80 hover:bg-white/5 hover:text-text-main transition-colors whitespace-nowrap"
+                        >
+                            <span className="flex items-center gap-2"><LayoutGrid size={14} className="text-primary"/> {selectedSport}</span> 
+                            <ChevronDown size={14} className={`transition-transform duration-300 ${isSportOpen ? 'rotate-180' : ''}`} />
+                        </button>
+
+                        {isSportOpen && (
+                            <div className="absolute top-full right-0 sm:left-0 sm:right-auto lg:right-0 lg:left-auto mt-2 w-48 bg-surface border border-white/10 rounded-2xl shadow-2xl overflow-hidden py-2 backdrop-blur-xl">
+                                {["All Sports", "Tennis", "Fitness", "Soccer", "Yoga", "Basketball"].map(opt => (
+                                    <button
+                                        type="button"
+                                        key={opt}
+                                        onClick={() => { setSelectedSport(opt); setIsSportOpen(false); setCurrentPage(1); }}
+                                        className={`w-full text-left px-5 py-2.5 text-xs font-black uppercase tracking-widest transition-colors ${selectedSport === opt ? "bg-primary/10 text-primary border-l-2 border-primary" : "text-text-main/60 hover:bg-white/5 hover:text-text-main border-l-2 border-transparent"}`}
+                                    >
+                                        {opt}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Tabs */}
+                    <div className="flex bg-[#12141A] border border-white/5 rounded-full p-1.5 overflow-x-auto scrollbar-none">
                         {["All", "Upcoming", "Completed", "Cancelled"].map(tab => (
                             <button
+                                type="button"
                                 key={tab}
-                                onClick={() => setActiveTab(tab)}
-                                className={`px-4 py-1.5 text-xs font-bold rounded-full transition-all ${activeTab === tab ? "bg-primary text-bg shadow-[0_0_10px_rgba(163,255,18,0.2)]" : "text-text-main/60 hover:text-text-main"
-                                    }`}
+                                onClick={() => { setActiveTab(tab); setCurrentPage(1); }}
+                                className={`px-4 py-2 text-[10px] md:text-xs font-black uppercase tracking-widest rounded-full transition-all whitespace-nowrap ${
+                                    activeTab === tab 
+                                    ? "bg-primary text-bg shadow-[0_0_15px_rgba(163,255,18,0.3)]" 
+                                    : "text-text-main/50 hover:text-text-main hover:bg-white/5"
+                                }`}
                             >
                                 {tab}
                             </button>
                         ))}
                     </div>
-                    <button 
-                        onClick={() => {
-                            setActiveTab("All");
-                            setSearchQuery("");
-                            setDateFilter("All Time");
-                            setSportFilter("All");
-                            setCurrentPage(1);
-                        }}
-                        className="text-text-main/60 hover:text-text-main text-xs font-bold flex items-center gap-1.5 transition-colors"
-                    >
-                        <FilterX size={14} /> Clear Filters
-                    </button>
                 </div>
             </div>
 
             {/* Table */}
-            <div className="bg-surface border border-white/5 rounded-[24px] overflow-hidden">
+            <div className="bg-gradient-to-b from-surface to-surface/50 border border-white/5 rounded-[24px] overflow-hidden shadow-2xl">
                 <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse">
+                    <table className="w-full text-left border-collapse whitespace-nowrap">
                         <thead>
-                            <tr className="border-b border-white/5 bg-surface text-[10px] uppercase font-black tracking-widest text-text-main/40">
-                                <th className="px-6 py-5">Booking ID</th>
+                            <tr className="border-b border-white/5 text-[10px] uppercase font-black tracking-widest text-text-main/40 bg-white/5">
+                                <th className="px-6 py-5 pl-8">Booking ref</th>
                                 <th className="px-6 py-5">Athlete</th>
                                 <th className="px-6 py-5">Trainer</th>
-                                <th className="px-6 py-5">Date / Time</th>
-                                <th className="px-6 py-5">Category</th>
+                                <th className="px-6 py-5">Schedule</th>
+                                <th className="px-6 py-5">Sport</th>
                                 <th className="px-6 py-5">Status</th>
-                                <th className="px-6 py-5">Actions</th>
+                                <th className="px-6 py-5 pr-8 text-right">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="text-sm">
-                            {paginatedBookings.map((b, i) => (
-                                <tr key={b.id} className="border-b border-white/5/50 hover:bg-white/5 transition-colors">
-                                    <td className="px-6 py-5 text-text-main/60 font-medium">{b.id}</td>
-                                    <td className="px-6 py-5">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-8 h-8 rounded-full bg-[#fce6cd] flex-shrink-0"></div>
-                                            <span className="font-bold text-text-main tracking-wide">{b.athlete}</span>
+                            {loading ? (
+                                <tr>
+                                    <td colSpan={7} className="py-10 text-center text-text-main/50 font-bold">
+                                        Loading bookings...
+                                    </td>
+                                </tr>
+                            ) : paginatedBookings.length === 0 ? (
+                                <tr>
+                                    <td colSpan={7} className="py-10 text-center text-text-main/50 font-bold">
+                                        No bookings match your current filters.
+                                    </td>
+                                </tr>
+                            ) : paginatedBookings.map((b, i) => (
+                                <tr key={b.id} className="border-b border-white/5/50 hover:bg-white/5 transition-colors group">
+                                    <td className="px-6 py-5 pl-8">
+                                        <div className="flex items-center gap-2 text-text-main/60 font-black text-xs tracking-wider uppercase">
+                                            <span className="text-primary/50">#</span>{b.id}
                                         </div>
                                     </td>
                                     <td className="px-6 py-5">
-                                        <div className="text-text-main/80 font-medium">{b.trainer}</div>
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center font-black text-xs border border-primary/20 flex-shrink-0">
+                                                {b.athleteInitials}
+                                            </div>
+                                            <span className="font-bold text-text-main tracking-wide hover:text-primary transition-colors cursor-pointer">{b.athlete}</span>
+                                        </div>
                                     </td>
                                     <td className="px-6 py-5">
-                                        <div className="text-text-main font-bold text-sm tracking-wide">{b.date}</div>
-                                        <div className="text-text-main/40 text-xs mt-0.5 font-medium">{b.time}</div>
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-8 h-8 rounded-full bg-white/5 text-white flex items-center justify-center font-black text-xs border border-white/10 flex-shrink-0">
+                                                {b.trainerInitials}
+                                            </div>
+                                            <span className="font-medium text-text-main/80 tracking-wide hover:text-white transition-colors cursor-pointer">{b.trainer}</span>
+                                        </div>
                                     </td>
                                     <td className="px-6 py-5">
-                                        <div className="px-3 py-1 bg-[#272A35] border border-gray-700 text-text-main/80 rounded-md text-[10px] font-black uppercase tracking-widest inline-flex">
+                                        <div className="flex flex-col">
+                                            <span className="text-text-main font-bold text-sm tracking-wide">{b.date}</span>
+                                            <span className="text-text-main/40 text-[10px] font-black uppercase tracking-widest mt-0.5">{b.time}</span>
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-5">
+                                        <div className="px-3 py-1 bg-white/5 border border-white/10 text-text-main/90 rounded-lg text-[10px] font-black uppercase tracking-widest inline-flex">
                                             {b.category}
                                         </div>
                                     </td>
                                     <td className="px-6 py-5">
                                         <span className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[10px] font-black uppercase tracking-widest inline-flex ${b.sBg} ${b.sColor} ${b.sBorder}`}>
-                                            <span className={`w-1.5 h-1.5 rounded-full bg-current`}></span>
+                                            {b.sIcon}
                                             {b.status}
                                         </span>
                                     </td>
-                                    <td className="px-6 py-5 text-text-main/40 hover:text-text-main cursor-pointer transition-colors">
-                                        <MoreVertical size={18} />
+                                    <td className="px-6 py-5 pr-8 text-right relative">
+                                        <button 
+                                            type="button" 
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                // Temporarily hold full ID in a custom attribute if we truncated it. 
+                                                // For real implementation we'd need the real full ID or we assume local filtering uses the truncated b.id.
+                                                setActionMenuOpen(actionMenuOpen === b.id ? null : b.id);
+                                            }}
+                                            className={`w-8 h-8 rounded-full flex justify-center items-center ml-auto transition-all outline-none ${actionMenuOpen === b.id ? 'bg-primary/20 text-primary' : 'text-text-main/40 hover:text-text-main hover:bg-white/5'}`}
+                                        >
+                                            <MoreVertical size={18} />
+                                        </button>
+                                        
+                                        {actionMenuOpen === b.id && (
+                                            <div ref={actionMenuRef} className="absolute right-8 top-12 z-[100] w-48 bg-[#1A1D24] border border-white/10 rounded-2xl shadow-2xl py-2 flex flex-col overflow-hidden text-left origin-top-right animate-in fade-in zoom-in-95 duration-200">
+                                                {b.rawStatus !== "completed" && b.rawStatus !== "cancelled" && (
+                                                    <button 
+                                                        type="button"
+                                                        onClick={() => requestAction(b.id, b.id, "complete")}
+                                                        className="flex items-center gap-3 w-full px-4 py-3 text-xs font-bold text-text-main hover:bg-white/5 transition-colors"
+                                                    >
+                                                        <CheckCircle size={14} className="text-green-500" /> Mark Completed
+                                                    </button>
+                                                )}
+                                                {b.rawStatus !== "cancelled" && (
+                                                    <button 
+                                                        type="button"
+                                                        onClick={() => requestAction(b.id, b.id, "cancel")}
+                                                        className="flex items-center gap-3 w-full px-4 py-3 text-xs font-bold text-red-500 hover:bg-red-500/10 transition-colors"
+                                                    >
+                                                        <XCircle size={14} /> Cancel Booking
+                                                    </button>
+                                                )}
+                                            </div>
+                                        )}
                                     </td>
                                 </tr>
                             ))}
@@ -273,26 +402,32 @@ export default function AdminBookingsPage() {
                 </div>
 
                 {/* Pagination */}
-                {bookings.length > 0 && (
-                    <div className="px-6 py-4 flex items-center justify-between border-t border-white/5 bg-surface">
-                        <div className="text-xs font-bold text-text-main/40 tracking-wide">
-                            Showing <span className="text-text-main">{(currentPage - 1) * itemsPerPage + 1}</span> to <span className="text-text-main">{Math.min(currentPage * itemsPerPage, bookings.length)}</span> of <span className="text-text-main">{bookings.length}</span> results
+                {!loading && bookings.length > 0 && (
+                    <div className="px-8 py-5 flex items-center justify-between border-t border-white/5 bg-[#12141A]/50">
+                        <div className="text-xs font-bold text-text-main/40 tracking-wide uppercase">
+                            Showing <span className="text-text-main mx-1">{(currentPage - 1) * itemsPerPage + 1}</span> 
+                            to <span className="text-text-main mx-1">{Math.min(currentPage * itemsPerPage, bookings.length)}</span> 
+                            of <span className="text-text-main mx-1">{bookings.length}</span> results
                         </div>
                         <div className="flex items-center gap-2">
                             <button 
-                                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                                type="button"
+                                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                                 disabled={currentPage === 1}
-                                className="w-8 h-8 flex items-center justify-center text-text-main/40 hover:text-text-main disabled:opacity-30 disabled:cursor-not-allowed"
-                            >‹</button>
+                                className="w-8 h-8 flex items-center justify-center rounded-full bg-white/5 text-text-main/60 hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:hover:bg-white/5 disabled:hover:text-text-main/60 transition-all"
+                            >
+                                <ChevronLeft size={16} />
+                            </button>
                             
                             {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
-                                <button
+                                <button 
+                                    type="button"
                                     key={page}
                                     onClick={() => setCurrentPage(page)}
-                                    className={`w-8 h-8 rounded-full font-black transition-all ${
+                                    className={`w-8 h-8 rounded-full text-xs font-black transition-all hidden sm:inline-block ${
                                         currentPage === page 
-                                        ? "bg-primary text-bg shadow-[0_0_10px_rgba(163,255,18,0.3)]" 
-                                        : "text-text-main/60 hover:text-text-main"
+                                            ? "bg-primary text-bg shadow-[0_0_10px_rgba(163,255,18,0.3)]" 
+                                            : "text-text-main/60 hover:text-white hover:bg-white/5"
                                     }`}
                                 >
                                     {page}
@@ -300,14 +435,35 @@ export default function AdminBookingsPage() {
                             ))}
 
                             <button 
-                                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                                disabled={currentPage === totalPages || totalPages === 0}
-                                className="w-8 h-8 flex items-center justify-center text-text-main/40 hover:text-text-main disabled:opacity-30 disabled:cursor-not-allowed"
-                            >›</button>
+                                type="button"
+                                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                disabled={currentPage === totalPages}
+                                className="w-8 h-8 flex items-center justify-center rounded-full bg-white/5 text-text-main/60 hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:hover:bg-white/5 disabled:hover:text-text-main/60 transition-all"
+                            >
+                                <ChevronRight size={16} />
+                            </button>
                         </div>
                     </div>
                 )}
             </div>
+
+            <ConfirmModal
+                isOpen={confirmModal.isOpen}
+                title={confirmModal.action === "cancel" ? "Cancel Booking" : "Complete Booking"}
+                message={
+                    <span>
+                        Are you sure you want to mark booking <strong>#{confirmModal.refId}</strong> as 
+                        <span className={confirmModal.action === "cancel" ? "text-red-500 ml-1" : "text-green-500 ml-1"}>
+                            {confirmModal.action === "cancel" ? "Cancelled" : "Completed"}
+                        </span>?
+                    </span>
+                }
+                confirmText={confirmModal.action === "cancel" ? "Yes, Cancel it" : "Mark Completed"}
+                type={confirmModal.action === "cancel" ? "danger" : "success"}
+                onCancel={() => setConfirmModal({ isOpen: false, id: null, action: null, refId: "" })}
+                onConfirm={confirmAction}
+                isLoading={actionLoading}
+            />
 
         </div>
     );

@@ -129,7 +129,7 @@ export default function NotificationsPage() {
                     .eq("id", notificationId);
 
                 setNotifications(prev => prev.map(n => n.id === notificationId ? { ...n, data: newData } : n));
-                
+
                 // Close modal if open
                 setShowOfferModal(false);
                 setSelectedNotification(null);
@@ -142,7 +142,7 @@ export default function NotificationsPage() {
         }
     };
 
-    const unreadCount = notifications.filter((n) => !n.read).length;
+    const unreadCount = notifications.filter(n => !n.read).length;
 
     const typeIcons: Record<string, React.ReactNode> = {
         BOOKING_CONFIRMED: <CheckCircle className="text-primary w-5 h-5 shrink-0" />,

@@ -200,7 +200,7 @@ export default function BookTrainerPage() {
 
             const formattedSlots = (data || []).map(s => formatTimeTo12h(s.start_time));
             setSlots(formattedSlots);
-            
+
             // Clear selected time if it's no longer available
             if (selectedTime && !formattedSlots.includes(selectedTime)) {
                 setSelectedTime("");
@@ -251,21 +251,21 @@ export default function BookTrainerPage() {
                 .select("id", { count: "exact", head: true })
                 .eq("trainer_id", profile.user_id)
                 .eq("status", "completed");
-            
+
             // Re-fetching dispute count more reliably via join
             const { data: disputesData } = await supabase
                 .from("disputes")
                 .select("id, booking:bookings!inner(trainer_id)")
                 .eq("booking.trainer_id", profile.user_id);
-            
+
             const finalDisputeCount = (disputesData || []).length;
 
-            const isPerformanceVerified = 
-                (bookingsCount || 0) >= 3 && 
-                finalDisputeCount === 0 && 
-                Number(profile.completion_rate) >= 95 && 
+            const isPerformanceVerified =
+                (bookingsCount || 0) >= 3 &&
+                finalDisputeCount === 0 &&
+                Number(profile.completion_rate) >= 95 &&
                 Number(profile.reliability_score) >= 95;
-            
+
             setTrainer({
                 ...profile,
                 user: userData as TrainerWithUser["user"],
@@ -486,8 +486,8 @@ export default function BookTrainerPage() {
                         </div>
                         <div>
                             <div className="text-3xl font-black text-text-main mb-3">
-                                {trainer.sessions_count >= 1000 
-                                    ? (trainer.sessions_count / 1000).toFixed(1) + "k" 
+                                {trainer.sessions_count >= 1000
+                                    ? (trainer.sessions_count / 1000).toFixed(1) + "k"
                                     : trainer.sessions_count}
                             </div>
                             <div className="text-[10px] text-text-main/40 font-bold uppercase tracking-widest mt-1">SESSIONS</div>
@@ -521,9 +521,9 @@ export default function BookTrainerPage() {
                     </div>
 
                     {/* Reviews */}
-                    <ReviewSection 
-                        reviews={trainer.recent_reviews} 
-                        totalCount={trainer.review_count} 
+                    <ReviewSection
+                        reviews={trainer.recent_reviews}
+                        totalCount={trainer.review_count}
                     />
 
                 </div>

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { getSession, AuthUser } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
-import { Settings, Save, RefreshCw, Shield, Bell, Globe, CreditCard, Users, Calendar } from "lucide-react";
+import { Settings, Save, RefreshCw, Shield, Bell, Globe, CreditCard, Users, Calendar, AlertOctagon } from "lucide-react";
 import PopupModal from "@/components/common/PopupModal";
 
 interface PlatformSettings {
@@ -115,54 +115,58 @@ export default function AdminSettingsPage() {
 
     if (loading) {
         return (
-            <div className="flex items-center justify-center h-64">
-                <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent"></div>
+            <div className="flex items-center justify-center min-h-[400px]">
+                <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
             </div>
         );
     }
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-8 max-w-[1600px] w-full">
             {/* Header */}
-            <div className="flex items-center justify-between">
-                <div>
-                    <h2 className="text-3xl font-black text-text-main tracking-tight mb-2">Platform Settings</h2>
-                    <p className="text-text-main/60 text-lg">
-                        Configure platform-wide settings and policies
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-8">
+                <div className="flex flex-col gap-2">
+                    <h1 className="text-4xl md:text-5xl font-black tracking-tight uppercase leading-none flex items-center gap-4">
+                        <span className="text-text-main">Global</span>
+                        <span className="text-primary border-b-4 border-primary pb-1">Settings</span>
+                    </h1>
+                    <p className="text-text-main/60 font-medium max-w-xl text-sm md:text-base mt-2">
+                        Configure core platform parameters, thresholds, and administrative policies across all systems.
                     </p>
                 </div>
-                <button
-                    onClick={saveSettings}
-                    disabled={saving}
-                    className="flex items-center gap-2 px-6 py-3 rounded-xl bg-primary text-bg font-bold shadow-[0_4px_14px_0_rgba(163,255,18,0.25)] hover:shadow-[0_6px_20px_rgba(163,255,18,0.3)] hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                    {saving ? (
-                        <>
-                            <RefreshCw size={18} className="animate-spin" />
-                            Saving...
-                        </>
-                    ) : (
-                        <>
-                            <Save size={18} />
-                            Save Settings
-                        </>
-                    )}
-                </button>
+                <div className="flex items-center gap-3 w-full md:w-auto">
+                    <button
+                        type="button"
+                        onClick={saveSettings}
+                        disabled={saving}
+                        className="flex items-center justify-center gap-2 w-full md:w-auto px-8 py-3.5 rounded-2xl bg-primary text-bg font-black text-sm uppercase tracking-widest hover:shadow-[0_0_30px_rgba(163,255,18,0.4)] hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:shadow-none"
+                    >
+                        {saving ? (
+                            <><RefreshCw size={18} className="animate-spin" /> Saving...</>
+                        ) : (
+                            <><Save size={18} strokeWidth={3} /> Save Configuration</>
+                        )}
+                    </button>
+                </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+
                 {/* Platform Configuration */}
-                <div className="bg-surface border border-white/5 rounded-[24px] p-6">
-                    <div className="flex items-center gap-3 mb-6">
-                        <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center">
-                            <Settings size={20} className="text-blue-500" />
+                <div className="bg-gradient-to-br from-surface to-surface/50 border border-white/5 rounded-[24px] p-8 shadow-2xl relative overflow-hidden group hover:border-white/10 transition-colors">
+                    <div className="flex items-center gap-4 mb-8">
+                        <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center border border-primary/20 text-primary">
+                            <Settings size={24} />
                         </div>
-                        <h3 className="text-lg font-bold text-text-main">Platform Configuration</h3>
-                    </div>
-                    
-                    <div className="space-y-5">
                         <div>
-                            <label className="block text-sm font-medium text-text-main/70 mb-2">
+                            <h3 className="text-xl font-black text-text-main uppercase tracking-widest">Platform Core</h3>
+                            <p className="text-xs font-semibold uppercase tracking-widest text-text-main/40 mt-1">Financials & Meta</p>
+                        </div>
+                    </div>
+
+                    <div className="space-y-6">
+                        <div className="relative">
+                            <label className="block text-[10px] font-black uppercase tracking-widest text-text-main/60 mb-2 ml-1">
                                 Platform Fee Percentage
                             </label>
                             <input
@@ -172,14 +176,14 @@ export default function AdminSettingsPage() {
                                 step="0.1"
                                 value={settings.platform_fee_percentage}
                                 onChange={(e) => handleSettingChange('platform_fee_percentage', Number(e.target.value))}
-                                className="w-full px-4 py-2.5 bg-bg border border-white/10 rounded-xl text-text-main focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/30 transition-colors"
+                                className="w-full bg-[#12141A] border border-white/5 rounded-xl px-5 py-3.5 text-sm font-bold text-text-main focus:outline-none focus:border-primary/50 shadow-inner transition-colors"
                             />
-                            <p className="text-xs text-text-main/40 mt-1.5">Percentage charged on each transaction</p>
+                            <p className="text-[11px] text-text-main/40 mt-2 font-medium px-1">Percentage charged on each transaction</p>
                         </div>
 
-                        <div>
-                            <label className="block text-sm font-medium text-text-main/70 mb-2">
-                                Max Booking Distance (miles)
+                        <div className="relative">
+                            <label className="block text-[10px] font-black uppercase tracking-widest text-text-main/60 mb-2 ml-1">
+                                Max Booking Distance (Miles)
                             </label>
                             <input
                                 type="number"
@@ -187,114 +191,115 @@ export default function AdminSettingsPage() {
                                 max="200"
                                 value={settings.max_booking_distance}
                                 onChange={(e) => handleSettingChange('max_booking_distance', Number(e.target.value))}
-                                className="w-full px-4 py-2.5 bg-bg border border-white/10 rounded-xl text-text-main focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/30 transition-colors"
+                                className="w-full bg-[#12141A] border border-white/5 rounded-xl px-5 py-3.5 text-sm font-bold text-text-main focus:outline-none focus:border-primary/50 shadow-inner transition-colors"
                             />
-                            <p className="text-xs text-text-main/40 mt-1.5">Maximum distance for trainer-athlete matching</p>
+                            <p className="text-[11px] text-text-main/40 mt-2 font-medium px-1">Maximum distance for trainer-athlete matching</p>
                         </div>
 
-                        <div>
-                            <label className="block text-sm font-medium text-text-main/70 mb-2">
-                                Support Email
+                        <div className="relative">
+                            <label className="block text-[10px] font-black uppercase tracking-widest text-text-main/60 mb-2 ml-1">
+                                Support Contact Route
                             </label>
                             <input
                                 type="email"
                                 value={settings.support_email}
                                 onChange={(e) => handleSettingChange('support_email', e.target.value)}
-                                className="w-full px-4 py-2.5 bg-bg border border-white/10 rounded-xl text-text-main focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/30 transition-colors"
+                                className="w-full bg-[#12141A] border border-white/5 rounded-xl px-5 py-3.5 text-sm font-bold text-text-main focus:outline-none focus:border-primary/50 shadow-inner transition-colors"
                             />
-                            <p className="text-xs text-text-main/40 mt-1.5">Email displayed to users for support</p>
+                            <p className="text-[11px] text-text-main/40 mt-2 font-medium px-1">Email displayed to users for support</p>
                         </div>
 
-                        <div className="flex items-center justify-between pt-2">
-                            <div>
-                                <label className="block text-sm font-medium text-text-main/70 mb-1">
-                                    Maintenance Mode
-                                </label>
-                                <p className="text-xs text-text-main/40">Disable platform for maintenance</p>
-                            </div>
-                            <button
-                                onClick={() => handleSettingChange('maintenance_mode', !settings.maintenance_mode)}
-                                className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${
-                                    settings.maintenance_mode ? 'bg-red-500' : 'bg-white/10'
-                                }`}
-                            >
-                                <span
-                                    className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition-transform ${
-                                        settings.maintenance_mode ? 'translate-x-6' : 'translate-x-1'
+                        <div className="pt-4 border-t border-white/5 mt-6">
+                            <div className="flex items-center justify-between p-4 rounded-xl bg-red-500/5 border border-red-500/10">
+                                <div>
+                                    <h4 className="text-sm font-bold text-red-500 mb-0.5">Maintenance Mode</h4>
+                                    <p className="text-xs text-text-main/50 font-medium">Take system offline for updates</p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => handleSettingChange('maintenance_mode', !settings.maintenance_mode)}
+                                    className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors border ${
+                                        settings.maintenance_mode ? 'bg-red-500 border-red-400' : 'bg-[#12141A] border-white/10'
                                     }`}
-                                />
-                            </button>
+                                >
+                                    <span
+                                        className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
+                                            settings.maintenance_mode ? 'translate-x-6 shadow-[0_0_10px_rgba(255,255,255,0.5)]' : 'translate-x-1'
+                                        }`}
+                                    />
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                {/* User Management */}
-                <div className="bg-surface border border-white/5 rounded-[24px] p-6">
-                    <div className="flex items-center gap-3 mb-6">
-                        <div className="w-10 h-10 rounded-xl bg-green-500/10 flex items-center justify-center">
-                            <Users size={20} className="text-green-500" />
+                {/* User & Identity Management */}
+                <div className="bg-gradient-to-br from-surface to-surface/50 border border-white/5 rounded-[24px] p-8 shadow-2xl relative overflow-hidden group hover:border-white/10 transition-colors">
+                    <div className="flex items-center gap-4 mb-8">
+                        <div className="w-12 h-12 rounded-2xl bg-blue-500/10 flex items-center justify-center border border-blue-500/20 text-blue-500">
+                            <Users size={24} />
                         </div>
-                        <h3 className="text-lg font-bold text-text-main">User Management</h3>
-                    </div>
-                    
-                    <div className="space-y-6">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <label className="block text-sm font-medium text-text-main/70 mb-1">
-                                    Auto-approve Trainers
-                                </label>
-                                <p className="text-xs text-text-main/40">Automatically approve new trainer accounts</p>
-                            </div>
-                            <button
-                                onClick={() => handleSettingChange('auto_approve_trainers', !settings.auto_approve_trainers)}
-                                className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${
-                                    settings.auto_approve_trainers ? 'bg-primary' : 'bg-white/10'
-                                }`}
-                            >
-                                <span
-                                    className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition-transform ${
-                                        settings.auto_approve_trainers ? 'translate-x-6' : 'translate-x-1'
-                                    }`}
-                                />
-                            </button>
-                        </div>
-
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <label className="block text-sm font-medium text-text-main/70 mb-1">
-                                    Require Trainer Verification
-                                </label>
-                                <p className="text-xs text-text-main/40">Trainers must be verified before booking</p>
-                            </div>
-                            <button
-                                onClick={() => handleSettingChange('require_trainer_verification', !settings.require_trainer_verification)}
-                                className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${
-                                    settings.require_trainer_verification ? 'bg-primary' : 'bg-white/10'
-                                }`}
-                            >
-                                <span
-                                    className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition-transform ${
-                                        settings.require_trainer_verification ? 'translate-x-6' : 'translate-x-1'
-                                    }`}
-                                />
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Booking Policies */}
-                <div className="bg-surface border border-white/5 rounded-[24px] p-6">
-                    <div className="flex items-center gap-3 mb-6">
-                        <div className="w-10 h-10 rounded-xl bg-purple-500/10 flex items-center justify-center">
-                            <Calendar size={20} className="text-purple-500" />
-                        </div>
-                        <h3 className="text-lg font-bold text-text-main">Booking Policies</h3>
-                    </div>
-                    
-                    <div className="space-y-4">
                         <div>
-                            <label className="block text-sm font-medium text-text-main/70 mb-2">
-                                Cancellation Policy (hours)
+                            <h3 className="text-xl font-black text-text-main uppercase tracking-widest">Identity Control</h3>
+                            <p className="text-xs font-semibold uppercase tracking-widest text-text-main/40 mt-1">Provider Validation</p>
+                        </div>
+                    </div>
+
+                    <div className="space-y-4">
+                        <div className="flex items-center justify-between p-5 rounded-xl bg-[#12141A] border border-white/5 hover:border-white/10 transition-colors">
+                            <div className="pr-4">
+                                <h4 className="text-sm font-bold text-text-main mb-1">Auto-approve Trainers</h4>
+                                <p className="text-xs text-text-main/50 font-medium leading-relaxed">Skip manual review for new trainer registrations. Accounts go live immediately.</p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => handleSettingChange('auto_approve_trainers', !settings.auto_approve_trainers)}
+                                className={`relative inline-flex h-7 w-12 flex-shrink-0 items-center rounded-full transition-colors border ${
+                                    settings.auto_approve_trainers ? 'bg-primary border-primary' : 'bg-[#1A1D24] border-white/10'
+                                }`}
+                            >
+                                <span className={`inline-block h-5 w-5 transform rounded-full bg-bg transition-transform ${
+                                    settings.auto_approve_trainers ? 'translate-x-6 bg-surface shadow-[0_0_10px_rgba(163,255,18,0.5)]' : 'translate-x-1 bg-white/50'
+                                }`} />
+                            </button>
+                        </div>
+
+                        <div className="flex items-center justify-between p-5 rounded-xl bg-[#12141A] border border-white/5 hover:border-white/10 transition-colors">
+                            <div className="pr-4">
+                                <h4 className="text-sm font-bold text-text-main mb-1">Require Strict Verification</h4>
+                                <p className="text-xs text-text-main/50 font-medium leading-relaxed">Mandate ID uploads and background checks before a trainer can accept payments.</p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => handleSettingChange('require_trainer_verification', !settings.require_trainer_verification)}
+                                className={`relative inline-flex h-7 w-12 flex-shrink-0 items-center rounded-full transition-colors border ${
+                                    settings.require_trainer_verification ? 'bg-primary border-primary' : 'bg-[#1A1D24] border-white/10'
+                                }`}
+                            >
+                                <span className={`inline-block h-5 w-5 transform rounded-full bg-bg transition-transform ${
+                                    settings.require_trainer_verification ? 'translate-x-6 bg-surface shadow-[0_0_10px_rgba(163,255,18,0.5)]' : 'translate-x-1 bg-white/50'
+                                }`} />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Policies & Resolving */}
+                <div className="bg-gradient-to-br from-surface to-surface/50 border border-white/5 rounded-[24px] p-8 shadow-2xl relative overflow-hidden group hover:border-white/10 transition-colors">
+                    <div className="flex items-center gap-4 mb-8">
+                        <div className="w-12 h-12 rounded-2xl bg-amber-500/10 flex items-center justify-center border border-amber-500/20 text-amber-500">
+                            <Shield size={24} />
+                        </div>
+                        <div>
+                            <h3 className="text-xl font-black text-text-main uppercase tracking-widest">Policy Engine</h3>
+                            <p className="text-xs font-semibold uppercase tracking-widest text-text-main/40 mt-1">Cancellations & Rules</p>
+                        </div>
+                    </div>
+
+                    <div className="space-y-6">
+                        <div className="relative">
+                            <label className="block text-[10px] font-black uppercase tracking-widest text-text-main/60 mb-2 ml-1">
+                                Strict Cancel Window (hrs)
                             </label>
                             <input
                                 type="number"
@@ -302,26 +307,14 @@ export default function AdminSettingsPage() {
                                 max="168"
                                 value={settings.cancellation_policy_hours}
                                 onChange={(e) => handleSettingChange('cancellation_policy_hours', Number(e.target.value))}
-                                className="w-full px-4 py-2.5 bg-bg border border-white/10 rounded-xl text-text-main focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/30 transition-colors"
+                                className="w-full bg-[#12141A] border border-white/5 rounded-xl px-5 py-3.5 text-sm font-bold text-text-main focus:outline-none focus:border-primary/50 shadow-inner transition-colors"
                             />
-                            <p className="text-xs text-text-main/40 mt-1.5">Hours before booking when cancellation is allowed</p>
+                            <p className="text-[11px] text-text-main/40 mt-2 font-medium px-1">Any cancellation within this timeframe yields no refunds.</p>
                         </div>
-                    </div>
-                </div>
 
-                {/* Dispute Resolution */}
-                <div className="bg-surface border border-white/5 rounded-[24px] p-6">
-                    <div className="flex items-center gap-3 mb-6">
-                        <div className="w-10 h-10 rounded-xl bg-orange-500/10 flex items-center justify-center">
-                            <Shield size={20} className="text-orange-500" />
-                        </div>
-                        <h3 className="text-lg font-bold text-text-main">Dispute Resolution</h3>
-                    </div>
-                    
-                    <div className="space-y-4">
-                        <div>
-                            <label className="block text-sm font-medium text-text-main/70 mb-2">
-                                Dispute Resolution Timeframe (days)
+                        <div className="relative">
+                            <label className="block text-[10px] font-black uppercase tracking-widest text-text-main/60 mb-2 ml-1">
+                                Auto-Resolution Timeframe (Days)
                             </label>
                             <input
                                 type="number"
@@ -329,49 +322,49 @@ export default function AdminSettingsPage() {
                                 max="30"
                                 value={settings.dispute_resolution_days}
                                 onChange={(e) => handleSettingChange('dispute_resolution_days', Number(e.target.value))}
-                                className="w-full px-4 py-2.5 bg-bg border border-white/10 rounded-xl text-text-main focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/30 transition-colors"
+                                className="w-full bg-[#12141A] border border-white/5 rounded-xl px-5 py-3.5 text-sm font-bold text-text-main focus:outline-none focus:border-primary/50 shadow-inner transition-colors"
                             />
-                            <p className="text-xs text-text-main/40 mt-1.5">Days to resolve disputes before escalation</p>
+                            <p className="text-[11px] text-text-main/40 mt-2 font-medium px-1">Max days allowed to resolve disputes before forceful admin closure.</p>
+                        </div>
+                    </div>
+                </div>
+
+                {/* System Infrastructure */}
+                <div className="bg-gradient-to-br from-surface to-surface/50 border border-white/5 rounded-[24px] p-8 shadow-2xl relative overflow-hidden group hover:border-white/10 transition-colors flex flex-col">
+                    <div className="flex items-center gap-4 mb-8">
+                        <div className="w-12 h-12 rounded-2xl bg-green-500/10 flex items-center justify-center border border-green-500/20 text-green-500">
+                            <Globe size={24} />
+                        </div>
+                        <div>
+                            <h3 className="text-xl font-black text-text-main uppercase tracking-widest">Global Status</h3>
+                            <p className="text-xs font-semibold uppercase tracking-widest text-text-main/40 mt-1">Infrastructure Health</p>
+                        </div>
+                    </div>
+
+                    <div className="flex flex-col gap-4 flex-1 justify-center">
+                        <div className="flex items-center justify-between p-4 bg-[#12141A] border border-white/5 rounded-xl">
+                            <p className="font-black text-sm uppercase tracking-widest text-text-main/80">Edge Database</p>
+                            <span className="flex items-center gap-2 text-green-500 text-[10px] uppercase font-black tracking-widest bg-green-500/10 px-3 py-1.5 rounded-full border border-green-500/20">
+                                <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div> Healthy
+                            </span>
+                        </div>
+                        <div className="flex items-center justify-between p-4 bg-[#12141A] border border-white/5 rounded-xl">
+                            <p className="font-black text-sm uppercase tracking-widest text-text-main/80">API Gateway</p>
+                            <span className="flex items-center gap-2 text-green-500 text-[10px] uppercase font-black tracking-widest bg-green-500/10 px-3 py-1.5 rounded-full border border-green-500/20">
+                                <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div> Operating
+                            </span>
+                        </div>
+                        <div className="flex items-center justify-between p-4 bg-[#12141A] border border-white/5 rounded-xl">
+                            <p className="font-black text-sm uppercase tracking-widest text-text-main/80">Payments Link</p>
+                            <span className="flex items-center gap-2 text-green-500 text-[10px] uppercase font-black tracking-widest bg-green-500/10 px-3 py-1.5 rounded-full border border-green-500/20">
+                                <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div> Linked
+                            </span>
                         </div>
                     </div>
                 </div>
             </div>
 
-            {/* System Status */}
-            <div className="bg-surface border border-white/5 rounded-[24px] p-6">
-                <div className="flex items-center gap-3 mb-6">
-                    <div className="w-10 h-10 rounded-xl bg-green-500/10 flex items-center justify-center">
-                        <Globe size={20} className="text-green-500" />
-                    </div>
-                    <h3 className="text-lg font-bold text-text-main">System Status</h3>
-                </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div className="flex items-center gap-3">
-                        <div className="w-3 h-3 rounded-full bg-green-500 animate-pulse"></div>
-                        <div>
-                            <p className="font-medium text-text-main">Database</p>
-                            <p className="text-sm text-text-main/50">Connected</p>
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                        <div className="w-3 h-3 rounded-full bg-green-500 animate-pulse"></div>
-                        <div>
-                            <p className="font-medium text-text-main">API</p>
-                            <p className="text-sm text-text-main/50">Operational</p>
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                        <div className="w-3 h-3 rounded-full bg-green-500 animate-pulse"></div>
-                        <div>
-                            <p className="font-medium text-text-main">Storage</p>
-                            <p className="text-sm text-text-main/50">Available</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <PopupModal 
+            <PopupModal
                 isOpen={!!popup}
                 onClose={() => setPopup(null)}
                 type={popup?.type || "info"}

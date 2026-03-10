@@ -7,7 +7,7 @@ import { matchingService } from './matching.service';
 import { asyncHandler } from '../../common/middleware';
 import { ApiResponse } from '@airtrainr/shared';
 
-const router = Router();
+const router: ReturnType<typeof Router> = Router();
 
 /**
  * GET /api/v1/discover/trainers

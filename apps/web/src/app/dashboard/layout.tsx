@@ -25,6 +25,9 @@ import {
 } from "lucide-react";
 import { IconButton } from "@/components/ui/Buttons";
 import { AuthContext } from "@/context/AuthContext";
+import { TrainerProvider } from "@/context/TrainerContext";
+import { AthleteProvider } from "@/context/AthleteContext";
+import { NotificationProvider } from "@/context/NotificationContext";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
     const [user, setUser] = useState<AuthUser | null>(null);
@@ -64,25 +67,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         checkAuth();
     }, [router, pathname]);
 
-    // Fetch and subscribe to unread notifications count
+    // Fetch unread messages count
     useEffect(() => {
         if (!user) return;
-
-        const fetchUnreadCount = async () => {
-            try {
-                const { count, error } = await supabase
-                    .from("notifications")
-                    .select("*", { count: "exact", head: true })
-                    .eq("user_id", user.id)
-                    .eq("read", false);
-
-                if (!error && count !== null) {
-                    setUnreadCount(count);
-                }
-            } catch (err) {
-                console.error("Failed to fetch unread count:", err);
-            }
-        };
 
         const fetchUnreadMsgCount = async () => {
             try {
@@ -114,18 +101,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             }
         };
 
-        fetchUnreadCount();
         fetchUnreadMsgCount();
-
-        // Real-time listener for notifications
-        const notifChannel = supabase
-            .channel(`notifications_${user.id}`)
-            .on(
-                "postgres_changes",
-                { event: "*", schema: "public", table: "notifications", filter: `user_id=eq.${user.id}` },
-                () => fetchUnreadCount()
-            )
-            .subscribe();
 
         // Real-time listener for messages
         const msgChannel = supabase
@@ -138,10 +114,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             .subscribe();
 
         return () => {
-            supabase.removeChannel(notifChannel);
             supabase.removeChannel(msgChannel);
         };
     }, [user, pathname]); // Re-fetch on path changes (marking as read happens on page)
+    
+    // Unread count for notifications is now handled by NotificationContext
 
     const handleLogout = async () => {
         await clearSession();
@@ -180,8 +157,33 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         ] : []),
         { divider: true, id: "div1" },
         { label: "Messages", href: "/dashboard/messages", icon: MessageSquare, badge: unreadMsgCount > 0 ? unreadMsgCount : undefined },
-        { label: "Notifications", href: "/dashboard/notifications", icon: Bell, badge: unreadCount > 0 ? unreadCount : undefined },
+        { label: "Notifications", href: "/dashboard/notifications", icon: Bell, useBadgeContext: true },
     ];
+
+    return (
+        <AuthContext.Provider value={{ user, setUser }}>
+            <NotificationProvider>
+                <TrainerProvider>
+                    <AthleteProvider>
+                        <DashboardLayoutContent user={user} loading={loading} mobileMenuOpen={mobileMenuOpen} setMobileMenuOpen={setMobileMenuOpen} navItems={navItems} handleLogout={handleLogout} children={children} />
+                    </AthleteProvider>
+                </TrainerProvider>
+            </NotificationProvider>
+        </AuthContext.Provider>
+    );
+}
+
+import { useNotifications } from "@/context/NotificationContext";
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function DashboardLayoutContent({ user, mobileMenuOpen, setMobileMenuOpen, navItems, handleLogout, children }: any) {
+    const router = useRouter();
+    const pathname = usePathname();
+    const { unreadCount } = useNotifications();
+    const [hydrated, setHydrated] = useState(false);
+    
+    useEffect(() => { setHydrated(true) }, []);
+    if (!hydrated) return null;
 
     return (
         <div className="h-[100dvh] overflow-hidden bg-bg font-sans flex text-text-main font-sans selection:bg-primary/30">
@@ -239,9 +241,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                     <item.icon size={20} className={isActive ? "text-primary" : "text-text-main/40 group-hover:text-text-main/80"} strokeWidth={isActive ? 2.5 : 2} />
                                     <span className={`text-[15px] ${isActive ? "font-bold" : "font-semibold"}`}>{item.label}</span>
                                 </div>
-                                {item.badge && (
+                                {(item.badge || (item.useBadgeContext && unreadCount > 0)) && (
                                     <span className="bg-primary text-bg text-[11px] font-black px-2 py-0.5 rounded-full">
-                                        {item.badge}
+                                        {item.useBadgeContext ? unreadCount : item.badge}
                                     </span>
                                 )}
                             </Link>
@@ -318,9 +320,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 {/* Page Content */}
                 <main className="flex-1 overflow-x-hidden overflow-y-auto w-full relative scrollbar-thin">
                     <div className="w-full max-w-[1200px] mx-auto p-4 sm:p-6 lg:p-8">
-                        <AuthContext.Provider value={{ user, setUser }}>
-                            {children}
-                        </AuthContext.Provider>
+                        {children}
                     </div>
                 </main>
             </div>

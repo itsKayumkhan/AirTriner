@@ -1,0 +1,53 @@
+﻿../../packages/shared/src/index.ts(1,15): error TS6059: File 'C:/Users/Administrator/OneDrive/coding/1_Adigital heroes/airtrainer/packages/shared/src/types.ts' is not under 'rootDir' 'C:/Users/Administrator/OneDrive/coding/1_Adigital heroes/airtrainer/services/api/src'. 'rootDir' is expected to contain all source files.
+  The file is in the program because:
+    Imported via './types' from file 'C:/Users/Administrator/OneDrive/coding/1_Adigital heroes/airtrainer/packages/shared/src/index.ts'
+    Imported via './types' from file 'C:/Users/Administrator/OneDrive/coding/1_Adigital heroes/airtrainer/packages/shared/src/utils.ts'
+../../packages/shared/src/index.ts(2,15): error TS6059: File 'C:/Users/Administrator/OneDrive/coding/1_Adigital heroes/airtrainer/packages/shared/src/utils.ts' is not under 'rootDir' 'C:/Users/Administrator/OneDrive/coding/1_Adigital heroes/airtrainer/services/api/src'. 'rootDir' is expected to contain all source files.
+src/common/middleware.ts(10,51): error TS6059: File 'C:/Users/Administrator/OneDrive/coding/1_Adigital heroes/airtrainer/packages/shared/src/index.ts' is not under 'rootDir' 'C:/Users/Administrator/OneDrive/coding/1_Adigital heroes/airtrainer/services/api/src'. 'rootDir' is expected to contain all source files.
+  The file is in the program because:
+    Imported via '@airtrainr/shared' from file 'C:/Users/Administrator/OneDrive/coding/1_Adigital heroes/airtrainer/services/api/src/common/middleware.ts'
+    Imported via '@airtrainr/shared' from file 'C:/Users/Administrator/OneDrive/coding/1_Adigital heroes/airtrainer/services/api/src/modules/auth/auth.service.ts'
+    Imported via '@airtrainr/shared' from file 'C:/Users/Administrator/OneDrive/coding/1_Adigital heroes/airtrainer/services/api/src/modules/auth/auth.service.ts'
+    Imported via '@airtrainr/shared' from file 'C:/Users/Administrator/OneDrive/coding/1_Adigital heroes/airtrainer/services/api/src/modules/auth/auth.routes.ts'
+    Imported via '@airtrainr/shared' from file 'C:/Users/Administrator/OneDrive/coding/1_Adigital heroes/airtrainer/services/api/src/modules/users/user.service.ts'
+    Imported via '@airtrainr/shared' from file 'C:/Users/Administrator/OneDrive/coding/1_Adigital heroes/airtrainer/services/api/src/modules/users/user.routes.ts'
+    Imported via '@airtrainr/shared' from file 'C:/Users/Administrator/OneDrive/coding/1_Adigital heroes/airtrainer/services/api/src/modules/bookings/booking.service.ts'
+    Imported via '@airtrainr/shared' from file 'C:/Users/Administrator/OneDrive/coding/1_Adigital heroes/airtrainer/services/api/src/modules/bookings/booking.routes.ts'
+    Imported via '@airtrainr/shared' from file 'C:/Users/Administrator/OneDrive/coding/1_Adigital heroes/airtrainer/services/api/src/modules/matching/matching.service.ts'
+    Imported via '@airtrainr/shared' from file 'C:/Users/Administrator/OneDrive/coding/1_Adigital heroes/airtrainer/services/api/src/modules/matching/matching.routes.ts'
+    Imported via '@airtrainr/shared' from file 'C:/Users/Administrator/OneDrive/coding/1_Adigital heroes/airtrainer/services/api/src/modules/payments/payment.service.ts'
+    Imported via '@airtrainr/shared' from file 'C:/Users/Administrator/OneDrive/coding/1_Adigital heroes/airtrainer/services/api/src/modules/payments/payment.routes.ts'
+    Imported via '@airtrainr/shared' from file 'C:/Users/Administrator/OneDrive/coding/1_Adigital heroes/airtrainer/services/api/src/jobs/reminder.cron.ts'
+    Imported via '@airtrainr/shared' from file 'C:/Users/Administrator/OneDrive/coding/1_Adigital heroes/airtrainer/services/api/src/modules/availability/availability.routes.ts'
+src/modules/auth/auth.routes.ts(7,39): error TS6133: 'refreshTokenSchema' is declared but its value is never read.
+src/modules/auth/auth.routes.ts(11,7): error TS2742: The inferred type of 'router' cannot be named without a reference to '.pnpm/@types+express-serve-static-core@4.19.8/node_modules/@types/express-serve-static-core'. This is likely not portable. A type annotation is necessary.
+src/modules/auth/auth.service.ts(14,5): error TS6133: 'GeoRestrictedError' is declared but its value is never read.
+src/modules/auth/auth.service.ts(235,48): error TS7006: Parameter 'sa' implicitly has an 'any' type.
+src/modules/auth/auth.service.ts(239,33): error TS2769: No overload matches this call.
+  Overload 1 of 5, '(payload: string | object | Buffer<ArrayBufferLike>, secretOrPrivateKey: null, options?: (SignOptions & { algorithm: "none"; }) | undefined): string', gave the following error.
+    Argument of type 'string' is not assignable to parameter of type 'null'.
+  Overload 2 of 5, '(payload: string | object | Buffer<ArrayBufferLike>, secretOrPrivateKey: Secret | Buffer<ArrayBufferLike> | JsonWebKeyInput | PrivateKeyInput, options?: SignOptions | undefined): string', gave the following error.
+    Type 'string' is not assignable to type 'number | StringValue | undefined'.
+  Overload 3 of 5, '(payload: string | object | Buffer<ArrayBufferLike>, secretOrPrivateKey: Secret | Buffer<ArrayBufferLike> | JsonWebKeyInput | PrivateKeyInput, callback: SignCallback): void', gave the following error.
+    Object literal may only specify known properties, and 'expiresIn' does not exist in type 'SignCallback'.
+src/modules/auth/auth.service.ts(244,34): error TS2769: No overload matches this call.
+  Overload 1 of 5, '(payload: string | object | Buffer<ArrayBufferLike>, secretOrPrivateKey: null, options?: (SignOptions & { algorithm: "none"; }) | undefined): string', gave the following error.
+    Argument of type 'string' is not assignable to parameter of type 'null'.
+  Overload 2 of 5, '(payload: string | object | Buffer<ArrayBufferLike>, secretOrPrivateKey: Secret | Buffer<ArrayBufferLike> | JsonWebKeyInput | PrivateKeyInput, options?: SignOptions | undefined): string', gave the following error.
+    Type 'string' is not assignable to type 'number | StringValue | undefined'.
+  Overload 3 of 5, '(payload: string | object | Buffer<ArrayBufferLike>, secretOrPrivateKey: Secret | Buffer<ArrayBufferLike> | JsonWebKeyInput | PrivateKeyInput, callback: SignCallback): void', gave the following error.
+    Object literal may only specify known properties, and 'expiresIn' does not exist in type 'SignCallback'.
+src/modules/availability/availability.service.ts(64,58): error TS7006: Parameter 'slot' implicitly has an 'any' type.
+src/modules/bookings/booking.service.ts(5,24): error TS2305: Module '"@prisma/client"' has no exported member 'BookingStatus'.
+src/modules/bookings/booking.service.ts(64,48): error TS7006: Parameter 'b' implicitly has an 'any' type.
+src/modules/matching/matching.routes.ts(10,7): error TS2742: The inferred type of 'router' cannot be named without a reference to '.pnpm/@types+express-serve-static-core@4.19.8/node_modules/@types/express-serve-static-core'. This is likely not portable. A type annotation is necessary.
+src/modules/matching/matching.service.ts(6,1): error TS6133: 'logger' is declared but its value is never read.
+src/modules/matching/matching.service.ts(98,39): error TS7006: Parameter 'trainer' implicitly has an 'any' type.
+src/modules/matching/matching.service.ts(125,31): error TS7006: Parameter 't' implicitly has an 'any' type.
+src/modules/matching/matching.service.ts(130,28): error TS7006: Parameter 'a' implicitly has an 'any' type.
+src/modules/matching/matching.service.ts(130,31): error TS7006: Parameter 'b' implicitly has an 'any' type.
+src/modules/matching/matching.service.ts(201,46): error TS7006: Parameter 'booking' implicitly has an 'any' type.
+src/modules/payments/payment.routes.ts(10,7): error TS2742: The inferred type of 'router' cannot be named without a reference to '.pnpm/@types+express-serve-static-core@4.19.8/node_modules/@types/express-serve-static-core'. This is likely not portable. A type annotation is necessary.
+src/modules/payments/payment.service.ts(10,5): error TS6133: 'PLATFORM_FEE_PERCENTAGE' is declared but its value is never read.
+src/modules/payments/payment.service.ts(14,5): error TS6133: 'TRAINER_SUBSCRIPTION_ANNUAL' is declared but its value is never read.
+src/modules/users/user.routes.ts(10,7): error TS2742: The inferred type of 'router' cannot be named without a reference to '.pnpm/@types+express-serve-static-core@4.19.8/node_modules/@types/express-serve-static-core'. This is likely not portable. A type annotation is necessary.

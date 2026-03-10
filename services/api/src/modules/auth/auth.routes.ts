@@ -4,11 +4,11 @@
 
 import { Router, Request, Response } from 'express';
 import { authService } from './auth.service';
-import { registerSchema, loginSchema, refreshTokenSchema } from './auth.validation';
+import { registerSchema, loginSchema } from './auth.validation';
 import { authenticate, asyncHandler, validateBody } from '../../common/middleware';
 import { ApiResponse, AuthTokens } from '@airtrainr/shared';
 
-const router = Router();
+const router: Router = Router();
 
 /**
  * POST /api/v1/auth/register

@@ -2,7 +2,7 @@
 // AirTrainr API - Booking Service
 // ============================================
 
-import { PrismaClient, BookingStatus as PrismaBookingStatus } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 import { NotFoundError, BadRequestError, ForbiddenError } from '../../common/errors';
 import { logger } from '../../common/logger';
 import {
@@ -61,7 +61,7 @@ export class BookingService {
         });
 
         // Check for actual time-range overlaps
-        const hasOverlap = nearbyBookings.some(b => {
+        const hasOverlap = nearbyBookings.some((b: any) => {
             const existingStart = new Date(b.scheduledAt).getTime();
             const existingEnd = existingStart + b.durationMinutes * 60 * 1000;
             return requestedStart.getTime() < existingEnd && requestedEnd.getTime() > existingStart;
@@ -143,7 +143,7 @@ export class BookingService {
         const updatedBooking = await prisma.booking.update({
             where: { id: bookingId },
             data: {
-                status: newStatus as PrismaBookingStatus,
+                status: newStatus as any,
                 statusHistory: [
                     ...existingHistory,
                     {

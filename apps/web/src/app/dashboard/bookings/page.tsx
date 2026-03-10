@@ -270,7 +270,7 @@ export default function BookingsPage() {
             setBookings((prev) =>
                 prev.map((b) => (b.id === bookingId ? { ...b, status: newStatus as BookingRow["status"] } : b))
             );
-            
+
             alert(`Booking successfully marked as ${newStatus}!`);
         } catch (err: any) {
             console.error("Failed to update booking:", err);
@@ -545,7 +545,8 @@ export default function BookingsPage() {
                                                 >
                                                     Mark Complete
                                                 </button>
-                                            )}                                            {booking.status === "completed" && (
+                                            )}
+                                            {booking.status === "completed" && (
                                                 <>
                                                     {booking.review ? (
                                                         <button
@@ -566,7 +567,6 @@ export default function BookingsPage() {
                                                     ) : null}
                                                 </>
                                             )}
-
 
                                             {/* Reschedule Response — Accept/Decline for the other party */}
                                             {booking.status === "reschedule_requested" && booking.reschedule_request && booking.reschedule_request.initiated_by !== user?.id && (

@@ -9,9 +9,6 @@
         "paths": {
             "@/*": [
                 "./src/*"
-            ],
-            "@airtrainr/shared": [
-                "../../packages/shared/src"
             ]
         }
     },

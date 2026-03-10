@@ -1,6 +1,6 @@
 "use client";
 
-import { Wallet } from "lucide-react";
+import { Wallet, Download } from "lucide-react";
 import { useEffect, useState } from "react";
 import { getSession, AuthUser } from "@/lib/auth";
 import { supabase, BookingRow } from "@/lib/supabase";
@@ -41,6 +41,10 @@ export default function EarningsPage() {
     const totalFees = completedBookings.reduce((s, b) => s + Number(b.platform_fee), 0);
     const netEarnings = totalEarnings - totalFees;
 
+    const exportData = () => {
+        alert("Exporting CSV data...");
+    };
+
     // Group by month
     const monthlyData = new Map<string, { earnings: number; sessions: number }>();
     completedBookings.forEach((b) => {
@@ -64,9 +68,17 @@ export default function EarningsPage() {
 
     return (
         <div>
-            <div className="mb-8">
-                <h1 className="text-2xl font-black font-display tracking-wider mb-1">{isTrainer ? "Earnings" : "Payments"}</h1>
-                <p className="text-text-main/60 text-sm">{isTrainer ? "Track your income from completed sessions." : "Track your payments for completed sessions."}</p>
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
+                <div>
+                    <h1 className="text-2xl font-black font-display tracking-wider mb-1">{isTrainer ? "Earnings" : "Payments"}</h1>
+                    <p className="text-text-main/60 text-sm">{isTrainer ? "Track your income from completed sessions." : "Track your payments for completed sessions."}</p>
+                </div>
+                <button
+                    onClick={exportData}
+                    className="flex items-center gap-2 px-4 py-2 bg-[#272A35] hover:bg-white/10 border border-white/5 rounded-xl text-sm font-bold text-white transition-colors"
+                >
+                    <Download size={16} /> Export CSV
+                </button>
             </div>
 
             {/* Summary Cards */}

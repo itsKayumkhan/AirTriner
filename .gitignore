@@ -50,3 +50,7 @@ docker-compose.override.yml
 *.app
 ios/Pods/
 android/.gradle/
+
+.claude
+.vercel
+.env*.local

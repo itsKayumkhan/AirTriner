@@ -7,7 +7,7 @@ import { userService } from './user.service';
 import { authenticate, authorize, asyncHandler } from '../../common/middleware';
 import { UserRole, ApiResponse } from '@airtrainr/shared';
 
-const router = Router();
+const router: ReturnType<typeof Router> = Router();
 
 /**
  * PUT /api/v1/users/profile

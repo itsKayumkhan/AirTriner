@@ -5,6 +5,9 @@ import { getSession, AuthUser } from "@/lib/auth";
 import { supabase, BookingRow } from "@/lib/supabase";
 import { Calendar, Clock, CheckCircle, Wallet, Star, MessageSquare, TrendingUp, Search, Activity, ArrowUpRight, Hand, Inbox, AlertTriangle } from "lucide-react";
 import Link from "next/link";
+import { useTrainer } from "@/context/TrainerContext";
+import { useAthlete } from "@/context/AthleteContext";
+import { useAuth } from "@/context/AuthContext";
 
 interface Stats {
     totalBookings: number;
@@ -16,103 +19,34 @@ interface Stats {
 }
 
 export default function DashboardOverview() {
-    const [user, setUser] = useState<AuthUser | null>(null);
-    const [stats, setStats] = useState<Stats>({
-        totalBookings: 0,
-        upcomingBookings: 0,
-        completedBookings: 0,
-        totalEarnings: 0,
-        averageRating: 0,
-        totalReviews: 0,
-    });
-    const [recentBookings, setRecentBookings] = useState<(BookingRow & { other_user?: { first_name: string; last_name: string } })[]>([]);
-    const [loading, setLoading] = useState(true);
+    const { user } = useAuth();
+
+    // We conditionally use context based on role.
+    // To avoid hooks rules violation, we call both but rely on the one matching the role.
+    const isTrainer = user?.role === "trainer";
+    const trainerContext = useTrainer();
+    const athleteContext = useAthlete();
+
+    const loading = isTrainer ? trainerContext.loading : athleteContext.loading;
+    const stats: any = isTrainer ? trainerContext.stats : athleteContext.stats;
+    const recentBookings = isTrainer ? trainerContext.recentBookings : athleteContext.recentBookings;
 
     const [requireVerification, setRequireVerification] = useState(true);
 
     useEffect(() => {
-        const session = getSession();
-        if (session) {
-            setUser(session);
-            loadDashboardData(session);
+        if (user) {
             fetchSettings();
         }
-    }, []);
+    }, [user]);
 
     const fetchSettings = async () => {
-        const [settingsRes, profileRes] = await Promise.all([
-            supabase.from("platform_settings").select("require_trainer_verification").single(),
-            user ? supabase.from("trainer_profiles").select("*").eq("user_id", user.id).single() : Promise.resolve({ data: null })
-        ]);
-        
+        const settingsRes = await supabase
+            .from("platform_settings")
+            .select("require_trainer_verification")
+            .single();
+
         if (settingsRes.data) {
             setRequireVerification(settingsRes.data.require_trainer_verification);
-        }
-
-        if (profileRes.data && user) {
-            const updatedUser = { ...user, trainerProfile: profileRes.data };
-            setUser(updatedUser);
-            // We don't necessarily need to update local storage on every dashboard load, 
-            // but it helps keep it in sync.
-        }
-    };
-
-    const loadDashboardData = async (u: AuthUser) => {
-        try {
-            const isTrainer = u.role === "trainer";
-            const column = isTrainer ? "trainer_id" : "athlete_id";
-
-            const { data: bookings } = await supabase
-                .from("bookings")
-                .select("*")
-                .eq(column, u.id)
-                .order("scheduled_at", { ascending: false });
-
-            const allBookings = (bookings || []) as BookingRow[];
-            const now = new Date().toISOString();
-
-            const reviewColumn = isTrainer ? "reviewee_id" : "reviewer_id";
-            const { data: reviews } = await supabase
-                .from("reviews")
-                .select("*")
-                .eq(reviewColumn, u.id);
-
-            const avgRating = reviews && reviews.length > 0
-                ? reviews.reduce((sum: number, r: { rating: number }) => sum + r.rating, 0) / reviews.length
-                : 0;
-
-            setStats({
-                totalBookings: allBookings.length,
-                upcomingBookings: allBookings.filter((b) => b.status === "confirmed" && b.scheduled_at > now).length,
-                completedBookings: allBookings.filter((b) => b.status === "completed").length,
-                totalEarnings: isTrainer
-                    ? allBookings.filter((b) => b.status === "completed").reduce((s, b) => s + Number(b.price), 0)
-                    : allBookings.filter((b) => b.status === "completed").reduce((s, b) => s + Number(b.total_paid), 0),
-                averageRating: Math.round(avgRating * 10) / 10,
-                totalReviews: reviews?.length || 0,
-            });
-
-            const recentIds = allBookings.slice(0, 5);
-            const otherUserIds = recentIds.map((b) => (isTrainer ? b.athlete_id : b.trainer_id));
-
-            if (otherUserIds.length > 0) {
-                const { data: otherUsers } = await supabase
-                    .from("users")
-                    .select("id, first_name, last_name")
-                    .in("id", otherUserIds);
-
-                const usersMap = new Map((otherUsers || []).map((u: { id: string; first_name: string; last_name: string }) => [u.id, u]));
-                setRecentBookings(
-                    recentIds.map((b) => ({
-                        ...b,
-                        other_user: usersMap.get(isTrainer ? b.athlete_id : b.trainer_id) as { first_name: string; last_name: string } | undefined,
-                    }))
-                );
-            }
-        } catch (err) {
-            console.error("Failed to load dashboard data:", err);
-        } finally {
-            setLoading(false);
         }
     };
 
@@ -124,7 +58,6 @@ export default function DashboardOverview() {
         );
     }
 
-    const isTrainer = user?.role === "trainer";
     const hour = new Date().getHours();
     const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
 
@@ -133,7 +66,7 @@ export default function DashboardOverview() {
             { label: "Total Sessions", value: stats.totalBookings, icon: Activity, color: "text-blue-500", bg: "bg-blue-500/10" },
             { label: "Upcoming", value: stats.upcomingBookings, icon: Clock, color: "text-primary", bg: "bg-primary/10" },
             { label: "Completed", value: stats.completedBookings, icon: CheckCircle, color: "text-purple-500", bg: "bg-purple-500/10" },
-            { label: "Total Earnings", value: `$${stats.totalEarnings.toFixed(2)}`, icon: Wallet, color: "text-orange-500", bg: "bg-orange-500/10" },
+            { label: "Total Earnings", value: `$${stats.totalEarnings?.toFixed(2) || "0.00"}`, icon: Wallet, color: "text-orange-500", bg: "bg-orange-500/10" },
             { label: "Avg Rating", value: stats.averageRating || "N/A", icon: Star, color: "text-primary", bg: "bg-primary/10" },
             { label: "Reviews", value: stats.totalReviews, icon: MessageSquare, color: "text-blue-500", bg: "bg-blue-500/10" },
         ]
@@ -141,7 +74,7 @@ export default function DashboardOverview() {
             { label: "Total Bookings", value: stats.totalBookings, icon: Calendar, color: "text-blue-500", bg: "bg-blue-500/10" },
             { label: "Upcoming", value: stats.upcomingBookings, icon: Clock, color: "text-primary", bg: "bg-primary/10" },
             { label: "Completed", value: stats.completedBookings, icon: CheckCircle, color: "text-purple-500", bg: "bg-purple-500/10" },
-            { label: "Total Spent", value: `$${stats.totalEarnings.toFixed(2)}`, icon: Wallet, color: "text-orange-500", bg: "bg-orange-500/10" },
+            { label: "Total Spent", value: `$${stats.totalSpent?.toFixed(2) || "0.00"}`, icon: Wallet, color: "text-orange-500", bg: "bg-orange-500/10" },
         ];
 
     const statusStyles: Record<string, { bg: string; border: string; text: string; dot: string }> = {
@@ -164,7 +97,7 @@ export default function DashboardOverview() {
                     <div>
                         <h3 className="text-blue-400 font-bold text-lg mb-1">Action Required: Profile Verification</h3>
                         <p className="text-text-main/70 text-sm leading-relaxed max-w-2xl font-medium">
-                            Your profile is currently hidden from athletes because the platform requires an admin to verify your account. 
+                            Your profile is currently hidden from athletes because the platform requires an admin to verify your account.
                             Ensure your <Link href="/dashboard/trainer/setup" className="text-primary hover:underline">profile setup</Link> is complete, and an admin will review it for approval.
                         </p>
                     </div>
@@ -249,7 +182,7 @@ export default function DashboardOverview() {
                             </div>
                         ) : (
                             <div className="flex flex-col">
-                                {recentBookings.map((booking) => {
+                                {recentBookings.map((booking: any) => {
                                     const status = statusStyles[booking.status] || statusStyles.pending;
                                     const date = new Date(booking.scheduled_at);
 

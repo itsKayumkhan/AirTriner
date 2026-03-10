@@ -61,7 +61,7 @@ export class AvailabilityService {
 
         // The requested slot must be entirely within ONE available slot
         // (Simplified logic: in a real app, it could span multiple contiguous slots, but usually it's one)
-        const isWithinAvailability = availableSlots.some(slot => {
+        const isWithinAvailability = availableSlots.some((slot: any) => {
             return slot.startTime <= startTimeStr && slot.endTime >= endTimeStr;
         });
 

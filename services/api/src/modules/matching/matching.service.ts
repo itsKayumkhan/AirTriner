@@ -3,7 +3,7 @@
 // ============================================
 
 import { PrismaClient } from '@prisma/client';
-import { logger } from '../../common/logger';
+
 import { DEFAULT_TRAVEL_RADIUS_MILES, MAX_SEARCH_RADIUS_MILES } from '@airtrainr/shared';
 
 const prisma = new PrismaClient();
@@ -95,7 +95,7 @@ export class MatchingService {
         ]);
 
         // Calculate distance if coordinates provided
-        const results = trainers.map((trainer) => {
+        const results = trainers.map((trainer: any) => {
             let distanceMiles: number | null = null;
             if (
                 filters.latitude &&
@@ -122,12 +122,12 @@ export class MatchingService {
 
         // Filter by distance if coordinates provided
         const filtered = filters.latitude && filters.longitude
-            ? results.filter((t) => t.distanceMiles === null || t.distanceMiles <= radius)
+            ? results.filter((t: any) => t.distanceMiles === null || t.distanceMiles <= radius)
             : results;
 
         // Sort by distance if coordinates provided
         if (filters.latitude && filters.longitude) {
-            filtered.sort((a, b) => {
+            filtered.sort((a: any, b: any) => {
                 if (a.distanceMiles === null) return 1;
                 if (b.distanceMiles === null) return -1;
                 return a.distanceMiles - b.distanceMiles;
@@ -198,7 +198,7 @@ export class MatchingService {
         const allSlots = [...recurringSlots, ...specificSlots];
         return allSlots.map((slot) => ({
             ...slot,
-            isBooked: existingBookings.some((booking) => {
+            isBooked: existingBookings.some((booking: any) => {
                 const bookingTime = new Date(booking.scheduledAt).toTimeString().slice(0, 5);
                 return bookingTime >= slot.startTime && bookingTime < slot.endTime;
             }),
