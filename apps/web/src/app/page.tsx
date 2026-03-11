@@ -3,6 +3,9 @@
 import { useState, useEffect, useRef } from "react";
 import { getSession, clearSession, AuthUser } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
+import SportsGrid from "@/components/landing/SportsGrid";
+import HowItWorks from "@/components/landing/HowItWorks";
+import AirTrainrAdvantage from "@/components/landing/AirTrainrAdvantage";
 
 // =============================================
 // ICONS (inline SVG components)
@@ -95,12 +98,12 @@ function Navbar() {
                 {/* Logo */}
                 <a href="/" style={{ display: "flex", alignItems: "center", gap: "10px", textDecoration: "none" }}>
                     <div style={{
-                        width: "36px", height: "36px",
-                        background: "var(--primary)",
-                        borderRadius: "50%",
+                        width: "40px", height: "40px",
+                        borderRadius: "8px",
+                        overflow: "hidden",
                         display: "flex", alignItems: "center", justifyContent: "center",
                     }}>
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="var(--color-bg)"><path d="M2 12l10-10 10 10-10 10z" /></svg>
+                        <img src="/logo.jpeg" alt="AirTrainr Logo" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                     </div>
                     <span style={{
                         fontSize: "22px", fontWeight: 800, fontFamily: "var(--font-display)", color: "var(--foreground)", textTransform: "uppercase", letterSpacing: "1px"
@@ -311,19 +314,19 @@ export default function Home() {
 
                 <div style={{ position: "relative", zIndex: 1, maxWidth: "900px", margin: "0 auto", textAlign: "center", padding: "0 24px" }}>
                     <h1 style={{
-                        fontSize: "clamp(48px, 8vw, 96px)",
+                        fontSize: "clamp(40px, 7vw, 84px)",
                         fontWeight: 900, fontFamily: "var(--font-display)",
                         lineHeight: 1, textTransform: "uppercase", marginBottom: "24px"
                     }}>
-                        TRAIN <span style={{ color: "var(--primary)", fontStyle: "italic" }}>SMARTER.</span><br />
-                        HIRE <span style={{ WebkitTextStroke: "2px var(--gray-400)", color: "transparent" }}>BETTER.</span>
+                        ATHLETES <span style={{ color: "var(--primary)", fontStyle: "italic" }}>GROW HERE.</span><br />
+                        TRAINERS <span style={{ WebkitTextStroke: "2px var(--gray-400)", color: "transparent" }}>THRIVE HERE.</span>
                     </h1>
 
                     <p style={{
                         fontSize: "18px", color: "var(--gray-300)", lineHeight: 1.6,
                         maxWidth: "600px", margin: "0 auto 40px", fontWeight: 400
                     }}>
-                        Access the world's most elite sports performance coaches. From professional athletes to weekend warriors, we bridge the gap between potential and peak performance.
+                        Connecting athletes with trusted local trainers—making it easier than ever to find the right coach, right in your area, and elevate your performance.
                     </p>
 
                     <div style={{ display: "flex", gap: "16px", justifyContent: "center", flexWrap: "wrap", marginBottom: "48px" }}>
@@ -343,7 +346,7 @@ export default function Home() {
                             onMouseEnter={(e) => { e.currentTarget.style.borderColor = "white" }}
                             onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--gray-500)" }}
                         >
-                            BECOME A TRAINER
+                            SIGN UP AS A TRAINER
                         </a>
                     </div>
 
@@ -464,141 +467,14 @@ export default function Home() {
                         </p>
                     </div>
 
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "24px" }}>
-                        {[
-                            { id: "tennis", name: "Tennis", img: "https://images.unsplash.com/photo-1595435934249-5df7ed86e1c0?w=600&auto=format&fit=crop&q=80" },
-                            { id: "soccer", name: "Soccer", img: "https://images.unsplash.com/photo-1579952363873-27f3bade9f55?w=600&auto=format&fit=crop&q=80" },
-                            { id: "basketball", name: "Basketball", img: "https://images.unsplash.com/photo-1546519638-68e109498ffc?w=600&auto=format&fit=crop&q=80" },
-                            { id: "track_and_field", name: "Track & Field", img: "https://images.unsplash.com/photo-1552674605-db6ffd4facb5?w=600&auto=format&fit=crop&q=80" },
-                            { id: "golf", name: "Golf", img: "https://images.unsplash.com/photo-1535139262971-c51845709a48?w=600&auto=format&fit=crop&q=80" },
-                            { id: "swimming", name: "Swimming", img: "https://images.unsplash.com/photo-1530549387789-4c1017266635?w=600&auto=format&fit=crop&q=80" },
-                            { id: "martial_arts", name: "Martial Arts", img: "https://images.unsplash.com/photo-1555597673-b21d5c935865?w=600&auto=format&fit=crop&q=80" },
-                            { id: "hockey", name: "Hockey", img: "https://images.unsplash.com/photo-1580748141549-71748dbe0bdc?w=600&auto=format&fit=crop&q=80" },
-                        ].map((sport, i) => (
-                            <a key={i} href={`/dashboard/search?sport=${sport.id}`} style={{
-                                position: "relative",
-                                height: "240px",
-                                borderRadius: "var(--radius-lg)",
-                                overflow: "hidden",
-                                textDecoration: "none",
-                                display: "block"
-                            }} className="sport-card">
-                                <div style={{
-                                    position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 0,
-                                    backgroundImage: `url('${sport.img}')`, backgroundSize: "cover", backgroundPosition: "center",
-                                    transition: "transform 0.5s ease"
-                                }} className="sport-bg"></div>
-                                <div style={{
-                                    position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 1,
-                                    background: "linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.2) 60%, rgba(0,0,0,0.1) 100%)",
-                                    transition: "background 0.3s ease"
-                                }} className="sport-overlay"></div>
-                                <div style={{
-                                    position: "absolute", bottom: "24px", left: "24px", right: "24px", zIndex: 2,
-                                    display: "flex", justifyContent: "space-between", alignItems: "flex-end"
-                                }}>
-                                    <h3 style={{ margin: 0, fontSize: "24px", fontWeight: 900, fontFamily: "var(--font-display)", color: "white", textTransform: "uppercase", letterSpacing: "1px" }}>{sport.name}</h3>
-                                    <div style={{ width: "32px", height: "32px", borderRadius: "50%", background: "var(--primary)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--color-bg)", opacity: 0, transform: "translateX(-10px)", transition: "all 0.3s ease" }} className="sport-arrow">
-                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="square" strokeLinejoin="miter"><path d="m9 18 6-6-6-6" /></svg>
-                                    </div>
-                                </div>
-                            </a>
-                        ))}
-                    </div>
-
-                    <div style={{ textAlign: "center", marginTop: "48px" }}>
-                        <a href="/dashboard/search" style={{
-                            display: "inline-block",
-                            padding: "16px 40px",
-                            background: "transparent", border: "2px solid var(--primary)", color: "var(--primary)",
-                            borderRadius: "var(--radius-full)", fontWeight: 800, fontSize: "14px", textDecoration: "none",
-                            textTransform: "uppercase", letterSpacing: "1px", transition: "all 0.2s"
-                        }}
-                            onMouseEnter={(e) => { e.currentTarget.style.background = "var(--primary)"; e.currentTarget.style.color = "var(--color-bg)"; }}
-                            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "var(--primary)"; }}
-                        >
-                            VIEW ALL SPORTS
-                        </a>
-                    </div>
+                    <SportsGrid />
                 </div>
             </section>
 
-            {/* HOW IT WORKS */}
-            <section style={{ padding: "100px 24px", background: "var(--color-bg)", textAlign: "center" }}>
-                <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
-                    <h2 style={{ fontSize: "32px", fontWeight: 900, fontFamily: "var(--font-display)", textTransform: "uppercase", marginBottom: "16px" }}>
-                        HOW AIRTRAINR WORKS
-                    </h2>
-                    <div style={{ width: "60px", height: "4px", background: "var(--primary)", margin: "0 auto 64px" }}></div>
-
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "64px" }}>
-                        {[
-                            { num: "01", title: "DISCOVER EXPERTS", desc: "Filter by sport, location, or goal. Browse intro videos and check verified credentials." },
-                            { num: "02", title: "BOOK INSTANTLY", desc: "Schedule 1-on-1 sessions or join a small group workshop through our seamless booking engine." },
-                            { num: "03", title: "LEVEL UP", desc: "Receive personalized feedback, track your progress via our app, and crush your performance goals." },
-                        ].map((step, i) => (
-                            <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-                                <div style={{
-                                    width: "64px", height: "64px", borderRadius: "50%", border: "2px solid var(--primary)",
-                                    display: "flex", alignItems: "center", justifyContent: "center",
-                                    fontSize: "20px", fontWeight: 800, color: "var(--primary)", marginBottom: "24px",
-                                    background: "var(--gray-900)", boxShadow: "0 0 20px rgba(163,255,18,0.15)"
-                                }}>
-                                    {step.num}
-                                </div>
-                                <h3 style={{ fontSize: "18px", fontWeight: 800, textTransform: "uppercase", marginBottom: "16px", color: "white" }}>{step.title}</h3>
-                                <p style={{ fontSize: "14px", color: "var(--gray-400)", lineHeight: 1.6, maxWidth: "280px" }}>{step.desc}</p>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            </section>
-
+            {/* HOW AIRTRAINR WORKS */}
+            <HowItWorks />
             {/* THE AIRTRAINR ADVANTAGE */}
-            <section style={{ padding: "100px 24px", background: "var(--surface)", borderBottom: "1px solid var(--gray-900)", position: "relative", overflow: "hidden" }} id="advantage">
-                {/* Decorative background glow */}
-                <div style={{ position: "absolute", top: "-100px", right: "-100px", width: "400px", height: "400px", background: "var(--primary)", filter: "blur(150px)", opacity: 0.1, borderRadius: "50%", zIndex: 0 }}></div>
-
-                <div style={{ maxWidth: "1200px", margin: "0 auto", position: "relative", zIndex: 1 }}>
-                    <div style={{ textAlign: "center", marginBottom: "64px" }}>
-                        <h2 style={{ fontSize: "36px", fontWeight: 900, fontFamily: "var(--font-display)", textTransform: "uppercase", marginBottom: "16px" }}>
-                            THE AIRTRAINR ADVANTAGE
-                        </h2>
-                        <div style={{ width: "60px", height: "4px", background: "var(--primary)", margin: "0 auto 24px" }}></div>
-                        <p style={{ color: "var(--gray-400)", fontSize: "16px", maxWidth: "600px", margin: "0 auto" }}>
-                            We provide athletes and coaches with the ultimate platform to succeed. No generic gym aesthetics, just pure sports performance.
-                        </p>
-                    </div>
-
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "32px" }}>
-                        {[
-                            { title: "VERIFIED ELITE COACHES", icon: <Check />, desc: "Every trainer on our roster undergoes a rigorous verification process. We only accept top-tier professionals." },
-                            { title: "DATA-DRIVEN INSIGHTS", icon: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 3v18h18" /><path d="m19 9-5 5-4-4-3 3" /></svg>, desc: "Track your progress, monitor your athletic metrics, and make informed decisions about your training protocol." },
-                            { title: "SEAMLESS BOOKING", icon: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>, desc: "No more back-and-forth emails. Browse real-time availability and book your sessions instantly." },
-                            { title: "GLOBAL NETWORK", icon: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z" /><path d="M2 12h20" /></svg>, desc: "Join an international community of athletes and coaches dedicated to pushing the boundaries of sports." },
-                            { title: "COMPREHENSIVE VIDEO REVIEW", icon: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="23 7 16 12 23 17 23 7" /><rect x="1" y="5" width="15" height="14" rx="2" ry="2" /></svg>, desc: "Record your practice routines, upload them, and get detailed frame-by-frame analysis from your coach." },
-                            { title: "CUSTOM MEAL PLANS", icon: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m18 8-4-4h-4l-4 4" /><path d="M20 21V11c0-1.7-1.3-3-3-3H7c-1.7 0-3 1.3-3 3v10" /><path d="M12 11v10" /></svg>, desc: "Fuel your body for performance with tailored, sport-specific nutrition guides mapped out by professionals." }
-                        ].map((item, i) => (
-                            <div key={i} style={{
-                                background: "rgba(255,255,255,0.02)",
-                                border: "1px solid rgba(255,255,255,0.05)",
-                                borderRadius: "var(--radius-xl)",
-                                padding: "40px 32px",
-                                transition: "all 0.3s ease",
-                            }}
-                                onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-5px)"; e.currentTarget.style.border = "1px solid rgba(163,255,18,0.3)"; e.currentTarget.style.boxShadow = "0 10px 30px rgba(163,255,18,0.05)"; }}
-                                onMouseLeave={(e) => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.border = "1px solid rgba(255,255,255,0.05)"; e.currentTarget.style.boxShadow = "none"; }}
-                            >
-                                <div style={{ width: "48px", height: "48px", borderRadius: "12px", background: "rgba(163,255,18,0.1)", color: "var(--primary)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: "24px" }}>
-                                    {item.icon}
-                                </div>
-                                <h3 style={{ fontSize: "16px", fontWeight: 800, textTransform: "uppercase", marginBottom: "16px", color: "white", letterSpacing: "1px" }}>{item.title}</h3>
-                                <p style={{ fontSize: "14px", color: "var(--gray-400)", lineHeight: 1.6 }}>{item.desc}</p>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            </section>
+            <AirTrainrAdvantage />
 
             {/* PLATFORM CAPABILITIES */}
             <section style={{ padding: "100px 24px", background: "var(--color-bg)", borderBottom: "1px solid var(--gray-900)" }}>
@@ -749,7 +625,7 @@ export default function Home() {
                             onMouseEnter={(e) => { e.currentTarget.style.background = "var(--color-bg)"; e.currentTarget.style.color = "white"; }}
                             onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "var(--color-bg)"; }}
                         >
-                            APPLY AS COACH
+                            SIGN UP AS A TRAINER
                         </a>
                     </div>
                 </div>
@@ -808,10 +684,11 @@ export default function Home() {
                             {/* Brand */}
                             <a href="/" style={{ display: "flex", alignItems: "center", gap: "10px", textDecoration: "none", marginBottom: "24px" }}>
                                 <div style={{
-                                    width: "32px", height: "32px", background: "var(--primary)", borderRadius: "50%",
+                                    width: "32px", height: "32px", borderRadius: "6px", overflow: "hidden",
                                     display: "flex", alignItems: "center", justifyContent: "center",
+                                    border: "1px solid rgba(255,255,255,0.1)", background: "var(--zinc-900)"
                                 }}>
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="var(--color-bg)"><path d="M2 12l10-10 10 10-10 10z" /></svg>
+                                    <img src="/logo.jpeg" alt="Logo" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                                 </div>
                                 <span style={{ fontSize: "20px", fontWeight: 800, fontFamily: "var(--font-display)", color: "var(--foreground)", textTransform: "uppercase", letterSpacing: "1px" }}>
                                     AIRTRAINR
@@ -853,7 +730,7 @@ export default function Home() {
                     </div>
 
                     <div className="footer-bottom" style={{ padding: "32px 0 0", borderTop: "1px solid var(--gray-800)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "16px" }}>
-                        <p style={{ color: "var(--gray-500)", fontSize: "12px", letterSpacing: "0.5px" }}>© 2026 AIRTRAINR MARKETPLACE INC.</p>
+                        <p style={{ color: "var(--gray-500)", fontSize: "12px", letterSpacing: "0.5px" }}>© 2026 AIRTRAINR</p>
                         <p style={{ color: "var(--gray-500)", fontSize: "12px", letterSpacing: "0.5px" }}>POWERED BY <strong style={{ color: "white" }}>ELITE PERFORMANCE TECH</strong></p>
                     </div>
                 </div>

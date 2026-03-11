@@ -200,8 +200,8 @@ function DashboardLayoutContent({ user, mobileMenuOpen, setMobileMenuOpen, navIt
                 {/* Logo Area */}
                 <div className="h-[72px] flex items-center justify-between px-6 border-b border-white/5">
                     <Link href="/dashboard" className="flex items-center gap-3" onClick={() => setMobileMenuOpen(false)}>
-                        <div className="w-8 h-8 rounded bg-primary flex items-center justify-center text-bg shadow-[0_0_10px_rgba(163,255,18,0.2)]">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M2 12l10-10 10 10-10 10z" /></svg>
+                        <div className="w-8 h-8 rounded overflow-hidden flex items-center justify-center bg-zinc-900 border border-white/10 shadow-[0_0_10px_rgba(255,255,255,0.05)]">
+                            <img src="/logo.jpeg" alt="Logo" className="w-full h-full object-cover" />
                         </div>
                         <div className="flex flex-col">
                             <span className="text-lg font-black font-display uppercase tracking-wider leading-none">AirTrainr</span>
@@ -303,8 +303,8 @@ function DashboardLayoutContent({ user, mobileMenuOpen, setMobileMenuOpen, navIt
                             <Menu size={24} />
                         </button>
                         <Link href="/dashboard" className="flex items-center gap-2">
-                            <div className="w-8 h-8 rounded bg-primary flex items-center justify-center shadow-[0_0_10px_rgba(163,255,18,0.2)]">
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="var(--color-bg)"><path d="M2 12l10-10 10 10-10 10z" /></svg>
+                            <div className="w-8 h-8 rounded overflow-hidden flex items-center justify-center bg-zinc-900 border border-white/10 shadow-[0_0_10px_rgba(255,255,255,0.05)]">
+                                <img src="/logo.jpeg" alt="Logo" className="w-full h-full object-cover" />
                             </div>
                         </Link>
                     </div>

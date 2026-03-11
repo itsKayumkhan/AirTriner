@@ -43,8 +43,8 @@ export default function LoginPage() {
                     padding: "48px"
                 }}>
                     <a href="/" style={{ display: "inline-flex", alignItems: "center", gap: "12px", textDecoration: "none" }}>
-                        <div style={{ width: "36px", height: "36px", borderRadius: "8px", background: "var(--primary)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="var(--color-bg)"><path d="M2 12l10-10 10 10-10 10z" /></svg>
+                        <div style={{ width: "36px", height: "36px", borderRadius: "8px", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--zinc-900)", border: "1px solid rgba(255,255,255,0.1)" }}>
+                            <img src="/logo.jpeg" alt="Logo" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                         </div>
                         <span style={{ fontSize: "20px", fontWeight: 900, fontFamily: "var(--font-display)", color: "white", textTransform: "uppercase", letterSpacing: "1px" }}>AirTrainr</span>
                     </a>
@@ -60,7 +60,7 @@ export default function LoginPage() {
                     </div>
 
                     <div style={{ display: "flex", gap: "24px", fontSize: "12px", color: "var(--gray-400)", fontWeight: 500 }}>
-                        <span>© 2026 AirTrainr Industries</span>
+                        <span>© 2026 Airtrainr</span>
                         <a href="#" style={{ color: "var(--gray-400)", textDecoration: "none" }}>Privacy Policy</a>
                     </div>
                 </div>
@@ -73,8 +73,8 @@ export default function LoginPage() {
                     {/* Mobile Logo */}
                     <div className="mobile-only" style={{ display: "none", marginBottom: "40px" }}>
                         <a href="/" style={{ display: "inline-flex", alignItems: "center", gap: "12px", textDecoration: "none" }}>
-                            <div style={{ width: "36px", height: "36px", borderRadius: "8px", background: "var(--primary)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="var(--color-bg)"><path d="M2 12l10-10 10 10-10 10z" /></svg>
+                            <div style={{ width: "36px", height: "36px", borderRadius: "8px", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--zinc-900)", border: "1px solid rgba(255,255,255,0.1)" }}>
+                                <img src="/logo.jpeg" alt="Logo" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                             </div>
                             <span style={{ fontSize: "20px", fontWeight: 900, fontFamily: "var(--font-display)", color: "white", textTransform: "uppercase", letterSpacing: "1px" }}>AirTrainr</span>
                         </a>

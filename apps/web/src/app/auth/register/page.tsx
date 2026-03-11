@@ -111,8 +111,8 @@ export default function RegisterPage() {
             {/* Header */}
             <header style={{ padding: "32px 48px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <a href="/" style={{ display: "inline-flex", alignItems: "center", gap: "12px", textDecoration: "none" }}>
-                    <div style={{ width: "36px", height: "36px", borderRadius: "8px", background: "var(--primary)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="var(--color-bg)"><path d="M2 12l10-10 10 10-10 10z" /></svg>
+                    <div style={{ width: "36px", height: "36px", borderRadius: "8px", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--zinc-900)", border: "1px solid rgba(255,255,255,0.1)" }}>
+                        <img src="/logo.jpeg" alt="Logo" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                     </div>
                     <span style={{ fontSize: "20px", fontWeight: 900, fontFamily: "var(--font-display)", color: "white", textTransform: "uppercase", letterSpacing: "1px" }}>AirTrainr</span>
                 </a>
