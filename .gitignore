@@ -54,3 +54,6 @@ android/.gradle/
 .claude
 .vercel
 .env*.local
+
+# Custom testing files
+testing files/
