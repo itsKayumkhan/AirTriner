@@ -159,8 +159,8 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             <aside className="w-64 bg-surface border-r border-white/5 flex-col hidden lg:flex relative">
                 <div className="h-20 flex items-center px-6">
                     <Link href="/admin" className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded bg-primary flex items-center justify-center text-bg">
-                            <Zap size={18} className="fill-current" />
+                        <div className="w-8 h-8 rounded overflow-hidden flex items-center justify-center bg-zinc-900 border border-white/10 shadow-[0_0_10px_rgba(255,255,255,0.05)]">
+                            <img src="/logo.jpeg" alt="Logo" className="w-full h-full object-cover" />
                         </div>
                         <span className="text-xl font-black tracking-tight text-text-main leading-none">AirTrainr <span className="text-text-main/60 font-normal">Admin</span></span>
                     </Link>

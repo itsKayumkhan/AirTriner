@@ -12,7 +12,9 @@ import {
     EyeOff,
     CheckCircle2,
     XCircle,
-    Loader2
+    Loader2,
+    Upload,
+    ImageIcon
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import PopupModal from "@/components/common/PopupModal";
@@ -22,6 +24,7 @@ interface Sport {
     name: string;
     slug: string;
     icon: string;
+    image_url?: string;
     is_active: boolean;
     created_at: string;
 }
@@ -38,6 +41,10 @@ export default function AdminSportsPage() {
     const [name, setName] = useState("");
     const [slug, setSlug] = useState("");
     const [icon, setIcon] = useState("Activity");
+    const [imageUrl, setImageUrl] = useState("");
+    const [imageFile, setImageFile] = useState<File | null>(null);
+    const [imagePreview, setImagePreview] = useState("");
+    const [uploading, setUploading] = useState(false);
 
     // Alert/Confirmation Popup State
     const [popup, setPopup] = useState<{
@@ -82,28 +89,77 @@ export default function AdminSportsPage() {
         }
     };
 
+    const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            setImageFile(file);
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                setImagePreview(reader.result as string);
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+
+    const uploadImage = async (file: File): Promise<string> => {
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${Math.random().toString(36).substring(2)}_${Date.now()}.${fileExt}`;
+        const filePath = fileName; // Upload to the root of the bucket
+
+        const { error: uploadError } = await supabase.storage
+            .from('sport-images')
+            .upload(filePath, file);
+
+        if (uploadError) {
+            console.error("Supabase Storage Error:", uploadError);
+            throw uploadError;
+        }
+
+        const { data: { publicUrl } } = supabase.storage
+            .from('sport-images')
+            .getPublicUrl(filePath);
+
+        return publicUrl;
+    };
+
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
         setFormLoading(true);
         try {
+            let finalImageUrl = imageUrl;
+            
+            if (imageFile) {
+                setUploading(true);
+                try {
+                    finalImageUrl = await uploadImage(imageFile);
+                } catch (err: any) {
+                    console.error("Image upload failed:", err);
+                    alert(`Image upload failed: ${err.message || 'Unknown error'}. Please ensure a public bucket named 'sport-images' exists in Supabase.`);
+                    setFormLoading(false);
+                    setUploading(false);
+                    return;
+                }
+                setUploading(false);
+            }
+
             if (isEditing) {
                 const { error } = await supabase
                     .from("sports")
-                    .update({ name, slug, icon })
+                    .update({ name, slug, icon, image_url: finalImageUrl })
                     .eq("id", isEditing.id);
                 if (error) throw error;
             } else {
                 const { error } = await supabase
                     .from("sports")
-                    .insert([{ name, slug, icon, is_active: true }]);
+                    .insert([{ name, slug, icon, image_url: finalImageUrl, is_active: true }]);
                 if (error) throw error;
             }
             
             await loadSports();
             closeModal();
-        } catch (err) {
+        } catch (err: any) {
             console.error("Failed to save sport:", err);
-            alert("Error saving sport. Check if slug or name is unique.");
+            alert(`Error saving sport: ${err.message || 'Unknown error'}`);
         } finally {
             setFormLoading(false);
         }
@@ -151,12 +207,17 @@ export default function AdminSportsPage() {
             setName(sport.name);
             setSlug(sport.slug);
             setIcon(sport.icon || "Activity");
+            setImageUrl(sport.image_url || "");
+            setImagePreview(sport.image_url || "");
         } else {
             setIsEditing(null);
             setName("");
             setSlug("");
             setIcon("Activity");
+            setImageUrl("");
+            setImagePreview("");
         }
+        setImageFile(null);
         setIsAddModalOpen(true);
     };
 
@@ -166,6 +227,9 @@ export default function AdminSportsPage() {
         setName("");
         setSlug("");
         setIcon("Activity");
+        setImageUrl("");
+        setImagePreview("");
+        setImageFile(null);
     };
 
     const filteredSports = sports.filter(s => 
@@ -221,8 +285,12 @@ export default function AdminSportsPage() {
                     filteredSports.map(sport => (
                         <div key={sport.id} className={`bg-surface border ${sport.is_active ? 'border-white/5' : 'border-red-500/20 opacity-60'} rounded-2xl p-6 hover:border-gray-700 transition-all group`}>
                             <div className="flex justify-between items-start mb-6">
-                                <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${sport.is_active ? 'bg-primary/10 text-primary' : 'bg-red-500/10 text-red-500'}`}>
-                                    <Trophy size={24} />
+                                <div className={`w-12 h-12 rounded-xl flex items-center justify-center overflow-hidden ${sport.is_active ? 'bg-primary/10 text-primary' : 'bg-red-500/10 text-red-500'}`}>
+                                    {sport.image_url ? (
+                                        <img src={sport.image_url} alt={sport.name} className="w-full h-full object-cover" />
+                                    ) : (
+                                        <Trophy size={24} />
+                                    )}
                                 </div>
                                 <div className="flex gap-1">
                                     <button 
@@ -278,6 +346,31 @@ export default function AdminSportsPage() {
                         </h2>
 
                         <form onSubmit={handleSave} className="space-y-6">
+                            <div className="flex items-center gap-6 mb-2">
+                                <div className="relative group">
+                                    <div className="w-[50px] h-[50px] rounded-xl bg-bg border border-white/5 flex items-center justify-center overflow-hidden">
+                                        {imagePreview ? (
+                                            <img src={imagePreview} alt="Preview" className="w-full h-full object-cover" />
+                                        ) : (
+                                            <ImageIcon size={20} className="text-text-main/20" />
+                                        )}
+                                    </div>
+                                    <label className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer rounded-xl">
+                                        <Upload size={16} className="text-primary" />
+                                        <input 
+                                            type="file" 
+                                            accept="image/*" 
+                                            onChange={handleImageChange} 
+                                            className="hidden" 
+                                        />
+                                    </label>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-black uppercase tracking-widest text-text-main/40 mb-1">Sport Image</label>
+                                    <p className="text-[10px] text-text-main/20 font-medium">Click box to upload (50x50 recommended)</p>
+                                </div>
+                            </div>
+
                             <div>
                                 <label className="block text-xs font-black uppercase tracking-widest text-text-main/40 mb-2">Sport Name</label>
                                 <input 
