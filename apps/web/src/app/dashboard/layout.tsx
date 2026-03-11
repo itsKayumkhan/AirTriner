@@ -34,6 +34,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const [loading, setLoading] = useState(true);
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const [unreadCount, setUnreadCount] = useState(0);
+    const [unreadMsgCount, setUnreadMsgCount] = useState(0);
     const router = useRouter();
     const pathname = usePathname();
 
@@ -66,7 +67,58 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         checkAuth();
     }, [router, pathname]);
 
-    // Removed local fetchUnreadCount to use NotificationContext instead
+    // Fetch unread messages count
+    useEffect(() => {
+        if (!user) return;
+
+        const fetchUnreadMsgCount = async () => {
+            try {
+                // Get user's active bookings
+                const { data: bookings } = await supabase
+                    .from("bookings")
+                    .select("id")
+                    .or(`athlete_id.eq.${user.id},trainer_id.eq.${user.id}`)
+                    .in("status", ["confirmed", "completed", "pending"]);
+
+                if (!bookings || bookings.length === 0) {
+                    setUnreadMsgCount(0);
+                    return;
+                }
+
+                const bookingIds = bookings.map(b => b.id);
+                const { count, error } = await supabase
+                    .from("messages")
+                    .select("id", { count: "exact", head: true })
+                    .in("booking_id", bookingIds)
+                    .neq("sender_id", user.id)
+                    .or("read_at.is.null,read.eq.false"); // Check both for robustness
+
+                if (!error && count !== null) {
+                    setUnreadMsgCount(count);
+                }
+            } catch (err) {
+                console.error("Failed to fetch unread message count:", err);
+            }
+        };
+
+        fetchUnreadMsgCount();
+
+        // Real-time listener for messages
+        const msgChannel = supabase
+            .channel(`unread_messages_${user.id}`)
+            .on(
+                "postgres_changes",
+                { event: "*", schema: "public", table: "messages" },
+                () => fetchUnreadMsgCount()
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(msgChannel);
+        };
+    }, [user, pathname]); // Re-fetch on path changes (marking as read happens on page)
+    
+    // Unread count for notifications is now handled by NotificationContext
 
     const handleLogout = async () => {
         await clearSession();
@@ -104,7 +156,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             { label: "Admin Panel", href: "/dashboard/admin", icon: ShieldAlert },
         ] : []),
         { divider: true, id: "div1" },
-        { label: "Messages", href: "/dashboard/messages", icon: MessageSquare },
+        { label: "Messages", href: "/dashboard/messages", icon: MessageSquare, badge: unreadMsgCount > 0 ? unreadMsgCount : undefined },
         { label: "Notifications", href: "/dashboard/notifications", icon: Bell, useBadgeContext: true },
     ];
 

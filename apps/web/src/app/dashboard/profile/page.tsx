@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, CheckCircle, User, Edit2, ShieldAlert } from "lucide-react";
+import { AlertTriangle, CheckCircle, User, Edit2, ShieldAlert, MapPin, Clock } from "lucide-react";
 import { useEffect, useState } from "react";
 import { getSession, setSession, clearSession, AuthUser } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
@@ -12,17 +12,27 @@ export default function ProfilePage() {
     const [editing, setEditing] = useState(false);
     const [saving, setSaving] = useState(false);
     const [saved, setSaved] = useState(false);
+    const [error, setError] = useState<string | null>(null);
     const [deleting, setDeleting] = useState(false);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
     const [form, setForm] = useState({
         firstName: "",
         lastName: "",
         phone: "",
+        dateOfBirth: "",
+        sex: "",
         bio: "",
         headline: "",
         hourlyRate: "",
         yearsExperience: "",
         sports: [] as string[],
+        skillLevel: "beginner",
+        addressLine1: "",
+        city: "",
+        state: "",
+        zipCode: "",
+        travelRadius: "25",
+        preferredTimes: [] as string[],
     });
 
     useEffect(() => {
@@ -67,11 +77,20 @@ export default function ProfilePage() {
                 firstName: userData?.first_name || "",
                 lastName: userData?.last_name || "",
                 phone: userData?.phone || "",
+                dateOfBirth: userData?.date_of_birth || "",
+                sex: userData?.sex || "",
                 bio: tp?.bio || "",
                 headline: tp?.headline || "",
                 hourlyRate: String(tp?.hourly_rate || 50),
                 yearsExperience: String(tp?.years_experience || 0),
                 sports: tp?.sports || [],
+                skillLevel: "beginner", // Trainers don't have a 'skill level' but form needs it
+                addressLine1: tp?.city || "", // Mapping city/state for trainers too if available
+                city: tp?.city || "",
+                state: tp?.state || "",
+                zipCode: "",
+                travelRadius: String(tp?.travel_radius_miles || 25),
+                preferredTimes: (tp as any)?.preferredTrainingTimes || [],
             });
         } else {
             const { data: ap } = await supabase.from("athlete_profiles").select("*").eq("user_id", u.id).single();
@@ -79,11 +98,20 @@ export default function ProfilePage() {
                 firstName: userData?.first_name || "",
                 lastName: userData?.last_name || "",
                 phone: userData?.phone || "",
+                dateOfBirth: userData?.date_of_birth || "",
+                sex: userData?.sex || "",
                 bio: "",
                 headline: "",
                 hourlyRate: "",
                 yearsExperience: "",
                 sports: ap?.sports || [],
+                skillLevel: ap?.skill_level || "beginner",
+                addressLine1: ap?.address_line1 || "",
+                city: ap?.city || "",
+                state: ap?.state || "",
+                zipCode: ap?.zip_code || "",
+                travelRadius: String(ap?.travel_radius_miles || 25),
+                preferredTimes: (ap as any)?.preferredTrainingTimes || [],
             });
         }
     };
@@ -93,35 +121,66 @@ export default function ProfilePage() {
         setSaving(true);
 
         try {
-            await supabase.from("users").update({
+            setError(null);
+            const { error: userError } = await supabase.from("users").update({
                 first_name: form.firstName,
                 last_name: form.lastName,
                 phone: form.phone || null,
+                date_of_birth: form.dateOfBirth || null,
+                sex: form.sex || null,
             }).eq("id", user.id);
 
+            if (userError) throw userError;
+
             if (user.role === "trainer") {
-                await supabase.from("trainer_profiles").update({
+                const profileUpdate = {
+                    user_id: user.id,
                     bio: form.bio || null,
                     headline: form.headline || null,
                     hourly_rate: Number(form.hourlyRate),
                     years_experience: Number(form.yearsExperience),
                     sports: form.sports,
-                }).eq("user_id", user.id);
+                    preferredTrainingTimes: form.preferredTimes,
+                    travel_radius_miles: Number(form.travelRadius),
+                };
+                const { error: pError } = await supabase.from("trainer_profiles").upsert(profileUpdate, { onConflict: 'user_id' });
+                if (pError) throw pError;
             } else {
-                await supabase.from("athlete_profiles").update({
+                const profileUpdate = {
+                    user_id: user.id,
                     sports: form.sports,
-                }).eq("user_id", user.id);
+                    skill_level: form.skillLevel,
+                    address_line1: form.addressLine1 || null,
+                    city: form.city || null,
+                    state: form.state || null,
+                    zip_code: form.zipCode || null,
+                    travel_radius_miles: Number(form.travelRadius),
+                    preferredTrainingTimes: form.preferredTimes,
+                };
+                const { error: pError } = await supabase.from("athlete_profiles").upsert(profileUpdate, { onConflict: 'user_id' });
+                if (pError) throw pError;
             }
 
-            // Update session
-            const updatedUser = { ...user, firstName: form.firstName, lastName: form.lastName };
+            // Update session and local state
+            const updatedUser: AuthUser = { 
+                ...user, 
+                firstName: form.firstName, 
+                lastName: form.lastName,
+                trainerProfile: user.role === "trainer" 
+                    ? { ...(user.trainerProfile || {}), sports: form.sports, preferredTrainingTimes: form.preferredTimes } as any 
+                    : user.trainerProfile,
+                athleteProfile: user.role === "athlete" 
+                    ? { ...(user.athleteProfile || {}), sports: form.sports, preferredTrainingTimes: form.preferredTimes, skill_level: form.skillLevel as any } as any 
+                    : user.athleteProfile
+            };
             setSession(updatedUser);
             setUser(updatedUser);
             setSaved(true);
             setEditing(false);
             setTimeout(() => setSaved(false), 3000);
-        } catch (err) {
+        } catch (err: any) {
             console.error("Save failed:", err);
+            setError(err.message || "Failed to save profile. Please check your connection and try again.");
         } finally {
             setSaving(false);
         }
@@ -199,8 +258,14 @@ export default function ProfilePage() {
             </div>
 
             {saved && (
-                <div className="px-5 py-4 bg-primary/10 border border-primary/20 rounded-2xl text-primary text-sm font-bold mb-6 flex items-center shadow-[0_0_15px_rgba(163,255,18,0.05)]">
+                <div className="px-5 py-4 bg-primary/10 border border-primary/20 rounded-2xl text-primary text-sm font-bold mb-6 flex items-center shadow-[0_0_15px_rgba(163,255,18,0.05)] animate-in fade-in slide-in-from-top-4">
                     <CheckCircle className="w-5 h-5 mr-3 shrink-0" /> Profile updated successfully!
+                </div>
+            )}
+
+            {error && (
+                <div className="px-5 py-4 bg-red-500/10 border border-red-500/20 rounded-2xl text-red-500 text-sm font-bold mb-6 flex items-center animate-in fade-in slide-in-from-top-4">
+                    <AlertTriangle className="w-5 h-5 mr-3 shrink-0" /> {error}
                 </div>
             )}
 
@@ -215,6 +280,16 @@ export default function ProfilePage() {
                             {form.firstName} {form.lastName}
                         </h2>
                         <p className="text-text-main/50 text-[15px] font-medium mb-3">{user?.email}</p>
+                        <div className="flex flex-wrap items-center gap-4 mb-4">
+                            <div className="flex items-center gap-1.5 text-text-main/60 text-[13px] font-medium">
+                                <MapPin size={14} className="text-primary/70" />
+                                <span>
+                                    {form.city && form.state 
+                                        ? `${form.city}, ${form.state}` 
+                                        : form.addressLine1 || "Location not set"}
+                                </span>
+                            </div>
+                        </div>
                         <div className="flex gap-3 items-center">
                             <span className="px-4 py-1.5 rounded-full bg-primary/10 text-primary text-xs font-black uppercase tracking-widest border border-primary/20 shadow-[0_0_10px_rgba(163,255,18,0.1)]">
                                 {user?.role}
@@ -272,6 +347,35 @@ export default function ProfilePage() {
                             className="w-full bg-[#12141A] border border-white/5 rounded-2xl px-5 py-3.5 text-white text-sm outline-none focus:border-primary/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         />
                     </div>
+                    <div>
+                        <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">Date of Birth</label>
+                        <input
+                            type="date"
+                            value={form.dateOfBirth}
+                            onChange={(e) => setForm((p) => ({ ...p, dateOfBirth: e.target.value }))}
+                            disabled={!editing}
+                            className="w-full bg-[#12141A] border border-white/5 rounded-2xl px-5 py-3.5 text-white text-sm outline-none focus:border-primary/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        />
+                        {form.dateOfBirth && (
+                            <p className="mt-2 text-[10px] text-text-main/40 font-bold uppercase tracking-widest">
+                                Age: {new Date().getFullYear() - new Date(form.dateOfBirth).getFullYear()} years old
+                            </p>
+                        )}
+                    </div>
+                    <div>
+                        <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">Sex</label>
+                        <select
+                            value={form.sex}
+                            onChange={(e) => setForm((p) => ({ ...p, sex: e.target.value }))}
+                            disabled={!editing}
+                            className="w-full bg-[#12141A] border border-white/5 rounded-2xl px-5 py-3.5 text-white text-sm outline-none focus:border-primary/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed appearance-none"
+                        >
+                            <option value="">Select Sex</option>
+                            <option value="male">Male</option>
+                            <option value="female">Female</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
                     <div className="md:col-span-2">
                         <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">Phone</label>
                         <input
@@ -284,6 +388,141 @@ export default function ProfilePage() {
                     </div>
                 </div>
             </div>
+
+            {/* Location Info (Athlete Only) */}
+            {!isTrainer && (
+                <div className="bg-[#1A1C23] border border-white/5 rounded-[20px] p-6 lg:p-8 mb-6 shadow-md">
+                    <div className="flex items-center gap-3 mb-6">
+                        <MapPin size={20} className="text-primary" strokeWidth={2.5} />
+                        <h3 className="text-[15px] font-black text-white tracking-widest uppercase">Location Details</h3>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="md:col-span-2">
+                            <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">Address</label>
+                            <input
+                                value={form.addressLine1}
+                                onChange={(e) => setForm((p) => ({ ...p, addressLine1: e.target.value }))}
+                                disabled={!editing}
+                                placeholder="123 Training Way"
+                                className="w-full bg-[#12141A] border border-white/5 rounded-2xl px-5 py-3.5 text-white text-sm outline-none focus:border-primary/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">City</label>
+                            <input
+                                value={form.city}
+                                onChange={(e) => setForm((p) => ({ ...p, city: e.target.value }))}
+                                disabled={!editing}
+                                className="w-full bg-[#12141A] border border-white/5 rounded-2xl px-5 py-3.5 text-white text-sm outline-none focus:border-primary/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">State</label>
+                                <input
+                                    value={form.state}
+                                    onChange={(e) => setForm((p) => ({ ...p, state: e.target.value }))}
+                                    disabled={!editing}
+                                    className="w-full bg-[#12141A] border border-white/5 rounded-2xl px-5 py-3.5 text-white text-sm outline-none focus:border-primary/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">Zip Code</label>
+                                <input
+                                    value={form.zipCode}
+                                    onChange={(e) => setForm((p) => ({ ...p, zipCode: e.target.value }))}
+                                    disabled={!editing}
+                                    className="w-full bg-[#12141A] border border-white/5 rounded-2xl px-5 py-3.5 text-white text-sm outline-none focus:border-primary/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                />
+                            </div>
+                        </div>
+                        <div className="md:col-span-2">
+                            <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">
+                                Travel Radius: <span className="text-primary">{form.travelRadius} miles</span>
+                            </label>
+                            <input
+                                type="range"
+                                min="5"
+                                max="100"
+                                step="5"
+                                value={form.travelRadius}
+                                onChange={(e) => setForm((p) => ({ ...p, travelRadius: e.target.value }))}
+                                disabled={!editing}
+                                className="w-full h-2 bg-[#12141A] rounded-lg appearance-none cursor-pointer accent-primary"
+                            />
+                            <div className="flex justify-between mt-2 text-[10px] font-bold text-text-main/30 tracking-widest">
+                                <span>5 MI</span>
+                                <span>100 MI</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Training Preferences (Athlete Only) */}
+            {!isTrainer && (
+                <div className="bg-[#1A1C23] border border-white/5 rounded-[20px] p-6 lg:p-8 mb-6 shadow-md">
+                    <div className="flex items-center gap-3 mb-6">
+                        <Clock size={20} className="text-primary" strokeWidth={2.5} />
+                        <h3 className="text-[15px] font-black text-white tracking-widest uppercase">Training Preferences</h3>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        <div>
+                            <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">Skill Level</label>
+                            <div className="grid grid-cols-2 gap-3">
+                                {["beginner", "intermediate", "advanced", "pro"].map((level) => (
+                                    <button
+                                        key={level}
+                                        type="button"
+                                        disabled={!editing}
+                                        onClick={() => setForm(p => ({ ...p, skillLevel: level }))}
+                                        className={`px-4 py-3 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all border ${
+                                            form.skillLevel === level 
+                                                ? "bg-primary text-bg border-transparent shadow-[0_0_20px_rgba(163,255,18,0.3)]" 
+                                                : "bg-[#12141A] border-white/5 text-text-main/40 hover:border-white/20"
+                                        } disabled:cursor-not-allowed`}
+                                    >
+                                        {level}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                        <div>
+                            <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">Preferred Times</label>
+                            <div className="flex flex-col gap-3">
+                                {["morning", "afternoon", "evening"].map((time) => {
+                                    const selected = form.preferredTimes.includes(time);
+                                    return (
+                                        <button
+                                            key={time}
+                                            type="button"
+                                            disabled={!editing}
+                                            onClick={() => {
+                                                setForm(p => ({
+                                                    ...p,
+                                                    preferredTimes: selected 
+                                                        ? p.preferredTimes.filter(t => t !== time)
+                                                        : [...p.preferredTimes, time]
+                                                }));
+                                            }}
+                                            className={`flex items-center justify-between px-5 py-3 rounded-xl border transition-all ${
+                                                selected 
+                                                    ? "bg-primary text-bg border-transparent shadow-[0_0_20px_rgba(163,255,18,0.3)]" 
+                                                    : "bg-[#12141A] border-white/5 hover:border-white/20"
+                                            } disabled:cursor-not-allowed`}
+                                        >
+                                            <span className={`text-[11px] font-black uppercase tracking-wider ${selected ? "text-bg" : "text-text-main/40"}`}>
+                                                {time}
+                                            </span>
+                                            {selected && <CheckCircle size={14} className="text-bg" strokeWidth={3} />}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Trainer-specific fields (only visible if logged in as trainer) */}
             {isTrainer && (

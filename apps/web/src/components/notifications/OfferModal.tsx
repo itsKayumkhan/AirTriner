@@ -12,6 +12,7 @@ interface OfferNotificationData {
     session_type?: string;
     rate?: number | string;
     time_slot?: string;
+    scheduledAt?: string;
     [key: string]: unknown;
 }
 
@@ -92,9 +93,16 @@ export function OfferModal({ isOpen, onClose, notification, onResponse, isRespon
                         {data?.time_slot && (
                             <div className="bg-[#12141A] border border-white/5 rounded-2xl p-4">
                                 <label className="block text-[9px] font-black text-text-main/30 uppercase tracking-[0.2em] mb-2 text-center">Proposed Availability</label>
-                                <p className="text-sm font-bold text-white text-center">
-                                    {data?.time_slot}
-                                </p>
+                                <div className="text-center">
+                                    <p className="text-sm font-bold text-white mb-1">
+                                        {data?.time_slot}
+                                    </p>
+                                    {data?.scheduledAt && (
+                                        <p className="text-[11px] font-black text-primary uppercase tracking-widest">
+                                            {new Date(data.scheduledAt).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                                        </p>
+                                    )}
+                                </div>
                             </div>
                         )}
                     </div>

@@ -22,6 +22,7 @@ interface Message {
     sender_id: string;
     content: string;
     created_at: string;
+    read_at?: string;
 }
 
 export default function MessagesPage() {
@@ -46,38 +47,70 @@ export default function MessagesPage() {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [messages]);
 
-    // Subscribe to real-time messages
+    // Subscribe to real-time messages for all active conversations
     useEffect(() => {
-        if (!selectedBookingId) return;
+        if (!user || conversations.length === 0) return;
 
+        const bookingIds = conversations.map(c => c.bookingId);
+        
+        // Use a single channel but filter by any of the booking IDs in the payload if needed
+        // Or simpler: listen to all messages and filter in the handler (since we don't have many active bookings)
         const subscription = supabase
-            .channel(`messages:${selectedBookingId}`)
+            .channel(`all_messages:${user.id}`)
             .on(
                 "postgres_changes",
                 {
-                    event: "INSERT",
+                    event: "*",
                     schema: "public",
                     table: "messages",
-                    filter: `booking_id=eq.${selectedBookingId}`,
                 },
-                (payload) => {
-                    const newMessage = payload.new as Message;
-                    // Only add if not already in list (prevent duplicates)
-                    setMessages((prev) => {
-                        if (prev.some((m) => m.id === newMessage.id)) {
-                            return prev;
-                        }
-                        return [...prev, newMessage];
-                    });
+                async (payload) => {
+                    const newMessage = (payload.new || payload.old) as any;
+                    if (!newMessage) return;
 
-                    // Update conversation last message
-                    setConversations((prev) =>
-                        prev.map((c) =>
-                            c.bookingId === selectedBookingId
-                                ? { ...c, lastMessage: newMessage.content, lastMessageAt: newMessage.created_at }
-                                : c
-                        )
-                    );
+                    // If it's an UPDATE and we don't have booking_id, or if we want to be 100% sure we sync,
+                    // just re-read the conversations. This is more robust than manual state incrementing
+                    // when multiple fields (read, read_at) are involved.
+                    if (payload.eventType === "UPDATE") {
+                        loadConversations(user);
+                        return;
+                    }
+
+                    // For INSERTS, we can still do the fast path
+                    if (payload.eventType === "INSERT") {
+                        const bookingId = newMessage.booking_id;
+                        if (!bookingId || !bookingIds.includes(bookingId)) return;
+
+                        // 1. If it's for the selected chat, add to message list
+                        if (bookingId === selectedBookingId) {
+                            setMessages((prev) => {
+                                if (prev.some((m) => m.id === newMessage.id)) return prev;
+                                return [...prev, newMessage as Message];
+                            });
+                            
+                            if (newMessage.sender_id !== user.id) {
+                                markAsReadApi(bookingId);
+                            }
+                        }
+
+                        // 2. Update conversation list for the new message
+                        setConversations((prev) => {
+                            const existing = prev.find(c => c.bookingId === bookingId);
+                            if (!existing) return prev;
+
+                            const updated = {
+                                ...existing,
+                                lastMessage: newMessage.content || existing.lastMessage,
+                                lastMessageAt: newMessage.created_at || existing.lastMessageAt,
+                                unreadCount: (bookingId === selectedBookingId || newMessage.sender_id === user.id) 
+                                    ? 0 
+                                    : existing.unreadCount + 1
+                            };
+
+                            const filtered = prev.filter(c => c.bookingId !== bookingId);
+                            return [updated, ...filtered];
+                        });
+                    }
                 }
             )
             .subscribe();
@@ -85,7 +118,23 @@ export default function MessagesPage() {
         return () => {
             subscription.unsubscribe();
         };
-    }, [selectedBookingId]);
+    }, [selectedBookingId, user, conversations.length]);
+
+    const markAsReadApi = async (bookingId: string) => {
+        try {
+            const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
+            const { data: { session } } = await supabase.auth.getSession();
+            await fetch(`${API_URL}/messages/booking/${bookingId}/read`, {
+                method: 'PATCH',
+                headers: {
+                    'Authorization': `Bearer ${session?.access_token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+        } catch (err) {
+            console.error("Failed to mark as read:", err);
+        }
+    };
 
     const loadConversations = async (u: AuthUser) => {
         try {
@@ -127,6 +176,9 @@ export default function MessagesPage() {
                 const other = userMap.get(b[otherCol]) as { first_name: string; last_name: string } | undefined;
                 const bookingMessages = (allMessages || []).filter((m: Message) => m.booking_id === b.id);
                 const lastMsg = bookingMessages[0];
+                
+                // Calculate unread count (received messages that have no read_at or read is false)
+                const unreadCount = bookingMessages.filter(m => m.sender_id !== u.id && (!m.read_at || (m as any).read === false)).length;
 
                 return {
                     bookingId: b.id,
@@ -136,11 +188,19 @@ export default function MessagesPage() {
                     sport: b.sport,
                     lastMessage: lastMsg?.content || "No messages yet",
                     lastMessageAt: lastMsg?.created_at || b.id,
-                    unreadCount: 0,
+                    unreadCount: unreadCount,
                 };
             });
 
-            convos.sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime());
+            convos.sort((a, b) => {
+                const timeA = new Date(a.lastMessageAt).getTime();
+                const timeB = new Date(b.lastMessageAt).getTime();
+                // Fallback for cases where it's not a date
+                if (isNaN(timeA) && isNaN(timeB)) return 0;
+                if (isNaN(timeA)) return 1;
+                if (isNaN(timeB)) return -1;
+                return timeB - timeA;
+            });
             setConversations(convos);
 
             if (convos.length > 0 && !selectedBookingId) {
@@ -163,9 +223,17 @@ export default function MessagesPage() {
         setMessages((data || []) as Message[]);
     };
 
-    const selectConversation = (bookingId: string) => {
+    const selectConversation = async (bookingId: string) => {
         setSelectedBookingId(bookingId);
         loadMessages(bookingId);
+        
+        // Mark as read in UI immediately
+        setConversations(prev => prev.map(c => 
+            c.bookingId === bookingId ? { ...c, unreadCount: 0 } : c
+        ));
+
+        // Mark as read in backend
+        markAsReadApi(bookingId);
     };
 
     const sendMessage = async () => {
@@ -187,14 +255,20 @@ export default function MessagesPage() {
             setMessages((prev) => [...prev, data as Message]);
             setNewMessage("");
 
-            // Update conversation list
-            setConversations((prev) =>
-                prev.map((c) =>
-                    c.bookingId === selectedBookingId
-                        ? { ...c, lastMessage: newMessage.trim(), lastMessageAt: new Date().toISOString() }
-                        : c
-                )
-            );
+            // Update conversation list and move to top
+            setConversations((prev) => {
+                const existing = prev.find(c => c.bookingId === selectedBookingId);
+                if (!existing) return prev;
+
+                const updated = {
+                    ...existing,
+                    lastMessage: newMessage.trim(),
+                    lastMessageAt: new Date().toISOString()
+                };
+
+                const filtered = prev.filter(c => c.bookingId !== selectedBookingId);
+                return [updated, ...filtered];
+            });
         } catch (err) {
             console.error("Send failed:", err);
         } finally {
@@ -246,13 +320,20 @@ export default function MessagesPage() {
                             <div
                                 key={c.bookingId}
                                 onClick={() => selectConversation(c.bookingId)}
-                                className={`p-4 flex gap-4 items-center cursor-pointer border-b border-white/5 transition-colors ${c.bookingId === selectedBookingId
+                                className={`p-4 flex gap-4 items-center cursor-pointer border-b border-white/5 transition-all hover:bg-white/5 relative ${c.bookingId === selectedBookingId
                                         ? "bg-primary/10 border-l-4 border-l-primary"
-                                        : "hover:bg-white/5 border-l-4 border-l-transparent"
+                                        : "border-l-4 border-l-transparent"
                                     }`}
                             >
-                                <div className="w-12 h-12 rounded-full bg-[#272A35] flex items-center justify-center text-primary font-black text-sm shrink-0 shadow-[0_0_10px_rgba(163,255,18,0.05)]">
-                                    {c.otherUserInitials}
+                                <div className="relative">
+                                    <div className="w-12 h-12 rounded-full bg-[#272A35] flex items-center justify-center text-primary font-black text-sm shrink-0 shadow-[0_0_10px_rgba(163,255,18,0.05)]">
+                                        {c.otherUserInitials}
+                                    </div>
+                                    {c.unreadCount > 0 && (
+                                        <div className="absolute -top-1 -right-1 bg-primary text-background-main text-[10px] font-black w-5 h-5 rounded-full flex items-center justify-center shadow-lg border-2 border-surface">
+                                            {c.unreadCount}
+                                        </div>
+                                    )}
                                 </div>
                                 <div className="flex-1 min-w-0">
                                     <div className="flex justify-between items-center mb-1">
