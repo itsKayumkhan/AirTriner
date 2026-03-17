@@ -145,23 +145,29 @@ export default function AdminDashboardPage() {
                             Last 12 Months
                         </button>
                     </div>
-                    {/* CSS Bar Chart Simulation */}
-                    <div className="h-64 flex items-end justify-between gap-2 mt-8 pt-4 border-b border-white/5/50 pb-2">
-                        {["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"].map((month, i) => {
-                            const heights = [30, 45, 35, 60, 100, 50, 45, 65, 40, 60, 45, 75];
-                            const isHigh = i === new Date().getMonth(); // highlight current month
-                            return (
-                                <div key={month} className="h-full flex-1 flex flex-col items-center gap-4 group">
-                                    <div className="w-full h-full flex items-end justify-center">
+                    {/* CSS Bar Chart */}
+                    <div className="flex flex-col gap-2 mt-4">
+                        <div className="h-48 flex items-end justify-between gap-1.5 px-1">
+                            {["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"].map((month, i) => {
+                                const heights = [30, 45, 35, 60, 100, 50, 45, 65, 40, 60, 45, 75];
+                                const isActive = i === new Date().getMonth();
+                                return (
+                                    <div key={month} className="flex-1 flex justify-center group">
                                         <div
                                             style={{ height: `${heights[i]}%` }}
-                                            className={`w-8 md:w-12 rounded-t-xl transition-all duration-500 ease-out group-hover:bg-primary/80 ${isHigh ? "bg-primary shadow-[0_0_15px_rgba(69,208,255,0.25)]" : "bg-[#272A35]"}`}
-                                        ></div>
+                                            className={`w-full max-w-8 rounded-t-lg transition-all duration-500 ${isActive ? "bg-primary shadow-[0_0_12px_rgba(69,208,255,0.3)]" : "bg-white/10 group-hover:bg-primary/40"}`}
+                                        />
                                     </div>
-                                    <span className="text-[10px] font-bold text-text-main/40 tracking-widest">{month}</span>
+                                );
+                            })}
+                        </div>
+                        <div className="flex justify-between px-1 border-t border-white/5 pt-2">
+                            {["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"].map((month, i) => (
+                                <div key={month} className="flex-1 flex justify-center">
+                                    <span className={`text-[9px] font-bold tracking-widest ${i === new Date().getMonth() ? "text-primary" : "text-text-main/30"}`}>{month}</span>
                                 </div>
-                            );
-                        })}
+                            ))}
+                        </div>
                     </div>
                 </div>
 
