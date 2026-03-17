@@ -204,7 +204,7 @@ export default function AdminPaymentsPage() {
                 <div className="flex items-center gap-3 w-full md:w-auto">
                     <button
                         onClick={handleExportCSV}
-                        className="flex items-center justify-center gap-2 px-6 py-3 rounded-2xl bg-surface/80 border border-white/10 text-text-main hover:bg-white/5 font-black text-sm uppercase tracking-widest hover:border-primary/50 transition-all w-full md:w-auto"
+                        className="flex items-center justify-center gap-2 px-6 py-3 rounded-2xl bg-surface/80 border border-white/[0.04] text-text-main hover:bg-white/5 font-black text-sm uppercase tracking-widest hover:border-primary/50 transition-all w-full md:w-auto"
                     >
                         <Download size={18} strokeWidth={3} /> Export Report
                     </button>
@@ -214,7 +214,7 @@ export default function AdminPaymentsPage() {
             {/* Stats Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 {stats.map((stat, i) => (
-                    <div key={i} className="bg-gradient-to-br from-surface to-[#12141A] border border-white/5 rounded-[24px] p-6 relative overflow-hidden group hover:border-white/20 transition-all duration-300 hover:shadow-[0_0_30px_rgba(255,255,255,0.02)]">
+                    <div key={i} className="bg-gradient-to-br from-surface to-[#12141A] border border-white/5 rounded-[24px] p-6 relative overflow-hidden group hover:border-white/[0.06] transition-all duration-300 hover:shadow-[0_0_30px_rgba(255,255,255,0.02)]">
                         <div className={`absolute top-0 bottom-0 left-0 w-1 transition-all duration-300 group-hover:w-1.5 ${stat.isNegative ? "bg-red-500 border-red-500" : "bg-primary border-primary"}`}></div>
 
                         <div className="flex justify-between items-start mb-6">
@@ -248,7 +248,7 @@ export default function AdminPaymentsPage() {
                             <h2 className="text-xl font-black text-text-main uppercase tracking-widest">Revenue Trends</h2>
                             <p className="text-xs font-medium text-text-main/40 mt-1 uppercase tracking-wider">Monthly performance analytics</p>
                         </div>
-                        <select className="bg-[#12141A] border border-white/10 rounded-xl px-4 py-2 text-xs font-black text-text-main/80 focus:outline-none focus:border-primary/50 appearance-none cursor-pointer transition-colors shadow-inner">
+                        <select className="bg-[#12141A] border border-white/[0.04] rounded-xl px-4 py-2 text-xs font-black text-text-main/80 focus:outline-none focus:border-primary/50 appearance-none cursor-pointer transition-colors shadow-inner">
                             <option>Last 6 Months</option>
                             <option>Last 12 Months</option>
                             <option>This Year</option>
@@ -266,7 +266,7 @@ export default function AdminPaymentsPage() {
                                         <div
                                             style={{ height: `${heights[i]}%` }}
                                             className={`w-full max-w-[64px] rounded-t-xl transition-all duration-500 ease-out
-                                                ${isHigh ? "bg-gradient-to-t from-primary/50 to-primary shadow-[0_0_20px_rgba(163,255,18,0.3)]" : "bg-gradient-to-t from-white/5 to-white/10 group-hover:from-white/10 group-hover:to-white/20"}
+                                                ${isHigh ? "bg-gradient-to-t from-primary/50 to-primary shadow-[0_0_20px_rgba(69,208,255,0.3)]" : "bg-gradient-to-t from-white/5 to-white/10 group-hover:from-white/10 group-hover:to-white/20"}
                                             `}
                                         ></div>
                                     </div>
@@ -288,7 +288,7 @@ export default function AdminPaymentsPage() {
                                 <span className="text-text-main font-black text-xl leading-none">{loading ? "..." : `${releasedPct}%`}</span>
                             </div>
                             <div className="h-3 bg-[#12141A] rounded-full overflow-hidden border border-white/5 shadow-inner">
-                                <div className="h-full bg-primary rounded-full shadow-[0_0_15px_rgba(163,255,18,0.5)] transition-all duration-700" style={{ width: `${releasedPct}%` }}></div>
+                                <div className="h-full bg-primary rounded-full shadow-[0_0_15px_rgba(69,208,255,0.5)] transition-all duration-700" style={{ width: `${releasedPct}%` }}></div>
                             </div>
                         </div>
 
@@ -373,7 +373,7 @@ export default function AdminPaymentsPage() {
                                         </td>
                                         <td className="px-6 py-5">
                                             <div className="flex items-center gap-3">
-                                                <div className="w-8 h-8 rounded-full bg-white/5 text-text-main flex items-center justify-center font-black text-xs border border-white/10 flex-shrink-0">
+                                                <div className="w-8 h-8 rounded-full bg-white/5 text-text-main flex items-center justify-center font-black text-xs border border-white/[0.04] flex-shrink-0">
                                                     {t.initials}
                                                 </div>
                                                 <span className="font-bold text-text-main tracking-wide group-hover:text-primary transition-colors cursor-pointer">{t.customer}</span>
@@ -426,7 +426,7 @@ export default function AdminPaymentsPage() {
                                             )}
 
                                             {actionMenuOpen === t.id && (
-                                                <div ref={actionMenuRef} className="absolute right-8 top-12 z-[100] w-48 bg-[#1A1D24] border border-white/10 rounded-2xl shadow-2xl py-2 flex flex-col overflow-hidden text-left origin-top-right animate-in fade-in zoom-in-95 duration-200">
+                                                <div ref={actionMenuRef} className="absolute right-8 top-12 z-[100] w-48 bg-[#1A1D24] border border-white/[0.04] rounded-2xl shadow-2xl py-2 flex flex-col overflow-hidden text-left origin-top-right animate-in fade-in zoom-in-95 duration-200">
                                                     <button
                                                         type="button"
                                                         onClick={() => { showAlert("info", "Coming Soon", `Downloading receipt for ${t.displayId}`); setActionMenuOpen(null); }}

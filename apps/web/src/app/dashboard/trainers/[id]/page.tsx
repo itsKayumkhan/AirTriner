@@ -428,7 +428,7 @@ export default function BookTrainerPage() {
                     </div>
                     {/* Verification checkmark - only if performance metrics are met */}
                     {trainer.is_performance_verified && (
-                        <div className="absolute -bottom-2 -right-2 bg-primary rounded-full p-1 border-[4px] border-[#0F1115] shadow-[0_0_10px_rgba(163,255,18,0.5)]">
+                        <div className="absolute -bottom-2 -right-2 bg-primary rounded-full p-1 border-[4px] border-[#0F1115] shadow-[0_0_10px_rgba(69,208,255,0.5)]">
                             <BadgeCheck size={20} className="text-bg" />
                         </div>
                     )}
@@ -598,7 +598,7 @@ export default function BookTrainerPage() {
                                                 ${!d.isCurrentMonth ? "opacity-30" : ""}
                                                 ${d.isPastDate ? "opacity-20 cursor-not-allowed" : ""}
                                                 ${selectedDate === d.fullDate && !d.isPastDate
-                                                    ? "bg-primary text-bg shadow-[0_4px_12px_rgba(163,255,18,0.3)] scale-105"
+                                                    ? "bg-primary text-bg shadow-[0_4px_12px_rgba(69,208,255,0.3)] scale-105"
                                                     : !d.isPastDate ? "text-white hover:bg-white/5 hover:-translate-y-0.5" : "text-white"}`}
                                         >
                                             {d.date}
@@ -618,7 +618,7 @@ export default function BookTrainerPage() {
                                         onClick={() => setSelectedSport(sport)}
                                         className={`py-3 px-4 rounded-xl text-[11px] font-black transition-all border text-center uppercase tracking-wider
                                             ${selectedSport === sport
-                                                ? "bg-transparent border-primary border-[2px] text-white shadow-[0_0_15px_rgba(163,255,18,0.15)]"
+                                                ? "bg-transparent border-primary border-[2px] text-white shadow-[0_0_15px_rgba(69,208,255,0.15)]"
                                                 : "bg-[#272A35] border-transparent text-white/80 hover:bg-[#323644]"}`}
                                     >
                                         {SPORT_LABELS[sport] || sport.replace(/_/g, " ")}
@@ -649,7 +649,7 @@ export default function BookTrainerPage() {
                                                 onClick={() => setSelectedTime(time)}
                                                 className={`py-3.5 rounded-xl text-xs font-black transition-all border
                                                     ${selectedTime === time
-                                                        ? "bg-transparent border-primary border-[2px] text-white shadow-[0_0_15px_rgba(163,255,18,0.15)]"
+                                                        ? "bg-transparent border-primary border-[2px] text-white shadow-[0_0_15px_rgba(69,208,255,0.15)]"
                                                         : "bg-[#272A35] border-transparent text-white/80 hover:bg-[#323644]"}`}
                                             >
                                                 {time}
@@ -665,7 +665,7 @@ export default function BookTrainerPage() {
                             <button
                                 onClick={handleBook}
                                 disabled={processing}
-                                className="w-full bg-primary text-bg font-black text-[15px] py-4 rounded-2xl hover:shadow-[0_0_15px_rgba(163,255,18,0.25)] hover:-translate-y-0.5 transition-all disabled:opacity-50"
+                                className="w-full bg-primary text-bg font-black text-[15px] py-4 rounded-2xl hover:shadow-[0_0_15px_rgba(69,208,255,0.25)] hover:-translate-y-0.5 transition-all disabled:opacity-50"
                             >
                                 {processing ? "Processing..." : "Book Session"}
                             </button>

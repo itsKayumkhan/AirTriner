@@ -128,7 +128,7 @@ export default function AdminAthletesPage() {
 
             {/* Top Stats Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-gradient-to-br from-surface to-[#12141A] border border-white/5 rounded-[20px] p-6 relative overflow-hidden group hover:border-white/20 transition-all duration-300 hover:shadow-[0_0_30px_rgba(255,255,255,0.03)]">
+                <div className="bg-gradient-to-br from-surface to-[#12141A] border border-white/5 rounded-[20px] p-6 relative overflow-hidden group hover:border-white/[0.06] transition-all duration-300 hover:shadow-[0_0_30px_rgba(255,255,255,0.03)]">
                     <div className="absolute top-0 bottom-0 left-0 w-1 border-primary transition-all duration-300 group-hover:w-1.5 bg-primary"></div>
                     <div className="flex justify-between items-start mb-6">
                         <span className="text-[10px] sm:text-xs font-black uppercase tracking-widest text-text-main/40 leading-tight">Total Athletes</span>
@@ -137,8 +137,8 @@ export default function AdminAthletesPage() {
                     <div className="text-3xl sm:text-4xl font-black text-text-main tracking-tighter">{totalAthletesCount || "0"}</div>
                 </div>
 
-                <div className="bg-gradient-to-br from-surface to-[#12141A] border border-white/5 rounded-[20px] p-6 relative overflow-hidden group hover:border-white/20 transition-all duration-300 hover:shadow-[0_0_30px_rgba(255,255,255,0.03)]">
-                    <div className="absolute top-0 bottom-0 left-0 w-1 border-white/10 transition-all duration-300 group-hover:w-1.5 bg-white/10"></div>
+                <div className="bg-gradient-to-br from-surface to-[#12141A] border border-white/5 rounded-[20px] p-6 relative overflow-hidden group hover:border-white/[0.06] transition-all duration-300 hover:shadow-[0_0_30px_rgba(255,255,255,0.03)]">
+                    <div className="absolute top-0 bottom-0 left-0 w-1 border-white/[0.04] transition-all duration-300 group-hover:w-1.5 bg-white/10"></div>
                     <div className="flex justify-between items-start mb-6">
                         <span className="text-[10px] sm:text-xs font-black uppercase tracking-widest text-text-main/40 leading-tight">Total Bookings</span>
                         <div className="p-2 rounded-xl bg-white/5 text-text-main/40 transition-colors"><Activity size={18} /></div>
@@ -146,7 +146,7 @@ export default function AdminAthletesPage() {
                     <div className="text-3xl sm:text-4xl font-black text-text-main tracking-tighter">{totalSessionsPlaceholder.toLocaleString()}</div>
                 </div>
 
-                <div className="bg-gradient-to-br from-surface to-[#12141A] border border-white/5 rounded-[20px] p-6 relative overflow-hidden group hover:border-white/20 transition-all duration-300 hover:shadow-[0_0_30px_rgba(255,255,255,0.03)]">
+                <div className="bg-gradient-to-br from-surface to-[#12141A] border border-white/5 rounded-[20px] p-6 relative overflow-hidden group hover:border-white/[0.06] transition-all duration-300 hover:shadow-[0_0_30px_rgba(255,255,255,0.03)]">
                     <div className="absolute top-0 bottom-0 left-0 w-1 border-green-500 transition-all duration-300 group-hover:w-1.5 bg-green-500"></div>
                     <div className="flex justify-between items-start mb-6">
                         <span className="text-[10px] sm:text-xs font-black uppercase tracking-widest text-text-main/40 leading-tight">Active Accounts</span>
@@ -184,7 +184,7 @@ export default function AdminAthletesPage() {
                     )}
                 </div>
                 <div className="flex flex-wrap gap-2 bg-[#12141A] border border-white/5 rounded-2xl md:rounded-full p-1.5 overflow-x-auto scrollbar-none">
-                    <div className="flex gap-1 border-r border-white/10 pr-2 mr-1">
+                    <div className="flex gap-1 border-r border-white/[0.04] pr-2 mr-1">
                         {["All", "Active", "Suspended"].map((status) => (
                             <button
                                 type="button"
@@ -195,7 +195,7 @@ export default function AdminAthletesPage() {
                                 }}
                                 className={`px-4 py-2 text-[10px] font-black uppercase tracking-widest rounded-full transition-all whitespace-nowrap ${
                                     statusFilter === status 
-                                        ? "bg-primary text-bg shadow-[0_0_15px_rgba(163,255,18,0.3)]" 
+                                        ? "bg-primary text-bg shadow-[0_0_15px_rgba(69,208,255,0.3)]" 
                                         : "text-text-main/50 hover:text-text-main hover:bg-white/5"
                                 }`}
                             >
@@ -272,7 +272,7 @@ export default function AdminAthletesPage() {
                                         <div className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest inline-block border ${
                                             a.plan === "Elite" ? "border-amber-500/20 text-amber-500 bg-amber-500/10" :
                                             a.plan === "Pro" ? "border-primary/20 text-primary bg-primary/10" :
-                                            "border-white/10 text-white/40 bg-white/5"
+                                            "border-white/[0.04] text-white/40 bg-white/5"
                                         }`}>
                                             {a.plan}
                                         </div>
@@ -287,12 +287,12 @@ export default function AdminAthletesPage() {
                                         </div>
                                     </td>
                                     <td className="px-6 py-5">
-                                        <div className="text-text-main/90 font-black text-sm bg-white/5 px-3 py-1.5 rounded-lg inline-block border border-white/10">{a.sessions}</div>
+                                        <div className="text-text-main/90 font-black text-sm bg-white/5 px-3 py-1.5 rounded-lg inline-block border border-white/[0.04]">{a.sessions}</div>
                                     </td>
                                     <td className="px-6 py-5 pr-8 text-right">
                                         <div className="flex justify-end gap-2">
                                             {a.status === "Suspended" ? (
-                                                <button type="button" onClick={() => requestStatusChange(a.id, a.name, a.status)} className="px-4 py-2 rounded-xl bg-primary/10 text-primary font-black text-xs uppercase tracking-widest hover:bg-primary hover:text-bg hover:shadow-[0_0_15px_rgba(163,255,18,0.3)] border border-primary/20 transition-all">
+                                                <button type="button" onClick={() => requestStatusChange(a.id, a.name, a.status)} className="px-4 py-2 rounded-xl bg-primary/10 text-primary font-black text-xs uppercase tracking-widest hover:bg-primary hover:text-bg hover:shadow-[0_0_15px_rgba(69,208,255,0.3)] border border-primary/20 transition-all">
                                                     Activate
                                                 </button>
                                             ) : (
@@ -333,7 +333,7 @@ export default function AdminAthletesPage() {
                                     onClick={() => setCurrentPage(page)}
                                     className={`w-8 h-8 rounded-full text-xs font-black transition-all ${
                                         currentPage === page 
-                                            ? "bg-primary text-bg shadow-[0_0_10px_rgba(163,255,18,0.3)]" 
+                                            ? "bg-primary text-bg shadow-[0_0_10px_rgba(69,208,255,0.3)]" 
                                             : "text-text-main/60 hover:text-white hover:bg-white/5"
                                     }`}
                                 >

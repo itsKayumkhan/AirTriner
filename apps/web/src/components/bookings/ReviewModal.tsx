@@ -111,7 +111,7 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
                             className={`w-full py-4 rounded-xl text-[13px] font-black uppercase tracking-widest transition-all shadow-lg ${
                                 isSubmitting
                                     ? "bg-white/5 text-text-main/40 cursor-not-allowed border border-white/5"
-                                    : "bg-primary text-bg hover:shadow-[0_0_20px_rgba(163,255,18,0.4)] hover:-translate-y-0.5"
+                                    : "bg-primary text-bg hover:shadow-[0_0_20px_rgba(69,208,255,0.4)] hover:-translate-y-0.5"
                             }`}
                         >
                             {isSubmitting ? "Submitting..." : "Submit Review"}

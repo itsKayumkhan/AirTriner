@@ -76,9 +76,9 @@ export default function HowItWorks() {
                                     
                                     <div style={{ 
                                         width: "40px", height: "40px", borderRadius: "12px", 
-                                        background: "rgba(163,255,18,0.1)", color: "var(--primary)", 
+                                        background: "rgba(69,208,255,0.1)", color: "var(--primary)",
                                         display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-                                        border: "1px solid rgba(163,255,18,0.2)",
+                                        border: "1px solid rgba(69,208,255,0.2)",
                                         zIndex: 1
                                     }}>
                                         {step.icon}
@@ -111,9 +111,9 @@ export default function HowItWorks() {
                                     
                                     <div style={{ 
                                         width: "40px", height: "40px", borderRadius: "12px", 
-                                        background: "rgba(163,255,18,0.1)", color: "var(--primary)", 
+                                        background: "rgba(69,208,255,0.1)", color: "var(--primary)",
                                         display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-                                        border: "1px solid rgba(163,255,18,0.2)",
+                                        border: "1px solid rgba(69,208,255,0.2)",
                                         zIndex: 1
                                     }}>
                                         {step.icon}

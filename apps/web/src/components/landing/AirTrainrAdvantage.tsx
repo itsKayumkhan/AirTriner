@@ -64,7 +64,7 @@ export default function AirTrainrAdvantage() {
                         }}
                             className="group hover:-translate-y-1.25 hover:border-primary/30 hover:shadow-xl"
                         >
-                            <div style={{ width: "48px", height: "48px", borderRadius: "12px", background: "rgba(163,255,18,0.1)", color: "var(--primary)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 24px" }}>
+                            <div style={{ width: "48px", height: "48px", borderRadius: "12px", background: "rgba(69,208,255,0.1)", color: "var(--primary)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 24px" }}>
                                 {item.icon}
                             </div>
                             <h3 style={{ fontSize: "16px", fontWeight: 800, textTransform: "uppercase", marginBottom: "16px", color: "white", letterSpacing: "1px" }}>{item.title}</h3>

@@ -104,7 +104,7 @@ export default function LoginPage() {
                                     width: "100%", padding: "16px", borderRadius: "12px", border: "1px solid var(--gray-800)",
                                     background: "rgba(255,255,255,0.03)", color: "white", fontSize: "15px", outline: "none", transition: "all 0.2s"
                                 }}
-                                onFocus={(e) => { e.currentTarget.style.borderColor = "var(--primary)"; e.currentTarget.style.background = "rgba(163,255,18,0.02)"; }}
+                                onFocus={(e) => { e.currentTarget.style.borderColor = "var(--primary)"; e.currentTarget.style.background = "rgba(69,208,255,0.02)"; }}
                                 onBlur={(e) => { e.currentTarget.style.borderColor = "var(--gray-800)"; e.currentTarget.style.background = "rgba(255,255,255,0.03)"; }}
                             />
                         </div>
@@ -125,7 +125,7 @@ export default function LoginPage() {
                                         width: "100%", padding: "16px", paddingRight: "48px", borderRadius: "12px", border: "1px solid var(--gray-800)",
                                         background: "rgba(255,255,255,0.03)", color: "white", fontSize: "15px", outline: "none", transition: "all 0.2s"
                                     }}
-                                    onFocus={(e) => { e.currentTarget.style.borderColor = "var(--primary)"; e.currentTarget.style.background = "rgba(163,255,18,0.02)"; }}
+                                    onFocus={(e) => { e.currentTarget.style.borderColor = "var(--primary)"; e.currentTarget.style.background = "rgba(69,208,255,0.02)"; }}
                                     onBlur={(e) => { e.currentTarget.style.borderColor = "var(--gray-800)"; e.currentTarget.style.background = "rgba(255,255,255,0.03)"; }}
                                 />
                                 <button 

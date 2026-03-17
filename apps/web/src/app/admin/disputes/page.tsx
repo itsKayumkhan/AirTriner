@@ -151,9 +151,9 @@ export default function AdminDisputesPage() {
     });
 
     const stats = [
-        { title: "TOTAL DISPUTES", value: disputes.length.toString(), icon: <BarChart2 size={18} />, highlight: "border-white/10" },
+        { title: "TOTAL DISPUTES", value: disputes.length.toString(), icon: <BarChart2 size={18} />, highlight: "border-white/[0.04]" },
         { title: "NEEDS ACTION", value: disputes.filter(d => d.status === "under_review" || d.status === "escalated").length.toString(), icon: <AlertTriangle size={18} />, highlight: "border-primary", highlightColor: "text-primary" },
-        { title: "REFUNDED THIS WEEK", value: `$${disputes.filter(d => d.status === "resolved").reduce((sum, d) => sum + d.rawAmount, 0).toFixed(0)}`, icon: <RotateCcw size={18} />, highlight: "border-white/10" },
+        { title: "REFUNDED THIS WEEK", value: `$${disputes.filter(d => d.status === "resolved").reduce((sum, d) => sum + d.rawAmount, 0).toFixed(0)}`, icon: <RotateCcw size={18} />, highlight: "border-white/[0.04]" },
         { title: "HIGH RISK FRAUD", value: disputes.filter(d => d.status === "escalated").length.toString().padStart(2, '0'), icon: <ShieldAlert size={18} />, highlight: "border-red-500", highlightColor: "text-red-500" },
     ];
 
@@ -177,7 +177,7 @@ export default function AdminDisputesPage() {
                 {/* Stats Cards */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     {stats.map((stat, i) => (
-                        <div key={i} className={`bg-gradient-to-br from-surface to-[#12141A] border border-white/5 rounded-[20px] p-6 flex flex-col justify-between relative overflow-hidden group hover:border-white/20 transition-all duration-300 hover:shadow-[0_0_30px_rgba(255,255,255,0.03)]`}>
+                        <div key={i} className={`bg-gradient-to-br from-surface to-[#12141A] border border-white/5 rounded-[20px] p-6 flex flex-col justify-between relative overflow-hidden group hover:border-white/[0.06] transition-all duration-300 hover:shadow-[0_0_30px_rgba(255,255,255,0.03)]`}>
                             {stat.highlight && (
                                 <div className={`absolute top-0 bottom-0 left-0 w-1 ${stat.highlight} transition-all duration-300 group-hover:w-1.5`}></div>
                             )}
@@ -214,7 +214,7 @@ export default function AdminDisputesPage() {
                             <button
                                 key={tab}
                                 onClick={() => setActiveTab(tab)}
-                                className={`px-6 py-2.5 text-xs font-black uppercase tracking-widest rounded-full transition-all whitespace-nowrap flex-1 md:flex-none ${activeTab === tab ? "bg-primary text-bg shadow-[0_0_15px_rgba(163,255,18,0.3)]" : "text-text-main/50 hover:text-text-main hover:bg-white/5"
+                                className={`px-6 py-2.5 text-xs font-black uppercase tracking-widest rounded-full transition-all whitespace-nowrap flex-1 md:flex-none ${activeTab === tab ? "bg-primary text-bg shadow-[0_0_15px_rgba(69,208,255,0.3)]" : "text-text-main/50 hover:text-text-main hover:bg-white/5"
                                     }`}
                             >
                                 {tab}
@@ -350,7 +350,7 @@ export default function AdminDisputesPage() {
                         {/* Panel Body */}
                         <div className="p-8 pt-6 flex-1 flex flex-col gap-8">
                             {/* Booking Details Box */}
-                            <div className="bg-[#12141A] border border-white/5 rounded-[24px] p-6 relative overflow-hidden group hover:border-white/10 transition-colors">
+                            <div className="bg-[#12141A] border border-white/5 rounded-[24px] p-6 relative overflow-hidden group hover:border-white/[0.04] transition-colors">
                                 <FileText size={80} className="absolute -right-6 -top-6 text-white-[0.02] rotate-12 group-hover:scale-110 transition-transform duration-500" />
 
                                 <div className="mb-6 relative z-10">
@@ -392,19 +392,19 @@ export default function AdminDisputesPage() {
                                     <button
                                         onClick={() => handleAction('refund')}
                                         disabled={processing}
-                                        className="flex items-center justify-center gap-2 w-full py-4 rounded-xl bg-primary text-bg font-black text-sm uppercase tracking-wider hover:shadow-[0_0_20px_rgba(163,255,18,0.3)] transition-all disabled:opacity-50 disabled:pointer-events-none"
+                                        className="flex items-center justify-center gap-2 w-full py-4 rounded-xl bg-primary text-bg font-black text-sm uppercase tracking-wider hover:shadow-[0_0_20px_rgba(69,208,255,0.3)] transition-all disabled:opacity-50 disabled:pointer-events-none"
                                     >
                                         {processing ? <Loader2 size={18} className="animate-spin" /> : <RotateCcw size={18} strokeWidth={2.5} />}
                                         Process Full Refund
                                     </button>
                                     <div className="flex gap-4">
-                                        <button className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl bg-surface border border-white/5 text-text-main/80 text-xs font-bold transition-all hover:bg-white/5 hover:border-white/10 hover:text-white">
+                                        <button className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl bg-surface border border-white/5 text-text-main/80 text-xs font-bold transition-all hover:bg-white/5 hover:border-white/[0.04] hover:text-white">
                                             <MessageSquare size={16} /> Contact Parties
                                         </button>
                                         <button
                                             onClick={() => handleAction('resolve')}
                                             disabled={processing}
-                                            className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl bg-surface border border-white/5 text-text-main/80 text-xs font-bold transition-all hover:bg-white/5 hover:border-white/10 hover:text-white disabled:opacity-50 disabled:pointer-events-none"
+                                            className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl bg-surface border border-white/5 text-text-main/80 text-xs font-bold transition-all hover:bg-white/5 hover:border-white/[0.04] hover:text-white disabled:opacity-50 disabled:pointer-events-none"
                                         >
                                             <CheckCircle size={16} /> Resolve Case
                                         </button>

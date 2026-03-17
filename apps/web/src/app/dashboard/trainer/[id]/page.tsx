@@ -157,7 +157,7 @@ export default function TrainerProfilePage() {
                                     {trainer.user.first_name} {trainer.user.last_name}
                                 </h1>
                                 {trainer.is_performance_verified && (
-                                    <span style={{ padding: "4px 12px", borderRadius: "var(--radius-full)", background: "rgba(163,255,18,0.1)", color: "var(--primary)", fontSize: "12px", fontWeight: 700, border: "1px solid rgba(163,255,18,0.2)" }}>
+                                    <span style={{ padding: "4px 12px", borderRadius: "var(--radius-full)", background: "rgba(69,208,255,0.1)", color: "var(--primary)", fontSize: "12px", fontWeight: 700, border: "1px solid rgba(69,208,255,0.2)" }}>
                                         <CheckCircle className="inline-block w-4 h-4 mr-1 text-primary" /> Performance Verified
                                     </span>
                                 )}

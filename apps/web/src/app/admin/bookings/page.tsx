@@ -23,6 +23,7 @@ export default function AdminBookingsPage() {
     const [actionMenuOpen, setActionMenuOpen] = useState<string | null>(null);
     const [actionLoading, setActionLoading] = useState(false);
     const [confirmModal, setConfirmModal] = useState<{isOpen: boolean, id: string | null, action: "cancel" | "complete" | null, refId: string}>({isOpen: false, id: null, action: null, refId: ""});
+    const [detailBooking, setDetailBooking] = useState<any | null>(null);
 
     const actionMenuRef = useRef<HTMLDivElement>(null);
 
@@ -179,7 +180,7 @@ export default function AdminBookingsPage() {
                     </p>
                 </div>
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
-                    <button type="button" onClick={() => alert("Export functionality coming soon!")} className="flex items-center justify-center gap-2 px-5 py-3 rounded-2xl border border-white/10 bg-surface/50 text-sm font-bold text-text-main/80 hover:text-text-main hover:bg-white/5 transition-colors">
+                    <button type="button" onClick={() => alert("Export functionality coming soon!")} className="flex items-center justify-center gap-2 px-5 py-3 rounded-2xl border border-white/[0.04] bg-surface/50 text-sm font-bold text-text-main/80 hover:text-text-main hover:bg-white/5 transition-colors">
                         <Download size={18} /> Export List
                     </button>
                 </div>
@@ -228,7 +229,7 @@ export default function AdminBookingsPage() {
                         </button>
                         
                         {isDateOpen && (
-                            <div className="absolute top-full right-0 sm:left-0 sm:right-auto lg:right-0 lg:left-auto mt-2 w-48 bg-surface border border-white/10 rounded-2xl shadow-2xl overflow-hidden py-2 backdrop-blur-xl">
+                            <div className="absolute top-full right-0 sm:left-0 sm:right-auto lg:right-0 lg:left-auto mt-2 w-48 bg-surface border border-white/[0.04] rounded-2xl shadow-2xl overflow-hidden py-2 backdrop-blur-xl">
                                 {["Any Date", "Today", "This Week", "This Month"].map(opt => (
                                     <button
                                         type="button"
@@ -255,7 +256,7 @@ export default function AdminBookingsPage() {
                         </button>
 
                         {isSportOpen && (
-                            <div className="absolute top-full right-0 sm:left-0 sm:right-auto lg:right-0 lg:left-auto mt-2 w-48 bg-surface border border-white/10 rounded-2xl shadow-2xl overflow-hidden py-2 backdrop-blur-xl">
+                            <div className="absolute top-full right-0 sm:left-0 sm:right-auto lg:right-0 lg:left-auto mt-2 w-48 bg-surface border border-white/[0.04] rounded-2xl shadow-2xl overflow-hidden py-2 backdrop-blur-xl">
                                 {["All Sports", "Tennis", "Fitness", "Soccer", "Yoga", "Basketball"].map(opt => (
                                     <button
                                         type="button"
@@ -279,7 +280,7 @@ export default function AdminBookingsPage() {
                                 onClick={() => { setActiveTab(tab); setCurrentPage(1); }}
                                 className={`px-4 py-2 text-[10px] md:text-xs font-black uppercase tracking-widest rounded-full transition-all whitespace-nowrap ${
                                     activeTab === tab 
-                                    ? "bg-primary text-bg shadow-[0_0_15px_rgba(163,255,18,0.3)]" 
+                                    ? "bg-primary text-bg shadow-[0_0_15px_rgba(69,208,255,0.3)]" 
                                     : "text-text-main/50 hover:text-text-main hover:bg-white/5"
                                 }`}
                             >
@@ -319,7 +320,7 @@ export default function AdminBookingsPage() {
                                     </td>
                                 </tr>
                             ) : paginatedBookings.map((b, i) => (
-                                <tr key={b.id} className="border-b border-white/5/50 hover:bg-white/5 transition-colors group">
+                                <tr key={b.id} onClick={() => setDetailBooking(b)} className="border-b border-white/5/50 hover:bg-white/5 transition-colors group cursor-pointer">
                                     <td className="px-6 py-5 pl-8">
                                         <div className="flex items-center gap-2 text-text-main/60 font-black text-xs tracking-wider uppercase">
                                             <span className="text-primary/50">#</span>{b.id}
@@ -335,7 +336,7 @@ export default function AdminBookingsPage() {
                                     </td>
                                     <td className="px-6 py-5">
                                         <div className="flex items-center gap-3">
-                                            <div className="w-8 h-8 rounded-full bg-white/5 text-white flex items-center justify-center font-black text-xs border border-white/10 flex-shrink-0">
+                                            <div className="w-8 h-8 rounded-full bg-white/5 text-white flex items-center justify-center font-black text-xs border border-white/[0.04] flex-shrink-0">
                                                 {b.trainerInitials}
                                             </div>
                                             <span className="font-medium text-text-main/80 tracking-wide hover:text-white transition-colors cursor-pointer">{b.trainer}</span>
@@ -348,7 +349,7 @@ export default function AdminBookingsPage() {
                                         </div>
                                     </td>
                                     <td className="px-6 py-5">
-                                        <div className="px-3 py-1 bg-white/5 border border-white/10 text-text-main/90 rounded-lg text-[10px] font-black uppercase tracking-widest inline-flex">
+                                        <div className="px-3 py-1 bg-white/5 border border-white/[0.04] text-text-main/90 rounded-lg text-[10px] font-black uppercase tracking-widest inline-flex">
                                             {b.category}
                                         </div>
                                     </td>
@@ -359,12 +360,10 @@ export default function AdminBookingsPage() {
                                         </span>
                                     </td>
                                     <td className="px-6 py-5 pr-8 text-right relative">
-                                        <button 
-                                            type="button" 
+                                        <button
+                                            type="button"
                                             onClick={(e) => {
                                                 e.stopPropagation();
-                                                // Temporarily hold full ID in a custom attribute if we truncated it. 
-                                                // For real implementation we'd need the real full ID or we assume local filtering uses the truncated b.id.
                                                 setActionMenuOpen(actionMenuOpen === b.id ? null : b.id);
                                             }}
                                             className={`w-8 h-8 rounded-full flex justify-center items-center ml-auto transition-all outline-none ${actionMenuOpen === b.id ? 'bg-primary/20 text-primary' : 'text-text-main/40 hover:text-text-main hover:bg-white/5'}`}
@@ -373,20 +372,20 @@ export default function AdminBookingsPage() {
                                         </button>
                                         
                                         {actionMenuOpen === b.id && (
-                                            <div ref={actionMenuRef} className="absolute right-8 top-12 z-[100] w-48 bg-[#1A1D24] border border-white/10 rounded-2xl shadow-2xl py-2 flex flex-col overflow-hidden text-left origin-top-right animate-in fade-in zoom-in-95 duration-200">
+                                            <div ref={actionMenuRef} className="absolute right-8 top-12 z-[100] w-48 bg-[#1A1D24] border border-white/[0.04] rounded-2xl shadow-2xl py-2 flex flex-col overflow-hidden text-left origin-top-right animate-in fade-in zoom-in-95 duration-200">
                                                 {b.rawStatus !== "completed" && b.rawStatus !== "cancelled" && (
-                                                    <button 
+                                                    <button
                                                         type="button"
-                                                        onClick={() => requestAction(b.id, b.id, "complete")}
+                                                        onClick={(e) => { e.stopPropagation(); requestAction(b.id, b.id, "complete"); }}
                                                         className="flex items-center gap-3 w-full px-4 py-3 text-xs font-bold text-text-main hover:bg-white/5 transition-colors"
                                                     >
                                                         <CheckCircle size={14} className="text-green-500" /> Mark Completed
                                                     </button>
                                                 )}
-                                                {b.rawStatus !== "cancelled" && (
-                                                    <button 
+                                                {b.rawStatus !== "cancelled" && b.rawStatus !== "completed" && (
+                                                    <button
                                                         type="button"
-                                                        onClick={() => requestAction(b.id, b.id, "cancel")}
+                                                        onClick={(e) => { e.stopPropagation(); requestAction(b.id, b.id, "cancel"); }}
                                                         className="flex items-center gap-3 w-full px-4 py-3 text-xs font-bold text-red-500 hover:bg-red-500/10 transition-colors"
                                                     >
                                                         <XCircle size={14} /> Cancel Booking
@@ -426,7 +425,7 @@ export default function AdminBookingsPage() {
                                     onClick={() => setCurrentPage(page)}
                                     className={`w-8 h-8 rounded-full text-xs font-black transition-all hidden sm:inline-block ${
                                         currentPage === page 
-                                            ? "bg-primary text-bg shadow-[0_0_10px_rgba(163,255,18,0.3)]" 
+                                            ? "bg-primary text-bg shadow-[0_0_10px_rgba(69,208,255,0.3)]" 
                                             : "text-text-main/60 hover:text-white hover:bg-white/5"
                                     }`}
                                 >
@@ -446,6 +445,75 @@ export default function AdminBookingsPage() {
                     </div>
                 )}
             </div>
+
+            {/* Booking Detail Popup */}
+            {detailBooking && (
+                <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" onClick={() => setDetailBooking(null)}>
+                    <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+                    <div className="relative bg-[#13161D] border border-white/[0.06] rounded-2xl shadow-2xl w-full max-w-md p-6 z-10 animate-in fade-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+                        <div className="flex items-center justify-between mb-5">
+                            <div>
+                                <p className="text-[10px] font-black uppercase tracking-widest text-text-main/40 mb-1">Booking Details</p>
+                                <h3 className="text-lg font-black text-white uppercase tracking-wide">#{detailBooking.id}</h3>
+                            </div>
+                            <button onClick={() => setDetailBooking(null)} className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center text-text-main/50 hover:text-white hover:bg-white/10 transition-colors">
+                                <X size={16} />
+                            </button>
+                        </div>
+
+                        <div className="space-y-3">
+                            <div className="flex items-center justify-between py-3 border-b border-white/[0.04]">
+                                <span className="text-xs font-bold text-text-main/40 uppercase tracking-widest">Status</span>
+                                <span className={`flex items-center gap-1.5 px-3 py-1 rounded-full border text-[10px] font-black uppercase tracking-widest ${detailBooking.sBg} ${detailBooking.sColor} ${detailBooking.sBorder}`}>
+                                    {detailBooking.sIcon} {detailBooking.status}
+                                </span>
+                            </div>
+                            <div className="flex items-center justify-between py-3 border-b border-white/[0.04]">
+                                <span className="text-xs font-bold text-text-main/40 uppercase tracking-widest">Athlete</span>
+                                <div className="flex items-center gap-2">
+                                    <div className="w-6 h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center font-black text-[10px]">{detailBooking.athleteInitials}</div>
+                                    <span className="text-sm font-bold text-white">{detailBooking.athlete}</span>
+                                </div>
+                            </div>
+                            <div className="flex items-center justify-between py-3 border-b border-white/[0.04]">
+                                <span className="text-xs font-bold text-text-main/40 uppercase tracking-widest">Trainer</span>
+                                <div className="flex items-center gap-2">
+                                    <div className="w-6 h-6 rounded-full bg-white/5 text-white flex items-center justify-center font-black text-[10px]">{detailBooking.trainerInitials}</div>
+                                    <span className="text-sm font-bold text-white">{detailBooking.trainer}</span>
+                                </div>
+                            </div>
+                            <div className="flex items-center justify-between py-3 border-b border-white/[0.04]">
+                                <span className="text-xs font-bold text-text-main/40 uppercase tracking-widest">Schedule</span>
+                                <div className="text-right">
+                                    <p className="text-sm font-bold text-white">{detailBooking.date}</p>
+                                    <p className="text-[10px] text-text-main/40 font-bold uppercase">{detailBooking.time}</p>
+                                </div>
+                            </div>
+                            <div className="flex items-center justify-between py-3">
+                                <span className="text-xs font-bold text-text-main/40 uppercase tracking-widest">Sport</span>
+                                <span className="px-3 py-1 bg-white/5 border border-white/[0.04] text-text-main/90 rounded-lg text-[10px] font-black uppercase tracking-widest">{detailBooking.category}</span>
+                            </div>
+                        </div>
+
+                        {detailBooking.rawStatus !== "completed" && detailBooking.rawStatus !== "cancelled" && (
+                            <div className="flex gap-3 mt-5 pt-4 border-t border-white/[0.04]">
+                                <button
+                                    onClick={() => { setDetailBooking(null); requestAction(detailBooking.id, detailBooking.id, "complete"); }}
+                                    className="flex-1 py-2.5 rounded-xl bg-green-500/10 text-green-500 text-xs font-black uppercase tracking-widest hover:bg-green-500/20 transition-colors border border-green-500/20"
+                                >
+                                    Mark Complete
+                                </button>
+                                <button
+                                    onClick={() => { setDetailBooking(null); requestAction(detailBooking.id, detailBooking.id, "cancel"); }}
+                                    className="flex-1 py-2.5 rounded-xl bg-red-500/10 text-red-500 text-xs font-black uppercase tracking-widest hover:bg-red-500/20 transition-colors border border-red-500/20"
+                                >
+                                    Cancel
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
 
             <ConfirmModal
                 isOpen={confirmModal.isOpen}

@@ -200,12 +200,12 @@ export default function NotificationsPage() {
             </div>
 
             {notifications.length === 0 ? (
-                <div className="bg-surface rounded-2xl border border-white/5 p-16 text-center shadow-[0_0_30px_rgba(163,255,18,0.02)]">
+                <div className="bg-surface rounded-2xl border border-white/5 p-16 text-center shadow-[0_0_30px_rgba(69,208,255,0.02)]">
                     <Bell className="text-text-main/20 w-12 h-12 mb-4 mx-auto" strokeWidth={1} />
                     <p className="text-text-main/50 font-bold uppercase tracking-widest text-sm">No notifications yet.</p>
                 </div>
             ) : (
-                <div className="flex flex-col bg-surface rounded-2xl border border-white/5 overflow-hidden shadow-[0_0_30px_rgba(163,255,18,0.02)]">
+                <div className="flex flex-col bg-surface rounded-2xl border border-white/5 overflow-hidden shadow-[0_0_30px_rgba(69,208,255,0.02)]">
                     {notifications.map((n) => (
                         <div
                             key={n.id}
@@ -224,7 +224,7 @@ export default function NotificationsPage() {
                                         {n.title}
                                     </span>
                                     {!n.read && (
-                                        <span className="w-2 h-2 rounded-full bg-primary shrink-0 shadow-[0_0_8px_rgba(163,255,18,0.8)]" />
+                                        <span className="w-2 h-2 rounded-full bg-primary shrink-0 shadow-[0_0_8px_rgba(69,208,255,0.8)]" />
                                     )}
                                 </div>
                                 <p className="text-sm text-text-main/60 font-medium leading-relaxed max-w-xl">
@@ -240,7 +240,7 @@ export default function NotificationsPage() {
                                                 setShowOfferModal(true);
                                                 if (!n.read) markAsRead(n.id);
                                             }}
-                                            className="px-5 py-2 rounded-xl bg-primary text-bg font-black text-xs uppercase tracking-wider hover:shadow-[0_0_15px_rgba(163,255,18,0.3)] transition-all"
+                                            className="px-5 py-2 rounded-xl bg-primary text-bg font-black text-xs uppercase tracking-wider hover:shadow-[0_0_15px_rgba(69,208,255,0.3)] transition-all"
                                         >
                                             View Offer
                                         </button>

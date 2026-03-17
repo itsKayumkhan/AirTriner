@@ -305,7 +305,7 @@ export default function MessagesPage() {
             </div>
 
             {conversations.length === 0 ? (
-                <div className="bg-surface rounded-2xl border border-white/5 p-16 text-center shadow-[0_0_30px_rgba(163,255,18,0.02)]">
+                <div className="bg-surface rounded-2xl border border-white/5 p-16 text-center shadow-[0_0_30px_rgba(69,208,255,0.02)]">
                     <MessageSquare className="text-text-main/20 w-16 h-16 mb-6 mx-auto" strokeWidth={1} />
                     <h3 className="text-xl font-black font-display uppercase tracking-wider mb-3">No conversations yet</h3>
                     <p className="text-text-main/60 text-sm font-medium">
@@ -313,7 +313,7 @@ export default function MessagesPage() {
                     </p>
                 </div>
             ) : (
-                <div className="grid grid-cols-1 md:grid-cols-[280px_1fr] lg:grid-cols-[320px_1fr] flex-1 bg-surface rounded-2xl border border-white/5 overflow-hidden shadow-[0_0_30px_rgba(163,255,18,0.02)]">
+                <div className="grid grid-cols-1 md:grid-cols-[280px_1fr] lg:grid-cols-[320px_1fr] flex-1 bg-surface rounded-2xl border border-white/5 overflow-hidden shadow-[0_0_30px_rgba(69,208,255,0.02)]">
                     {/* Sidebar */}
                     <div className="border-r border-white/5 overflow-y-auto hidden md:block">
                         {conversations.map((c) => (
@@ -326,7 +326,7 @@ export default function MessagesPage() {
                                     }`}
                             >
                                 <div className="relative">
-                                    <div className="w-12 h-12 rounded-full bg-[#272A35] flex items-center justify-center text-primary font-black text-sm shrink-0 shadow-[0_0_10px_rgba(163,255,18,0.05)]">
+                                    <div className="w-12 h-12 rounded-full bg-[#272A35] flex items-center justify-center text-primary font-black text-sm shrink-0 shadow-[0_0_10px_rgba(69,208,255,0.05)]">
                                         {c.otherUserInitials}
                                     </div>
                                     {c.unreadCount > 0 && (
@@ -356,7 +356,7 @@ export default function MessagesPage() {
                         {/* Chat header */}
                         {selectedConvo && (
                             <div className="px-6 py-4 border-b border-white/5 flex items-center gap-4 bg-surface z-10 shrink-0 shadow-sm">
-                                <div className="w-10 h-10 rounded-full bg-[#272A35] flex items-center justify-center text-primary font-black text-xs shadow-[0_0_10px_rgba(163,255,18,0.05)]">
+                                <div className="w-10 h-10 rounded-full bg-[#272A35] flex items-center justify-center text-primary font-black text-xs shadow-[0_0_10px_rgba(69,208,255,0.05)]">
                                     {selectedConvo.otherUserInitials}
                                 </div>
                                 <div>
@@ -382,7 +382,7 @@ export default function MessagesPage() {
                                     <div key={m.id} className={`flex ${isOwn ? "justify-end" : "justify-start"}`}>
                                         <div
                                             className={`max-w-[75%] px-5 py-3 text-sm leading-relaxed ${isOwn
-                                                    ? "bg-primary text-bg rounded-2xl rounded-tr-sm shadow-[0_5px_15px_rgba(163,255,18,0.2)]"
+                                                    ? "bg-primary text-bg rounded-2xl rounded-tr-sm shadow-[0_5px_15px_rgba(69,208,255,0.2)]"
                                                     : "bg-[#272A35] text-text-main rounded-2xl rounded-tl-sm border border-white/5 shadow-md"
                                                 }`}
                                         >
@@ -410,7 +410,7 @@ export default function MessagesPage() {
                                 onClick={sendMessage}
                                 disabled={sending || !newMessage.trim()}
                                 className={`w-12 h-12 rounded-full flex items-center justify-center transition-all shrink-0 ${newMessage.trim()
-                                        ? "bg-primary text-bg shadow-[0_0_15px_rgba(163,255,18,0.3)] hover:scale-105"
+                                        ? "bg-primary text-bg shadow-[0_0_15px_rgba(69,208,255,0.3)] hover:scale-105"
                                         : "bg-[#272A35] text-text-main/20 cursor-not-allowed"
                                     }`}
                             >

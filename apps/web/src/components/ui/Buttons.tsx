@@ -41,7 +41,7 @@ export function PrimaryButton({ children, icon, className = "", ...props }: Prim
         rounded-xl
         font-bold text-sm
         transition-all duration-200
-        hover:scale-[1.02] hover:shadow-[0_0_10px_rgba(163,255,18,0.2)]
+        hover:scale-[1.02] hover:shadow-[0_0_10px_rgba(69,208,255,0.2)]
         disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:shadow-none
         ${className}
       `}

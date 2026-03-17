@@ -214,7 +214,7 @@ export default function AvailabilityPage() {
                         <button
                             onClick={addSlot}
                             disabled={saving}
-                            className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-primary text-bg font-black uppercase tracking-widest hover:shadow-[0_0_20px_rgba(163,255,18,0.4)] hover:-translate-y-0.5 transition-all text-[13px] disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                            className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-primary text-bg font-black uppercase tracking-widest hover:shadow-[0_0_20px_rgba(69,208,255,0.4)] hover:-translate-y-0.5 transition-all text-[13px] disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
                         >
                             {saving ? "Adding..." : "+ Add Slot"}
                         </button>
@@ -238,7 +238,7 @@ export default function AvailabilityPage() {
                                     <div
                                         key={slot.id}
                                         className={`flex items-center gap-3 px-4 py-2.5 rounded-xl border transition-all ${!slot.is_blocked
-                                            ? "bg-primary/10 border-primary/20 text-primary shadow-[0_0_10px_rgba(163,255,18,0.05)]"
+                                            ? "bg-primary/10 border-primary/20 text-primary shadow-[0_0_10px_rgba(69,208,255,0.05)]"
                                             : "bg-[#12141A] border-white/5 text-text-main/40 opacity-70"
                                             }`}
                                     >

@@ -232,7 +232,7 @@ function DashboardLayoutContent({ user, mobileMenuOpen, setMobileMenuOpen, navIt
                                     group flex items-center justify-between px-3 py-2.5 rounded-xl
                                     transition-all duration-200
                                     ${isActive
-                                        ? "bg-primary/10 text-primary border border-primary/20 shadow-[0_0_15px_rgba(163,255,18,0.1)]"
+                                        ? "bg-primary/10 text-primary border border-primary/20 shadow-[0_0_15px_rgba(69,208,255,0.1)]"
                                         : "text-text-main/60 hover:bg-white/5 hover:text-text-main border border-transparent"
                                     }
                                 `}

@@ -355,7 +355,7 @@ export default function SearchTrainersPage() {
                                 <button
                                     key={r}
                                     onClick={() => setMinRating(r)}
-                                    className={`flex-1 py-2 text-[11px] font-bold rounded-lg transition-colors ${minRating === r ? "bg-primary text-bg shadow-[0_0_10px_rgba(163,255,18,0.3)]" : "bg-[#272A35] text-text-main/60 hover:text-text-main"}`}
+                                    className={`flex-1 py-2 text-[11px] font-bold rounded-lg transition-colors ${minRating === r ? "bg-primary text-bg shadow-[0_0_10px_rgba(69,208,255,0.3)]" : "bg-[#272A35] text-text-main/60 hover:text-text-main"}`}
                                 >
                                     {r === 0 ? "Any" : `${r}+`} {minRating === r && r !== 0 && "★"}
                                 </button>
@@ -438,7 +438,7 @@ export default function SearchTrainersPage() {
                             {/* Top left badge */}
                             <div className="absolute top-4 left-4">
                                 {trainer.is_performance_verified ? (
-                                    <span className="bg-primary text-bg text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider shadow-[0_0_10px_rgba(163,255,18,0.4)]">Verified</span>
+                                    <span className="bg-primary text-bg text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider shadow-[0_0_10px_rgba(69,208,255,0.4)]">Verified</span>
                                 ) : trainer.total_sessions > 0 ? (
                                     <span className="bg-blue-400 text-bg text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider shadow-[0_0_10px_rgba(96,165,250,0.4)]">Pro</span>
                                 ) : (
@@ -501,7 +501,7 @@ export default function SearchTrainersPage() {
                             onClick={() => setCurrentPage(i + 1)}
                             className={`w-10 h-10 rounded-full font-bold text-sm transition-colors flex items-center justify-center ${
                                 currentPage === i + 1 
-                                ? "bg-primary text-bg shadow-[0_0_10px_rgba(163,255,18,0.2)]" 
+                                ? "bg-primary text-bg shadow-[0_0_10px_rgba(69,208,255,0.2)]" 
                                 : "text-text-main/60 hover:text-text-main border border-transparent hover:border-white/5"
                             }`}
                         >

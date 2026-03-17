@@ -158,11 +158,11 @@ export default function RegisterPage() {
                                         <div key={r.id} onClick={() => setRole(r.id as "athlete" | "trainer")}
                                             style={{
                                                 padding: "20px", borderRadius: "16px", cursor: "pointer", transition: "all 0.2s",
-                                                background: role === r.id ? "rgba(163,255,18,0.02)" : "rgba(255,255,255,0.03)",
+                                                background: role === r.id ? "rgba(69,208,255,0.02)" : "rgba(255,255,255,0.03)",
                                                 border: `2px solid ${role === r.id ? "var(--primary)" : "transparent"}`
                                             }}
                                         >
-                                            <div style={{ width: "32px", height: "32px", borderRadius: "8px", background: role === r.id ? "rgba(163,255,18,0.1)" : "rgba(255,255,255,0.05)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "16px", marginBottom: "16px" }}>{r.icon}</div>
+                                            <div style={{ width: "32px", height: "32px", borderRadius: "8px", background: role === r.id ? "rgba(69,208,255,0.1)" : "rgba(255,255,255,0.05)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "16px", marginBottom: "16px" }}>{r.icon}</div>
                                             <div style={{ fontWeight: 700, fontSize: "15px", marginBottom: "6px" }}>{r.title}</div>
                                             <div style={{ fontSize: "12px", color: "var(--gray-400)", lineHeight: 1.5 }}>{r.desc}</div>
                                         </div>
@@ -245,7 +245,7 @@ export default function RegisterPage() {
                                         {SKILL_LEVELS.map(sl => (
                                             <div key={sl.value} onClick={() => setSkillLevel(sl.value)} style={{
                                                 padding: "16px", borderRadius: "12px", cursor: "pointer", transition: "all 0.2s",
-                                                background: skillLevel === sl.value ? "rgba(163,255,18,0.05)" : "rgba(255,255,255,0.03)",
+                                                background: skillLevel === sl.value ? "rgba(69,208,255,0.05)" : "rgba(255,255,255,0.03)",
                                                 border: `1px solid ${skillLevel === sl.value ? "var(--primary)" : "var(--gray-800)"}`
                                             }}>
                                                 <div style={{ fontSize: "20px", marginBottom: "8px" }}>{sl.icon}</div>

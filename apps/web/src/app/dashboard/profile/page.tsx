@@ -232,7 +232,7 @@ export default function ProfilePage() {
                             <button
                                 onClick={handleSave}
                                 disabled={saving}
-                                className="px-6 py-2.5 rounded-full bg-primary text-bg font-black text-sm hover:shadow-[0_0_15px_rgba(163,255,18,0.3)] transition-all flex items-center gap-2 disabled:bg-primary/50"
+                                className="px-6 py-2.5 rounded-full bg-primary text-bg font-black text-sm hover:shadow-[0_0_15px_rgba(69,208,255,0.3)] transition-all flex items-center gap-2 disabled:bg-primary/50"
                             >
                                 {saving ? "Saving..." : "Save Changes"}
                             </button>
@@ -247,7 +247,7 @@ export default function ProfilePage() {
                             </button>
                             <button
                                 onClick={() => setEditing(true)}
-                                className="px-6 py-2.5 rounded-full bg-primary text-bg font-black text-sm hover:shadow-[0_0_15px_rgba(163,255,18,0.3)] transition-all flex items-center gap-2"
+                                className="px-6 py-2.5 rounded-full bg-primary text-bg font-black text-sm hover:shadow-[0_0_15px_rgba(69,208,255,0.3)] transition-all flex items-center gap-2"
                             >
                                 <Edit2 size={16} strokeWidth={3} />
                                 Edit Profile
@@ -258,7 +258,7 @@ export default function ProfilePage() {
             </div>
 
             {saved && (
-                <div className="px-5 py-4 bg-primary/10 border border-primary/20 rounded-2xl text-primary text-sm font-bold mb-6 flex items-center shadow-[0_0_15px_rgba(163,255,18,0.05)] animate-in fade-in slide-in-from-top-4">
+                <div className="px-5 py-4 bg-primary/10 border border-primary/20 rounded-2xl text-primary text-sm font-bold mb-6 flex items-center shadow-[0_0_15px_rgba(69,208,255,0.05)] animate-in fade-in slide-in-from-top-4">
                     <CheckCircle className="w-5 h-5 mr-3 shrink-0" /> Profile updated successfully!
                 </div>
             )}
@@ -272,7 +272,7 @@ export default function ProfilePage() {
             {/* Profile Header */}
             <div className="bg-[#1A1C23] border border-white/5 rounded-[20px] p-6 lg:p-8 mb-6 shadow-md">
                 <div className="flex gap-6 items-center flex-wrap">
-                    <div className="w-24 h-24 rounded-full bg-primary text-bg flex items-center justify-center font-black text-[32px] font-display uppercase shadow-[0_0_20px_rgba(163,255,18,0.2)] shrink-0">
+                    <div className="w-24 h-24 rounded-full bg-primary text-bg flex items-center justify-center font-black text-[32px] font-display uppercase shadow-[0_0_20px_rgba(69,208,255,0.2)] shrink-0">
                         {form.firstName?.[0]}{form.lastName?.[0]}
                     </div>
                     <div className="flex-1 min-w-[200px]">
@@ -291,13 +291,13 @@ export default function ProfilePage() {
                             </div>
                         </div>
                         <div className="flex gap-3 items-center">
-                            <span className="px-4 py-1.5 rounded-full bg-primary/10 text-primary text-xs font-black uppercase tracking-widest border border-primary/20 shadow-[0_0_10px_rgba(163,255,18,0.1)]">
+                            <span className="px-4 py-1.5 rounded-full bg-primary/10 text-primary text-xs font-black uppercase tracking-widest border border-primary/20 shadow-[0_0_10px_rgba(69,208,255,0.1)]">
                                 {user?.role}
                             </span>
                             {isTrainer && (
                                 <div className="flex gap-2 items-center flex-wrap">
                                     {statusData.isPerformanceVerified ? (
-                                        <span className="px-4 py-1.5 rounded-full bg-primary/10 text-primary text-xs font-black uppercase tracking-widest border border-primary/20 flex items-center gap-1.5 shadow-[0_0_10px_rgba(163,255,18,0.1)]">
+                                        <span className="px-4 py-1.5 rounded-full bg-primary/10 text-primary text-xs font-black uppercase tracking-widest border border-primary/20 flex items-center gap-1.5 shadow-[0_0_10px_rgba(69,208,255,0.1)]">
                                             <CheckCircle size={14} strokeWidth={3} /> Performance Verified
                                         </span>
                                     ) : statusData.totalSessions > 0 ? (
@@ -478,7 +478,7 @@ export default function ProfilePage() {
                                         onClick={() => setForm(p => ({ ...p, skillLevel: level }))}
                                         className={`px-4 py-3 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all border ${
                                             form.skillLevel === level 
-                                                ? "bg-primary text-bg border-transparent shadow-[0_0_20px_rgba(163,255,18,0.3)]" 
+                                                ? "bg-primary text-bg border-transparent shadow-[0_0_20px_rgba(69,208,255,0.3)]" 
                                                 : "bg-[#12141A] border-white/5 text-text-main/40 hover:border-white/20"
                                         } disabled:cursor-not-allowed`}
                                     >
@@ -507,7 +507,7 @@ export default function ProfilePage() {
                                             }}
                                             className={`flex items-center justify-between px-5 py-3 rounded-xl border transition-all ${
                                                 selected 
-                                                    ? "bg-primary text-bg border-transparent shadow-[0_0_20px_rgba(163,255,18,0.3)]" 
+                                                    ? "bg-primary text-bg border-transparent shadow-[0_0_20px_rgba(69,208,255,0.3)]" 
                                                     : "bg-[#12141A] border-white/5 hover:border-white/20"
                                             } disabled:cursor-not-allowed`}
                                         >
@@ -598,10 +598,10 @@ export default function ProfilePage() {
                                 className={`
                                     px-5 py-2.5 rounded-full text-xs font-black uppercase tracking-wider transition-all duration-200
                                     ${selected
-                                        ? "bg-primary text-bg shadow-[0_4px_15px_rgba(163,255,18,0.25)] border-transparent"
+                                        ? "bg-primary text-bg shadow-[0_4px_15px_rgba(69,208,255,0.25)] border-transparent"
                                         : "bg-transparent border border-white/10 text-text-main/50"
                                     }
-                                    ${editing ? (selected ? "hover:shadow-[0_4px_20px_rgba(163,255,18,0.4)] hover:-translate-y-0.5" : "hover:border-white/30 hover:text-white") : "cursor-default opacity-80"}
+                                    ${editing ? (selected ? "hover:shadow-[0_4px_20px_rgba(69,208,255,0.4)] hover:-translate-y-0.5" : "hover:border-white/30 hover:text-white") : "cursor-default opacity-80"}
                                 `}
                             >
                                 {sport.replace(/_/g, " ")}

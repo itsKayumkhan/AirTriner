@@ -286,7 +286,7 @@ export default function TrainerEditProfilePage() {
                     <button
                         onClick={handleSaveProfile}
                         disabled={saving}
-                        className="px-6 py-2.5 rounded-full bg-primary text-bg font-black text-sm hover:shadow-[0_0_15px_rgba(163,255,18,0.3)] transition-all flex items-center gap-2 disabled:bg-primary/50"
+                        className="px-6 py-2.5 rounded-full bg-primary text-bg font-black text-sm hover:shadow-[0_0_15px_rgba(69,208,255,0.3)] transition-all flex items-center gap-2 disabled:bg-primary/50"
                     >
                         {saving ? "Saving..." : "Save Changes"}
                     </button>
@@ -394,7 +394,7 @@ export default function TrainerEditProfilePage() {
                                             className={`
                                                 px-5 py-2.5 rounded-full text-[11px] font-black uppercase tracking-wider transition-all duration-200
                                                 ${selected
-                                                    ? "bg-primary text-bg shadow-[0_4px_15px_rgba(163,255,18,0.25)] border-transparent"
+                                                    ? "bg-primary text-bg shadow-[0_4px_15px_rgba(69,208,255,0.25)] border-transparent"
                                                     : "bg-transparent border border-white/10 text-text-main/50 hover:border-white/30 hover:text-white"
                                                 }
                                             `}
@@ -518,7 +518,7 @@ export default function TrainerEditProfilePage() {
                                         }}
                                         className={`px-6 py-3 rounded-full text-xs font-black uppercase tracking-wider transition-all duration-200 border ${
                                             selected
-                                                ? "bg-primary text-bg shadow-[0_4px_15px_rgba(163,255,18,0.25)] border-transparent"
+                                                ? "bg-primary text-bg shadow-[0_4px_15px_rgba(69,208,255,0.25)] border-transparent"
                                                 : "bg-[#12141A] border-white/10 text-text-main/50 hover:border-white/30 hover:text-white"
                                         }`}
                                     >
@@ -556,7 +556,7 @@ export default function TrainerEditProfilePage() {
                                         }}
                                         className={`px-6 py-3 rounded-full text-xs font-black uppercase tracking-wider transition-all duration-200 border ${
                                             selected
-                                                ? "bg-primary text-bg shadow-[0_4px_15px_rgba(163,255,18,0.25)] border-transparent"
+                                                ? "bg-primary text-bg shadow-[0_4px_15px_rgba(69,208,255,0.25)] border-transparent"
                                                 : "bg-[#12141A] border-white/10 text-text-main/50 hover:border-white/30 hover:text-white"
                                         }`}
                                     >
@@ -628,7 +628,7 @@ export default function TrainerEditProfilePage() {
                                 onClick={() => setPopup(null)}
                                 className={`w-full py-3 rounded-full font-black text-sm uppercase tracking-wider transition-all ${
                                     popup.type === "success" 
-                                    ? "bg-primary text-bg hover:shadow-[0_0_15px_rgba(163,255,18,0.3)]" 
+                                    ? "bg-primary text-bg hover:shadow-[0_0_15px_rgba(69,208,255,0.3)]" 
                                     : "bg-red-500 text-white hover:bg-red-600"
                                 }`}
                             >

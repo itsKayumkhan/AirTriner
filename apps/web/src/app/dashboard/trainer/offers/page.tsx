@@ -252,7 +252,7 @@ export default function TrainingOffersPage() {
                 </div>
                 <button
                     onClick={() => { setShowNewOffer(true); setTab("athletes"); }}
-                    className="px-6 py-2.5 rounded-full bg-primary text-bg font-black text-sm hover:shadow-[0_0_15px_rgba(163,255,18,0.3)] transition-all flex items-center gap-2"
+                    className="px-6 py-2.5 rounded-full bg-primary text-bg font-black text-sm hover:shadow-[0_0_15px_rgba(69,208,255,0.3)] transition-all flex items-center gap-2"
                 >
                     <Plus size={18} strokeWidth={3} /> New Offer
                 </button>
@@ -551,7 +551,7 @@ export default function TrainingOffersPage() {
                                                     }}
                                                     className={`py-2.5 rounded-xl flex flex-col items-center justify-center transition-all border
                                                         ${isSelected
-                                                            ? "bg-transparent border-primary border-[2px] shadow-[0_0_15px_rgba(163,255,18,0.15)]"
+                                                            ? "bg-transparent border-primary border-[2px] shadow-[0_0_15px_rgba(69,208,255,0.15)]"
                                                             : "bg-[#272A35] border-transparent hover:bg-[#323644]"}`}
                                                 >
                                                     <span className={`text-xs font-black mb-0.5 ${isSelected ? 'text-white' : 'text-white/80'}`}>{slot.label}</span>
@@ -615,7 +615,7 @@ export default function TrainingOffersPage() {
                                     w-full py-3.5 rounded-xl font-black text-[15px] mt-6 flex items-center justify-center gap-2 transition-all
                                     ${sending
                                         ? "bg-primary/50 text-bg/50 cursor-not-allowed"
-                                        : "bg-primary text-bg hover:shadow-[0_0_20px_rgba(163,255,18,0.3)] hover:-translate-y-0.5"}
+                                        : "bg-primary text-bg hover:shadow-[0_0_20px_rgba(69,208,255,0.3)] hover:-translate-y-0.5"}
                                 `}
                             >
                                 {sending ? (

@@ -21,6 +21,7 @@ export default function AdminSettingsPage() {
     const [user, setUser] = useState<AuthUser | null>(null);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [originalSettings, setOriginalSettings] = useState<PlatformSettings | null>(null);
     const [settings, setSettings] = useState<PlatformSettings>({
         platform_fee_percentage: 3,
         max_booking_distance: 50,
@@ -67,7 +68,7 @@ export default function AdminSettingsPage() {
             }
 
             if (data) {
-                setSettings({
+                const loaded: PlatformSettings = {
                     platform_fee_percentage: data.platform_fee_percentage,
                     max_booking_distance: data.max_booking_distance,
                     auto_approve_trainers: data.auto_approve_trainers,
@@ -76,7 +77,9 @@ export default function AdminSettingsPage() {
                     dispute_resolution_days: data.dispute_resolution_days,
                     support_email: data.support_email,
                     maintenance_mode: data.maintenance_mode,
-                });
+                };
+                setSettings(loaded);
+                setOriginalSettings(loaded);
             }
         } catch (err) {
             console.error("Failed to load settings:", err);
@@ -89,21 +92,20 @@ export default function AdminSettingsPage() {
     const saveSettings = async () => {
         setSaving(true);
         try {
-            const { error } = await supabase
-                .from("platform_settings")
-                .upsert({
-                    id: '00000000-0000-0000-0000-000000000001',
-                    ...settings,
-                    updated_at: new Date().toISOString(),
-                });
+            const res = await fetch("/api/admin/settings", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(settings),
+            });
+            const data = await res.json();
 
-            if (error) throw error;
+            if (!res.ok) throw new Error(data.error || "Save failed");
 
+            setOriginalSettings({ ...settings });
             showAlert("success", "Settings Saved", "Your platform configuration has been updated successfully.");
         } catch (err: any) {
             console.error("Failed to save settings:", err);
-            const errorMsg = err.message || "Make sure you have admin permissions.";
-            showAlert("error", "Save Failed", errorMsg);
+            showAlert("error", "Save Failed", err.message || "Make sure you have admin permissions.");
         } finally {
             setSaving(false);
         }
@@ -138,8 +140,8 @@ export default function AdminSettingsPage() {
                     <button
                         type="button"
                         onClick={saveSettings}
-                        disabled={saving}
-                        className="flex items-center justify-center gap-2 w-full md:w-auto px-8 py-3.5 rounded-2xl bg-primary text-bg font-black text-sm uppercase tracking-widest hover:shadow-[0_0_30px_rgba(163,255,18,0.4)] hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:shadow-none"
+                        disabled={saving || (originalSettings !== null && JSON.stringify(settings) === JSON.stringify(originalSettings))}
+                        className="flex items-center justify-center gap-2 w-full md:w-auto px-8 py-3.5 rounded-2xl bg-primary text-bg font-black text-sm uppercase tracking-widest hover:shadow-[0_0_30px_rgba(69,208,255,0.4)] hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:shadow-none"
                     >
                         {saving ? (
                             <><RefreshCw size={18} className="animate-spin" /> Saving...</>
@@ -153,7 +155,7 @@ export default function AdminSettingsPage() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
 
                 {/* Platform Configuration */}
-                <div className="bg-gradient-to-br from-surface to-surface/50 border border-white/5 rounded-[24px] p-8 shadow-2xl relative overflow-hidden group hover:border-white/10 transition-colors">
+                <div className="bg-gradient-to-br from-surface to-surface/50 border border-white/5 rounded-[24px] p-8 shadow-2xl relative overflow-hidden group hover:border-white/[0.04] transition-colors">
                     <div className="flex items-center gap-4 mb-8">
                         <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center border border-primary/20 text-primary">
                             <Settings size={24} />
@@ -219,7 +221,7 @@ export default function AdminSettingsPage() {
                                     type="button"
                                     onClick={() => handleSettingChange('maintenance_mode', !settings.maintenance_mode)}
                                     className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors border ${
-                                        settings.maintenance_mode ? 'bg-red-500 border-red-400' : 'bg-[#12141A] border-white/10'
+                                        settings.maintenance_mode ? 'bg-red-500 border-red-400' : 'bg-[#12141A] border-white/[0.04]'
                                     }`}
                                 >
                                     <span
@@ -234,7 +236,7 @@ export default function AdminSettingsPage() {
                 </div>
 
                 {/* User & Identity Management */}
-                <div className="bg-gradient-to-br from-surface to-surface/50 border border-white/5 rounded-[24px] p-8 shadow-2xl relative overflow-hidden group hover:border-white/10 transition-colors">
+                <div className="bg-gradient-to-br from-surface to-surface/50 border border-white/5 rounded-[24px] p-8 shadow-2xl relative overflow-hidden group hover:border-white/[0.04] transition-colors">
                     <div className="flex items-center gap-4 mb-8">
                         <div className="w-12 h-12 rounded-2xl bg-blue-500/10 flex items-center justify-center border border-blue-500/20 text-blue-500">
                             <Users size={24} />
@@ -246,7 +248,7 @@ export default function AdminSettingsPage() {
                     </div>
 
                     <div className="space-y-4">
-                        <div className="flex items-center justify-between p-5 rounded-xl bg-[#12141A] border border-white/5 hover:border-white/10 transition-colors">
+                        <div className="flex items-center justify-between p-5 rounded-xl bg-[#12141A] border border-white/5 hover:border-white/[0.04] transition-colors">
                             <div className="pr-4">
                                 <h4 className="text-sm font-bold text-text-main mb-1">Auto-approve Trainers</h4>
                                 <p className="text-xs text-text-main/50 font-medium leading-relaxed">Skip manual review for new trainer registrations. Accounts go live immediately.</p>
@@ -255,16 +257,16 @@ export default function AdminSettingsPage() {
                                 type="button"
                                 onClick={() => handleSettingChange('auto_approve_trainers', !settings.auto_approve_trainers)}
                                 className={`relative inline-flex h-7 w-12 flex-shrink-0 items-center rounded-full transition-colors border ${
-                                    settings.auto_approve_trainers ? 'bg-primary border-primary' : 'bg-[#1A1D24] border-white/10'
+                                    settings.auto_approve_trainers ? 'bg-primary border-primary' : 'bg-[#1A1D24] border-white/[0.04]'
                                 }`}
                             >
                                 <span className={`inline-block h-5 w-5 transform rounded-full bg-bg transition-transform ${
-                                    settings.auto_approve_trainers ? 'translate-x-6 bg-surface shadow-[0_0_10px_rgba(163,255,18,0.5)]' : 'translate-x-1 bg-white/50'
+                                    settings.auto_approve_trainers ? 'translate-x-6 bg-surface shadow-[0_0_10px_rgba(69,208,255,0.5)]' : 'translate-x-1 bg-white/50'
                                 }`} />
                             </button>
                         </div>
 
-                        <div className="flex items-center justify-between p-5 rounded-xl bg-[#12141A] border border-white/5 hover:border-white/10 transition-colors">
+                        <div className="flex items-center justify-between p-5 rounded-xl bg-[#12141A] border border-white/5 hover:border-white/[0.04] transition-colors">
                             <div className="pr-4">
                                 <h4 className="text-sm font-bold text-text-main mb-1">Require Strict Verification</h4>
                                 <p className="text-xs text-text-main/50 font-medium leading-relaxed">Mandate ID uploads and background checks before a trainer can accept payments.</p>
@@ -273,11 +275,11 @@ export default function AdminSettingsPage() {
                                 type="button"
                                 onClick={() => handleSettingChange('require_trainer_verification', !settings.require_trainer_verification)}
                                 className={`relative inline-flex h-7 w-12 flex-shrink-0 items-center rounded-full transition-colors border ${
-                                    settings.require_trainer_verification ? 'bg-primary border-primary' : 'bg-[#1A1D24] border-white/10'
+                                    settings.require_trainer_verification ? 'bg-primary border-primary' : 'bg-[#1A1D24] border-white/[0.04]'
                                 }`}
                             >
                                 <span className={`inline-block h-5 w-5 transform rounded-full bg-bg transition-transform ${
-                                    settings.require_trainer_verification ? 'translate-x-6 bg-surface shadow-[0_0_10px_rgba(163,255,18,0.5)]' : 'translate-x-1 bg-white/50'
+                                    settings.require_trainer_verification ? 'translate-x-6 bg-surface shadow-[0_0_10px_rgba(69,208,255,0.5)]' : 'translate-x-1 bg-white/50'
                                 }`} />
                             </button>
                         </div>
@@ -285,7 +287,7 @@ export default function AdminSettingsPage() {
                 </div>
 
                 {/* Policies & Resolving */}
-                <div className="bg-gradient-to-br from-surface to-surface/50 border border-white/5 rounded-[24px] p-8 shadow-2xl relative overflow-hidden group hover:border-white/10 transition-colors">
+                <div className="bg-gradient-to-br from-surface to-surface/50 border border-white/5 rounded-[24px] p-8 shadow-2xl relative overflow-hidden group hover:border-white/[0.04] transition-colors">
                     <div className="flex items-center gap-4 mb-8">
                         <div className="w-12 h-12 rounded-2xl bg-amber-500/10 flex items-center justify-center border border-amber-500/20 text-amber-500">
                             <Shield size={24} />
@@ -330,7 +332,7 @@ export default function AdminSettingsPage() {
                 </div>
 
                 {/* System Infrastructure */}
-                <div className="bg-gradient-to-br from-surface to-surface/50 border border-white/5 rounded-[24px] p-8 shadow-2xl relative overflow-hidden group hover:border-white/10 transition-colors flex flex-col">
+                <div className="bg-gradient-to-br from-surface to-surface/50 border border-white/5 rounded-[24px] p-8 shadow-2xl relative overflow-hidden group hover:border-white/[0.04] transition-colors flex flex-col">
                     <div className="flex items-center gap-4 mb-8">
                         <div className="w-12 h-12 rounded-2xl bg-green-500/10 flex items-center justify-center border border-green-500/20 text-green-500">
                             <Globe size={24} />

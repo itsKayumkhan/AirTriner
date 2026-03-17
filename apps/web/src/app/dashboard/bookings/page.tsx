@@ -410,7 +410,7 @@ export default function BookingsPage() {
                 {user?.role === "athlete" && (
                     <a
                         href="/dashboard/search"
-                        className="px-6 py-3 rounded-xl bg-primary text-bg font-black text-sm uppercase tracking-widest hover:shadow-[0_0_15px_rgba(163,255,18,0.3)] transition-all whitespace-nowrap"
+                        className="px-6 py-3 rounded-xl bg-primary text-bg font-black text-sm uppercase tracking-widest hover:shadow-[0_0_15px_rgba(69,208,255,0.3)] transition-all whitespace-nowrap"
                     >
                         + Book Trainer
                     </a>
@@ -541,7 +541,7 @@ export default function BookingsPage() {
                                                 <button
                                                     onClick={() => updateBookingStatus(booking.id, "completed")}
                                                     disabled={actionLoading === booking.id}
-                                                    className="px-5 py-2.5 rounded-xl bg-primary text-bg text-xs font-black uppercase tracking-widest hover:shadow-[0_0_15px_rgba(163,255,18,0.3)] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                                    className="px-5 py-2.5 rounded-xl bg-primary text-bg text-xs font-black uppercase tracking-widest hover:shadow-[0_0_15px_rgba(69,208,255,0.3)] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                                                 >
                                                     Mark Complete
                                                 </button>

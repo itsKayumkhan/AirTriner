@@ -110,7 +110,7 @@ export default function AdminTrainersPage() {
     const declinedCount = trainers.filter(t => t.isDeclined).length;
 
     const stats = [
-        { title: "TOTAL TRAINERS", value: trainers.length, icon: <FileText size={18} />, highlight: "border-white/10" },
+        { title: "TOTAL TRAINERS", value: trainers.length, icon: <FileText size={18} />, highlight: "border-white/[0.04]" },
         { title: "PENDING REVIEW", value: pendingCount, icon: <Clock size={18} />, highlight: "border-orange-500", highlightColor: "text-orange-500" },
         { title: "VERIFIED", value: verifiedCount, icon: <UserCheck size={18} />, highlight: "border-primary", highlightColor: "text-primary" },
         { title: "DECLINED", value: declinedCount, icon: <UserX size={18} />, highlight: "border-red-500", highlightColor: "text-red-500" },
@@ -133,7 +133,7 @@ export default function AdminTrainersPage() {
             {/* Stats Cards */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {stats.map((stat, i) => (
-                    <div key={i} className={`bg-gradient-to-br from-surface to-[#12141A] border border-white/5 rounded-[20px] p-6 flex flex-col justify-between relative overflow-hidden group hover:border-white/20 transition-all duration-300 hover:shadow-[0_0_30px_rgba(255,255,255,0.03)]`}>
+                    <div key={i} className={`bg-gradient-to-br from-surface to-[#12141A] border border-white/5 rounded-[20px] p-6 flex flex-col justify-between relative overflow-hidden group hover:border-white/[0.06] transition-all duration-300 hover:shadow-[0_0_30px_rgba(255,255,255,0.03)]`}>
                         {stat.highlight && (
                             <div className={`absolute top-0 bottom-0 left-0 w-1 ${stat.highlight} transition-all duration-300 group-hover:w-1.5`}></div>
                         )}
@@ -187,7 +187,7 @@ export default function AdminTrainersPage() {
                                 setActiveTab(tab);
                                 setCurrentPage(1);
                             }}
-                            className={`px-6 py-2.5 text-xs font-black uppercase tracking-widest rounded-full transition-all whitespace-nowrap flex-1 md:flex-none ${activeTab === tab ? "bg-primary text-bg shadow-[0_0_15px_rgba(163,255,18,0.3)]" : "text-text-main/50 hover:text-text-main hover:bg-white/5"
+                            className={`px-6 py-2.5 text-xs font-black uppercase tracking-widest rounded-full transition-all whitespace-nowrap flex-1 md:flex-none ${activeTab === tab ? "bg-primary text-bg shadow-[0_0_15px_rgba(69,208,255,0.3)]" : "text-text-main/50 hover:text-text-main hover:bg-white/5"
                                 }`}
                         >
                             {tab}
@@ -239,7 +239,7 @@ export default function AdminTrainersPage() {
                                         </div>
                                     </td>
                                     <td className="px-6 py-5">
-                                        <div className="bg-white/5 text-text-main/90 font-bold text-[10px] uppercase tracking-wider px-3 py-1.5 rounded-lg inline-flex border border-white/10">
+                                        <div className="bg-white/5 text-text-main/90 font-bold text-[10px] uppercase tracking-wider px-3 py-1.5 rounded-lg inline-flex border border-white/[0.04]">
                                             {t.specialty}
                                         </div>
                                     </td>
@@ -271,7 +271,7 @@ export default function AdminTrainersPage() {
                                             <span className="text-text-main/40 italic text-[10px] font-bold uppercase tracking-wider">Action completed</span>
                                         ) : (
                                             <div className="flex justify-end gap-2">
-                                                <button onClick={() => requestStatusUpdate(t.id, t.name, "verified")} className="px-4 py-2 rounded-xl bg-primary text-bg font-black text-xs uppercase tracking-widest hover:shadow-[0_0_15px_rgba(163,255,18,0.3)] transition-all">
+                                                <button onClick={() => requestStatusUpdate(t.id, t.name, "verified")} className="px-4 py-2 rounded-xl bg-primary text-bg font-black text-xs uppercase tracking-widest hover:shadow-[0_0_15px_rgba(69,208,255,0.3)] transition-all">
                                                     Approve
                                                 </button>
                                                 <button onClick={() => requestStatusUpdate(t.id, t.name, "declined")} className="px-4 py-2 rounded-xl bg-surface border border-white/5 text-text-main/80 text-xs font-black uppercase tracking-widest hover:bg-white/5 hover:text-red-500 hover:border-red-500/50 transition-all">
@@ -309,7 +309,7 @@ export default function AdminTrainersPage() {
                                     onClick={() => setCurrentPage(page)}
                                     className={`w-8 h-8 rounded-full text-xs font-black transition-all ${
                                         currentPage === page 
-                                            ? "bg-primary text-bg shadow-[0_0_10px_rgba(163,255,18,0.3)]" 
+                                            ? "bg-primary text-bg shadow-[0_0_10px_rgba(69,208,255,0.3)]" 
                                             : "text-text-main/60 hover:text-white hover:bg-white/5"
                                     }`}
                                 >

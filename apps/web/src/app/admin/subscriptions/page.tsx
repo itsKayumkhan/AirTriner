@@ -192,7 +192,7 @@ export default function AdminSubscriptionsPage() {
                     </button>
                     <button
                         onClick={handleExportCSV}
-                        className="flex items-center gap-2 px-6 py-3 rounded-full bg-primary text-bg font-black text-sm hover:shadow-[0_0_10px_rgba(163,255,18,0.2)] transition-all"
+                        className="flex items-center gap-2 px-6 py-3 rounded-full bg-primary text-bg font-black text-sm hover:shadow-[0_0_10px_rgba(69,208,255,0.2)] transition-all"
                     >
                         <Download size={18} strokeWidth={3} /> Export CSV
                     </button>

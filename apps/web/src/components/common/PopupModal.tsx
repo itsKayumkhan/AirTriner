@@ -75,7 +75,7 @@ export default function PopupModal({
                                     className={`flex-1 py-3 rounded-full font-black text-sm uppercase tracking-wider transition-all ${
                                         type === "warning" 
                                         ? "bg-orange-500 text-white hover:bg-orange-600 shadow-[0_0_15px_rgba(249,115,22,0.3)]" 
-                                        : "bg-primary text-bg hover:shadow-[0_0_15px_rgba(163,255,18,0.3)]"
+                                        : "bg-primary text-bg hover:shadow-[0_0_15px_rgba(69,208,255,0.3)]"
                                     }`}
                                 >
                                     {confirmText}
@@ -86,7 +86,7 @@ export default function PopupModal({
                                 onClick={onClose}
                                 className={`w-full py-3 rounded-full font-black text-sm uppercase tracking-wider transition-all ${
                                     type === "success" 
-                                    ? "bg-primary text-bg hover:shadow-[0_0_15px_rgba(163,255,18,0.3)]" 
+                                    ? "bg-primary text-bg hover:shadow-[0_0_15px_rgba(69,208,255,0.3)]" 
                                     : type === "error"
                                     ? "bg-red-500 text-white hover:bg-red-600"
                                     : "bg-white/10 text-white hover:bg-white/20"

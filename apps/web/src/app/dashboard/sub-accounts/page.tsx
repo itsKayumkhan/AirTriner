@@ -188,7 +188,7 @@ export default function SubAccountsPage() {
                 {accounts.length < MAX_SUB_ACCOUNTS && !showForm && (
                     <button
                         onClick={() => { resetForm(); setShowForm(true); }}
-                        className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-primary text-bg font-bold text-sm hover:shadow-[0_0_15px_rgba(163,255,18,0.3)] transition-all"
+                        className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-primary text-bg font-bold text-sm hover:shadow-[0_0_15px_rgba(69,208,255,0.3)] transition-all"
                     >
                         <Plus size={16} strokeWidth={3} /> Add Sub-Account
                     </button>
@@ -207,7 +207,7 @@ export default function SubAccountsPage() {
 
             {/* Add/Edit form */}
             {showForm && (
-                <div className="bg-surface rounded-2xl border border-primary/30 p-8 mb-8 animate-in fade-in slide-in-from-top-4 duration-300 shadow-[0_0_30px_rgba(163,255,18,0.05)]">
+                <div className="bg-surface rounded-2xl border border-primary/30 p-8 mb-8 animate-in fade-in slide-in-from-top-4 duration-300 shadow-[0_0_30px_rgba(69,208,255,0.05)]">
                     <h3 className="text-lg font-black font-display uppercase tracking-wider mb-6">
                         {editingId ? "Edit Sub-Account" : "New Sub-Account"}
                     </h3>
@@ -275,7 +275,7 @@ export default function SubAccountsPage() {
                         <button
                             onClick={saveAccount}
                             disabled={saving || !form.first_name || !form.last_name}
-                            className={`px-8 py-3 rounded-xl bg-primary text-bg font-bold text-sm transition-all w-full sm:w-auto ${(!form.first_name || !form.last_name) ? "opacity-30 cursor-not-allowed" : "hover:shadow-[0_0_15px_rgba(163,255,18,0.3)]"
+                            className={`px-8 py-3 rounded-xl bg-primary text-bg font-bold text-sm transition-all w-full sm:w-auto ${(!form.first_name || !form.last_name) ? "opacity-30 cursor-not-allowed" : "hover:shadow-[0_0_15px_rgba(69,208,255,0.3)]"
                                 }`}
                         >
                             {saving ? "Saving..." : editingId ? "Update Account" : "Create Sub-Account"}
@@ -294,7 +294,7 @@ export default function SubAccountsPage() {
                     </p>
                     <button
                         onClick={() => setShowForm(true)}
-                        className="inline-flex items-center gap-2 px-8 py-3.5 rounded-xl bg-primary text-bg font-bold text-sm hover:shadow-[0_0_15px_rgba(163,255,18,0.3)] transition-all"
+                        className="inline-flex items-center gap-2 px-8 py-3.5 rounded-xl bg-primary text-bg font-bold text-sm hover:shadow-[0_0_15px_rgba(69,208,255,0.3)] transition-all"
                     >
                         <Plus size={18} strokeWidth={3} /> Add First Sub-Account
                     </button>
@@ -304,7 +304,7 @@ export default function SubAccountsPage() {
                     {accounts.map((acct) => (
                         <div key={acct.id} className="bg-surface rounded-2xl border border-white/5 p-6 flex flex-col hover:border-white/10 transition-colors group">
                             <div className="flex items-center gap-4 mb-5">
-                                <div className="w-14 h-14 rounded-full bg-[#272A35] border border-white/5 flex items-center justify-center text-primary font-black text-xl shadow-[0_0_10px_rgba(163,255,18,0.05)]">
+                                <div className="w-14 h-14 rounded-full bg-[#272A35] border border-white/5 flex items-center justify-center text-primary font-black text-xl shadow-[0_0_10px_rgba(69,208,255,0.05)]">
                                     {acct.profile_data.first_name?.[0]}{acct.profile_data.last_name?.[0]}
                                 </div>
                                 <div>

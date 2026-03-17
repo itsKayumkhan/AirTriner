@@ -112,7 +112,7 @@ export function OfferModal({ isOpen, onClose, notification, onResponse, isRespon
                         <button
                             onClick={() => onResponse(notification.id, data.offer_id!, "accepted")}
                             disabled={isResponding}
-                            className="w-full py-4 rounded-2xl bg-primary text-bg font-black text-[15px] uppercase tracking-wider hover:shadow-[0_0_25px_rgba(163,255,18,0.4)] transition-all flex items-center justify-center gap-2"
+                            className="w-full py-4 rounded-2xl bg-primary text-bg font-black text-[15px] uppercase tracking-wider hover:shadow-[0_0_25px_rgba(69,208,255,0.4)] transition-all flex items-center justify-center gap-2"
                         >
                             {isResponding ? <div className="w-5 h-5 border-2 border-bg/30 border-t-bg rounded-full animate-spin" /> : "Accept Training Offer"}
                         </button>

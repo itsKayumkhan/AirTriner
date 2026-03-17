@@ -157,46 +157,55 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         <div className="flex h-screen bg-bg text-text-main font-sans overflow-hidden">
             {/* Desktop Sidebar */}
             <aside className="w-64 bg-surface border-r border-white/5 flex-col hidden lg:flex relative">
-                <div className="h-20 flex items-center px-6">
+                {/* Logo */}
+                <div className="h-20 flex items-center px-6 border-b border-white/5 shrink-0">
                     <Link href="/admin" className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded overflow-hidden flex items-center justify-center bg-zinc-900 border border-white/10 shadow-[0_0_10px_rgba(255,255,255,0.05)]">
+                        <div className="w-8 h-8 rounded overflow-hidden flex items-center justify-center bg-zinc-900 border border-white/10">
                             <img src="/logo.jpeg" alt="Logo" className="w-full h-full object-cover" />
                         </div>
-                        <span className="text-xl font-black tracking-tight text-text-main leading-none">AirTrainr <span className="text-text-main/60 font-normal">Admin</span></span>
+                        <span className="text-lg font-black tracking-tight text-text-main leading-none">AirTrainr <span className="text-text-main/40 font-normal text-sm">Admin</span></span>
                     </Link>
                 </div>
 
-                <nav className="flex-1 px-4 py-8 space-y-2 overflow-y-auto">
+                {/* Nav items */}
+                <nav className="flex-1 px-3 py-6 space-y-1 overflow-y-auto sidebar-scroll">
                     {menuItems.map((item) => {
                         const isActive = item.href === "/admin" ? pathname === "/admin" : pathname.startsWith(item.href);
                         return (
                             <Link
                                 key={item.label}
                                 href={item.href}
-                                className={`flex items-center gap-4 px-4 py-3.5 rounded-xl transition-all font-bold text-sm ${isActive
-                                    ? "bg-primary/10 text-primary border border-primary/20 shadow-[0_0_15px_rgba(163,255,18,0.1)]"
-                                    : "text-text-main/60 hover:text-text-main hover:bg-white/5"
+                                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-semibold ${isActive
+                                    ? "bg-primary/10 text-primary border-l-2 border-primary"
+                                    : "text-text-main/50 hover:text-text-main hover:bg-white/5 border-l-2 border-transparent"
                                     }`}
                             >
-                                {item.icon}
+                                <span className={isActive ? "text-primary" : "text-text-main/40"}>{item.icon}</span>
                                 {item.label}
                             </Link>
                         )
                     })}
                 </nav>
 
-                <div className="p-4 mt-auto">
-                    <button
-                        onClick={handleLogout}
-                        className="flex items-center gap-4 px-4 py-3.5 text-text-main/60 font-bold text-sm hover:text-text-main transition-colors w-full"
+                {/* Bottom section — Settings & Logout */}
+                <div className="px-3 py-4 border-t border-white/5 shrink-0 space-y-1">
+                    <Link
+                        href="/admin/settings"
+                        className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-semibold w-full ${pathname.startsWith("/admin/settings")
+                            ? "bg-primary/10 text-primary border-l-2 border-primary"
+                            : "text-text-main/50 hover:text-text-main hover:bg-white/5 border-l-2 border-transparent"
+                        }`}
                     >
-                        <LogOut size={20} />
-                        Logout
-                    </button>
-                    <Link href="/admin/settings" className="flex items-center gap-4 px-4 py-3.5 text-text-main/60 font-bold text-sm hover:text-text-main transition-colors w-full mt-2">
-                        <Settings size={20} />
+                        <Settings size={18} className={pathname.startsWith("/admin/settings") ? "text-primary" : "text-text-main/40"} />
                         Settings
                     </Link>
+                    <button
+                        onClick={handleLogout}
+                        className="flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-semibold w-full text-text-main/50 hover:text-red-400 hover:bg-red-500/5 border-l-2 border-transparent"
+                    >
+                        <LogOut size={18} className="text-text-main/40" />
+                        Logout
+                    </button>
                 </div>
             </aside>
 
@@ -300,19 +309,12 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             </main>
 
             <style>{`
-                .custom-scrollbar::-webkit-scrollbar {
-                    width: 6px;
-                }
-                .custom-scrollbar::-webkit-scrollbar-track {
-                    background: transparent;
-                }
-                .custom-scrollbar::-webkit-scrollbar-thumb {
-                    background-color: #333;
-                    border-radius: 10px;
-                }
-                .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-                    background-color: #555;
-                }
+                .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+                .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+                .custom-scrollbar::-webkit-scrollbar-thumb { background-color: rgba(255,255,255,0.08); border-radius: 10px; }
+                .custom-scrollbar::-webkit-scrollbar-thumb:hover { background-color: rgba(255,255,255,0.15); }
+                .sidebar-scroll::-webkit-scrollbar { width: 0px; }
+                .sidebar-scroll { scrollbar-width: none; }
             `}</style>
         </div>
     );

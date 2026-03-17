@@ -124,7 +124,7 @@ function Navbar() {
                                     padding: "10px 24px", background: "var(--primary)", borderRadius: "var(--radius-full)",
                                     textTransform: "uppercase", letterSpacing: "1px", transition: "all var(--transition-fast)",
                                 }}
-                                onMouseEnter={(e) => { e.currentTarget.style.transform = "scale(1.05)"; e.currentTarget.style.boxShadow = "0 0 15px rgba(163,255,18,0.5)"; }}
+                                onMouseEnter={(e) => { e.currentTarget.style.transform = "scale(1.05)"; e.currentTarget.style.boxShadow = "0 0 15px rgba(69,208,255,0.5)"; }}
                                 onMouseLeave={(e) => { e.currentTarget.style.transform = "scale(1)"; e.currentTarget.style.boxShadow = "none"; }}
                             >
                                 DASHBOARD
@@ -161,7 +161,7 @@ function Navbar() {
                                     padding: "10px 24px", background: "var(--primary)", borderRadius: "var(--radius-full)",
                                     textTransform: "uppercase", letterSpacing: "1px", transition: "all var(--transition-fast)",
                                 }}
-                                onMouseEnter={(e) => { e.currentTarget.style.transform = "scale(1.05)"; e.currentTarget.style.boxShadow = "0 0 15px rgba(163,255,18,0.5)"; }}
+                                onMouseEnter={(e) => { e.currentTarget.style.transform = "scale(1.05)"; e.currentTarget.style.boxShadow = "0 0 15px rgba(69,208,255,0.5)"; }}
                                 onMouseLeave={(e) => { e.currentTarget.style.transform = "scale(1)"; e.currentTarget.style.boxShadow = "none"; }}
                             >
                                 GET STARTED
@@ -184,7 +184,7 @@ function Navbar() {
           .mobile-menu-btn { display: block !important; }
         }
         .sport-card:hover .sport-bg { transform: scale(1.1); }
-        .sport-card:hover .sport-overlay { background: linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(163,255,18,0.3) 60%, rgba(0,0,0,0.1) 100%) !important; }
+        .sport-card:hover .sport-overlay { background: linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(69,208,255,0.25) 60%, rgba(0,71,171,0.1) 100%) !important; }
         .sport-card:hover .sport-arrow { opacity: 1 !important; transform: translateX(0) !important; }
       `}</style>
         </nav>
@@ -295,9 +295,9 @@ export default function Home() {
             {/* HERO SECTION */}
             <section style={{
                 position: "relative",
-                paddingTop: "140px",
-                paddingBottom: "100px",
-                minHeight: "80vh",
+                paddingTop: "120px",
+                paddingBottom: "80px",
+                minHeight: "100vh",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -313,56 +313,90 @@ export default function Home() {
                 }}></div>
 
                 <div style={{ position: "relative", zIndex: 1, maxWidth: "900px", margin: "0 auto", textAlign: "center", padding: "0 24px" }}>
-                    <h1 style={{
-                        fontSize: "clamp(40px, 7vw, 84px)",
-                        fontWeight: 900, fontFamily: "var(--font-display)",
-                        lineHeight: 1, textTransform: "uppercase", marginBottom: "24px"
+
+                    {/* Badge */}
+                    <div style={{
+                        display: "inline-flex", alignItems: "center", gap: "8px",
+                        background: "rgba(69,208,255,0.1)", border: "1px solid rgba(69,208,255,0.25)",
+                        borderRadius: "var(--radius-full)", padding: "8px 20px", marginBottom: "32px",
+                        fontSize: "13px", fontWeight: 700, color: "var(--primary)", letterSpacing: "0.5px",
+                        boxShadow: "0 0 12px rgba(69,208,255,0.15)"
                     }}>
-                        ATHLETES <span style={{ color: "var(--primary)", fontStyle: "italic" }}>GROW HERE.</span><br />
-                        TRAINERS <span style={{ WebkitTextStroke: "2px var(--gray-400)", color: "transparent" }}>THRIVE HERE.</span>
+                        <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "var(--primary)", display: "inline-block" }}></span>
+                        TRUSTED BY 12,000+ ATHLETES WORLDWIDE
+                    </div>
+
+                    {/* Headline */}
+                    <h1 style={{
+                        fontWeight: 900, fontFamily: "var(--font-display)",
+                        lineHeight: 1.05, textTransform: "uppercase", marginBottom: "28px",
+                        letterSpacing: "-1px", whiteSpace: "nowrap"
+                    }}>
+                        <span style={{ display: "block", fontSize: "clamp(28px, 5.5vw, 72px)", color: "#ffffff" }}>
+                            ATHLETES GROW,
+                        </span>
+                        <span style={{
+                            display: "block", fontSize: "clamp(28px, 5.5vw, 72px)",
+                            color: "var(--primary)", fontStyle: "italic",
+                            textShadow: "0 0 40px rgba(69,208,255,0.6), 0 0 80px rgba(69,208,255,0.25)"
+                        }}>
+                            TRAINERS THRIVE.
+                        </span>
                     </h1>
 
+                    {/* Subtitle */}
                     <p style={{
-                        fontSize: "18px", color: "var(--gray-300)", lineHeight: 1.6,
-                        maxWidth: "600px", margin: "0 auto 40px", fontWeight: 400
+                        fontSize: "17px", color: "var(--gray-400)", lineHeight: 1.7,
+                        maxWidth: "520px", margin: "0 auto 40px", fontWeight: 400
                     }}>
-                        Connecting athletes with trusted local trainers—making it easier than ever to find the right coach, right in your area, and elevate your performance.
+                        Connect with trusted local trainers. Find your coach, book sessions, and elevate your performance — all in one place.
                     </p>
 
-                    <div style={{ display: "flex", gap: "16px", justifyContent: "center", flexWrap: "wrap", marginBottom: "48px" }}>
+                    {/* Buttons */}
+                    <div style={{ display: "flex", gap: "14px", justifyContent: "center", flexWrap: "wrap", marginBottom: "52px" }}>
                         <a href="/dashboard/search" style={{
-                            padding: "16px 32px", background: "var(--primary)", color: "var(--color-bg)",
+                            padding: "16px 36px", background: "var(--primary)", color: "#0A0D14",
                             borderRadius: "var(--radius-full)", fontWeight: 800, fontSize: "14px", textDecoration: "none",
-                            textTransform: "uppercase", letterSpacing: "1px", transition: "all 0.2s"
+                            textTransform: "uppercase", letterSpacing: "1.5px", transition: "all 0.2s",
+                            boxShadow: "0 0 24px rgba(69,208,255,0.5), 0 0 48px rgba(69,208,255,0.2)"
                         }}>
                             FIND A TRAINER
                         </a>
                         <a href="/auth/register?role=trainer" style={{
-                            padding: "16px 32px", background: "transparent", color: "white",
-                            border: "2px solid var(--gray-500)", borderRadius: "var(--radius-full)",
+                            padding: "16px 36px", background: "transparent", color: "white",
+                            border: "2px solid rgba(255,255,255,0.25)", borderRadius: "var(--radius-full)",
                             fontWeight: 800, fontSize: "14px", textDecoration: "none",
-                            textTransform: "uppercase", letterSpacing: "1px", transition: "all 0.2s"
+                            textTransform: "uppercase", letterSpacing: "1.5px", transition: "all 0.2s",
+                            backdropFilter: "blur(4px)"
                         }}
-                            onMouseEnter={(e) => { e.currentTarget.style.borderColor = "white" }}
-                            onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--gray-500)" }}
+                            onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--primary)"; e.currentTarget.style.color = "var(--primary)"; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.25)"; e.currentTarget.style.color = "white"; }}
                         >
-                            SIGN UP AS A TRAINER
+                            JOIN AS A TRAINER
                         </a>
                     </div>
 
-                    {/* Mini social proof */}
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "16px" }}>
-                        <div style={{ display: "flex", marginLeft: "10px" }}>
-                            {[1, 2, 3].map(i => (
-                                <div key={i} style={{
-                                    width: "32px", height: "32px", borderRadius: "50%", background: "#fff",
-                                    marginLeft: "-10px", border: "2px solid var(--color-bg)", opacity: 0.8
-                                }}></div>
-                            ))}
+                    {/* Social proof */}
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "24px", flexWrap: "wrap" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                            <div style={{ display: "flex" }}>
+                                {[1, 2, 3, 4].map(i => (
+                                    <div key={i} style={{
+                                        width: "30px", height: "30px", borderRadius: "50%",
+                                        background: `hsl(${200 + i * 20}, 60%, 60%)`,
+                                        marginLeft: i === 1 ? "0" : "-8px",
+                                        border: "2px solid #0A0D14"
+                                    }}></div>
+                                ))}
+                            </div>
+                            <span style={{ fontSize: "13px", color: "var(--gray-400)" }}>
+                                <strong style={{ color: "white" }}>5,000+</strong> athletes joined this month
+                            </span>
                         </div>
-                        <div style={{ textAlign: "left", fontSize: "12px", color: "var(--gray-400)" }}>
-                            <strong style={{ color: "var(--primary)" }}>5,000+ Athletes</strong><br />
-                            Improving daily on AirTrainr
+                        <div style={{ width: "1px", height: "20px", background: "rgba(255,255,255,0.1)" }}></div>
+                        <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", color: "var(--gray-400)" }}>
+                            <span style={{ color: "#f59e0b", letterSpacing: "1px" }}>★★★★★</span>
+                            <span><strong style={{ color: "white" }}>4.9</strong> / 5.0 rating</span>
                         </div>
                     </div>
                 </div>
@@ -418,10 +452,10 @@ export default function Home() {
                                 <div style={{
                                     position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 0,
                                     backgroundImage: `linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,0.8) 100%), url('${coach.image}')`,
-                                    backgroundSize: "cover", backgroundPosition: "center", filter: "grayscale(100%)", transition: "filter 0.3s"
+                                    backgroundSize: "cover", backgroundPosition: "center", transition: "transform 0.3s"
                                 }}
-                                    onMouseEnter={(e) => { e.currentTarget.style.filter = "grayscale(0%)" }}
-                                    onMouseLeave={(e) => { e.currentTarget.style.filter = "grayscale(100%)" }}
+                                    onMouseEnter={(e) => { e.currentTarget.style.transform = "scale(1.05)" }}
+                                    onMouseLeave={(e) => { e.currentTarget.style.transform = "scale(1)" }}
                                 ></div>
 
                                 {/* Content */}
@@ -493,7 +527,7 @@ export default function Home() {
                                     { title: "Direct Messaging", desc: "Keep all your communication in one dedicated hub. Discuss form, adjust protocols, and stay connected.", icon: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg> }
                                 ].map((feature, i) => (
                                     <div key={i} style={{ display: "flex", gap: "16px" }}>
-                                        <div style={{ width: "48px", height: "48px", borderRadius: "12px", background: "rgba(163,255,18,0.1)", color: "var(--primary)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                                        <div style={{ width: "48px", height: "48px", borderRadius: "12px", background: "rgba(69,208,255,0.1)", color: "var(--primary)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                                             {feature.icon}
                                         </div>
                                         <div>
@@ -596,40 +630,6 @@ export default function Home() {
                 </div>
             </section>
 
-            {/* JOIN THE NETWORK CTA */}
-            <section style={{ padding: "100px 24px", background: "var(--primary)", color: "var(--color-bg)", textAlign: "center" }}>
-                <div style={{ maxWidth: "800px", margin: "0 auto" }}>
-                    <h2 style={{ fontSize: "48px", fontWeight: 900, fontFamily: "var(--font-display)", textTransform: "uppercase", marginBottom: "24px", lineHeight: 1 }}>
-                        READY TO ELEVATE YOUR GAME?
-                    </h2>
-                    <p style={{ fontSize: "18px", fontWeight: 600, marginBottom: "40px", opacity: 0.9 }}>
-                        Join thousands of athletes and premium coaches already part of AirTrainr. Sign up today and get moving.
-                    </p>
-                    <div style={{ display: "flex", gap: "16px", justifyContent: "center", flexWrap: "wrap" }}>
-                        <a href="/auth/register" style={{
-                            padding: "16px 40px", background: "var(--color-bg)", color: "white",
-                            borderRadius: "var(--radius-full)", fontWeight: 800, fontSize: "14px", textDecoration: "none",
-                            textTransform: "uppercase", letterSpacing: "1px", transition: "all 0.2s"
-                        }}
-                            onMouseEnter={(e) => { e.currentTarget.style.background = "white"; e.currentTarget.style.color = "var(--color-bg)"; }}
-                            onMouseLeave={(e) => { e.currentTarget.style.background = "var(--color-bg)"; e.currentTarget.style.color = "white"; }}
-                        >
-                            JOIN AS ATHLETE
-                        </a>
-                        <a href="/auth/register?role=trainer" style={{
-                            padding: "16px 40px", background: "transparent", color: "var(--color-bg)",
-                            border: "2px solid var(--color-bg)", borderRadius: "var(--radius-full)",
-                            fontWeight: 800, fontSize: "14px", textDecoration: "none",
-                            textTransform: "uppercase", letterSpacing: "1px", transition: "all 0.2s"
-                        }}
-                            onMouseEnter={(e) => { e.currentTarget.style.background = "var(--color-bg)"; e.currentTarget.style.color = "white"; }}
-                            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "var(--color-bg)"; }}
-                        >
-                            SIGN UP AS A TRAINER
-                        </a>
-                    </div>
-                </div>
-            </section>
 
             {/* REVIEWS SECTION */}
             <section style={{ padding: "100px 24px", background: "var(--color-bg)" }}>
@@ -653,11 +653,11 @@ export default function Home() {
                     <div className="reviews-card-wrapper" style={{ position: "relative" }}>
                         <div className="reviews-card" style={{
                             background: "var(--surface)", border: "2px solid var(--primary)", borderRadius: "var(--radius-xl)",
-                            padding: "48px", position: "relative", boxShadow: "0 0 30px rgba(163,255,18,0.1)",
+                            padding: "48px", position: "relative", boxShadow: "0 0 30px rgba(69,208,255,0.1)",
                             transition: "all 0.3s ease"
                         }}>
                             <QuoteIcon />
-                            <p style={{ fontSize: "20px", lineHeight: 1.6, fontStyle: "italic", marginTop: "24px", marginBottom: "24px", fontWeight: 500, minHeight: "100px", transition: "opacity 0.3s ease" }}>
+                            <p style={{ fontSize: "20px", lineHeight: 1.6, fontStyle: "italic", marginTop: "24px", marginBottom: "24px", fontWeight: 500, minHeight: "160px", height: "160px", overflow: "hidden", transition: "opacity 0.3s ease" }}>
                                 "{REVIEWS[reviewIndex].text}"
                             </p>
 
@@ -677,61 +677,121 @@ export default function Home() {
             </section>
 
             {/* FOOTER */}
-            <footer style={{ background: "var(--surface)", borderTop: "1px solid var(--gray-900)", padding: "80px 24px 40px" }}>
-                <div style={{ maxWidth: "1400px", margin: "0 auto" }}>
-                    <div className="footer-grid" style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr 1fr", gap: "64px", marginBottom: "80px" }}>
-                        <div className="footer-col footer-brand">
-                            {/* Brand */}
-                            <a href="/" style={{ display: "flex", alignItems: "center", gap: "10px", textDecoration: "none", marginBottom: "24px" }}>
-                                <div style={{
-                                    width: "32px", height: "32px", borderRadius: "6px", overflow: "hidden",
-                                    display: "flex", alignItems: "center", justifyContent: "center",
-                                    border: "1px solid rgba(255,255,255,0.1)", background: "var(--zinc-900)"
-                                }}>
-                                    <img src="/logo.jpeg" alt="Logo" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            <footer style={{ background: "#080B10", borderTop: "1px solid rgba(69,208,255,0.1)", position: "relative", overflow: "hidden" }}>
+                {/* Glow bg */}
+                <div style={{ position: "absolute", bottom: "-20%", left: "50%", transform: "translateX(-50%)", width: "60%", height: "300px", background: "rgba(69,208,255,0.04)", filter: "blur(100px)", borderRadius: "50%", pointerEvents: "none" }}></div>
+
+                {/* CTA Banner */}
+                <div style={{ borderBottom: "1px solid rgba(69,208,255,0.08)", padding: "60px 24px" }}>
+                    <div style={{ maxWidth: "900px", margin: "0 auto", textAlign: "center" }}>
+                        <h2 style={{ fontSize: "clamp(28px, 4vw, 48px)", fontWeight: 900, fontFamily: "var(--font-display)", textTransform: "uppercase", marginBottom: "16px", letterSpacing: "-1px" }}>
+                            READY TO ELEVATE YOUR{" "}
+                            <span style={{ color: "var(--primary)", textShadow: "0 0 20px rgba(69,208,255,0.4)" }}>PERFORMANCE?</span>
+                        </h2>
+                        <p style={{ color: "var(--gray-400)", fontSize: "16px", marginBottom: "32px" }}>Join 12,000+ athletes and coaches already on AirTrainr.</p>
+                        <div style={{ display: "flex", gap: "12px", justifyContent: "center", flexWrap: "wrap" }}>
+                            <a href="/dashboard/search" style={{
+                                padding: "14px 32px", background: "var(--primary)", color: "#0A0D14",
+                                borderRadius: "var(--radius-full)", fontWeight: 800, fontSize: "13px",
+                                textDecoration: "none", textTransform: "uppercase", letterSpacing: "1px",
+                                boxShadow: "0 0 20px rgba(69,208,255,0.4)"
+                            }}>FIND A TRAINER</a>
+                            <a href="/auth/register?role=trainer" style={{
+                                padding: "14px 32px", background: "transparent", color: "white",
+                                border: "1px solid rgba(255,255,255,0.15)", borderRadius: "var(--radius-full)",
+                                fontWeight: 800, fontSize: "13px", textDecoration: "none", textTransform: "uppercase", letterSpacing: "1px"
+                            }}>JOIN AS TRAINER</a>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Main footer links */}
+                <div style={{ padding: "64px 24px 48px" }}>
+                    <div style={{ maxWidth: "1400px", margin: "0 auto" }}>
+                        <div className="footer-grid" style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr", gap: "48px", marginBottom: "64px" }}>
+
+                            {/* Brand col */}
+                            <div className="footer-col footer-brand">
+                                <a href="/" style={{ display: "flex", alignItems: "center", gap: "12px", textDecoration: "none", marginBottom: "20px" }}>
+                                    <div style={{ width: "40px", height: "40px", borderRadius: "10px", overflow: "hidden", border: "1px solid rgba(69,208,255,0.2)", boxShadow: "0 0 12px rgba(69,208,255,0.15)" }}>
+                                        <img src="/logo.jpeg" alt="Logo" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                                    </div>
+                                    <span style={{ fontSize: "20px", fontWeight: 900, fontFamily: "var(--font-display)", color: "white", textTransform: "uppercase", letterSpacing: "2px" }}>AIRTRAINR</span>
+                                </a>
+                                <p style={{ color: "var(--gray-500)", fontSize: "14px", lineHeight: 1.7, maxWidth: "280px", marginBottom: "28px" }}>
+                                    The ultimate marketplace for athletes and coaches to connect, train, and dominate their field.
+                                </p>
+                                <div style={{ display: "flex", gap: "12px" }}>
+                                    {[
+                                        <svg key="tw" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M24 4.557c-.883.392-1.832.656-2.828.775 1.017-.609 1.798-1.574 2.165-2.724-.951.564-2.005.974-3.127 1.195-.897-.957-2.178-1.555-3.594-1.555-3.179 0-5.515 2.966-4.797 6.045-4.091-.205-7.719-2.165-10.148-5.144-1.29 2.213-.669 5.108 1.523 6.574-.806-.026-1.566-.247-2.229-.616-.054 2.281 1.581 4.415 3.949 4.89-.693.188-1.452.232-2.224.084.626 1.956 2.444 3.379 4.6 3.419-2.07 1.623-4.678 2.348-7.29 2.04 2.179 1.397 4.768 2.212 7.548 2.212 9.142 0 14.307-7.721 13.995-14.646.962-.695 1.797-1.562 2.457-2.549z" /></svg>,
+                                        <svg key="ig" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z" /></svg>,
+                                        <svg key="yt" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-2.75 12.64 12.64 0 0 0-8.1 0A4.83 4.83 0 0 1 4.41 6.69 46.5 46.5 0 0 0 4 12a46.5 46.5 0 0 0 .41 5.31 4.83 4.83 0 0 1 3.77 2.75 12.64 12.64 0 0 0 8.1 0 4.83 4.83 0 0 1 3.77-2.75A46.5 46.5 0 0 0 20.5 12a46.5 46.5 0 0 0-.91-5.31zM10 15V9l5 3-5 3z"/></svg>
+                                    ].map((icon, i) => (
+                                        <a key={i} href="#" style={{
+                                            width: "38px", height: "38px", borderRadius: "10px",
+                                            background: "rgba(69,208,255,0.06)", border: "1px solid rgba(69,208,255,0.12)",
+                                            display: "flex", alignItems: "center", justifyContent: "center",
+                                            color: "var(--gray-400)", textDecoration: "none", transition: "all 0.2s"
+                                        }}
+                                            onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(69,208,255,0.15)"; e.currentTarget.style.color = "var(--primary)"; e.currentTarget.style.borderColor = "rgba(69,208,255,0.3)"; }}
+                                            onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(69,208,255,0.06)"; e.currentTarget.style.color = "var(--gray-400)"; e.currentTarget.style.borderColor = "rgba(69,208,255,0.12)"; }}
+                                        >{icon}</a>
+                                    ))}
                                 </div>
-                                <span style={{ fontSize: "20px", fontWeight: 800, fontFamily: "var(--font-display)", color: "var(--foreground)", textTransform: "uppercase", letterSpacing: "1px" }}>
-                                    AIRTRAINR
-                                </span>
-                            </a>
-                            <p style={{ color: "var(--gray-400)", fontSize: "14px", lineHeight: 1.6, maxWidth: "300px", marginBottom: "24px" }}>
-                                The ultimate marketplace for athletes and coaches to connect, train, and dominate their field. Built for true sports competition.
-                            </p>
-                            <div style={{ display: "flex", gap: "16px" }} className="footer-social">
-                                {/* Social icons placeholder */}
-                                <div style={{ width: "36px", height: "36px", borderRadius: "50%", background: "var(--gray-900)", display: "flex", alignItems: "center", justifyContent: "center", color: "white" }}>
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M24 4.557c-.883.392-1.832.656-2.828.775 1.017-.609 1.798-1.574 2.165-2.724-.951.564-2.005.974-3.127 1.195-.897-.957-2.178-1.555-3.594-1.555-3.179 0-5.515 2.966-4.797 6.045-4.091-.205-7.719-2.165-10.148-5.144-1.29 2.213-.669 5.108 1.523 6.574-.806-.026-1.566-.247-2.229-.616-.054 2.281 1.581 4.415 3.949 4.89-.693.188-1.452.232-2.224.084.626 1.956 2.444 3.379 4.6 3.419-2.07 1.623-4.678 2.348-7.29 2.04 2.179 1.397 4.768 2.212 7.548 2.212 9.142 0 14.307-7.721 13.995-14.646.962-.695 1.797-1.562 2.457-2.549z" /></svg>
-                                </div>
-                                <div style={{ width: "36px", height: "36px", borderRadius: "50%", background: "var(--gray-900)", display: "flex", alignItems: "center", justifyContent: "center", color: "white" }}>
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z" /></svg>
-                                </div>
+                            </div>
+
+                            {/* Platform */}
+                            <div className="footer-col">
+                                <h4 style={{ fontSize: "11px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "2px", marginBottom: "24px", color: "var(--primary)" }}>PLATFORM</h4>
+                                <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "14px" }}>
+                                    {["Find a Trainer", "Become a Trainer", "Browse Sports", "Dashboard"].map(link => (
+                                        <li key={link}><a href="#" style={{ color: "var(--gray-500)", textDecoration: "none", fontSize: "14px", transition: "color 0.2s" }}
+                                            onMouseEnter={(e) => { e.currentTarget.style.color = "white"; }}
+                                            onMouseLeave={(e) => { e.currentTarget.style.color = "var(--gray-500)"; }}
+                                        >{link}</a></li>
+                                    ))}
+                                </ul>
+                            </div>
+
+                            {/* Company */}
+                            <div className="footer-col">
+                                <h4 style={{ fontSize: "11px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "2px", marginBottom: "24px", color: "var(--primary)" }}>COMPANY</h4>
+                                <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "14px" }}>
+                                    {["About Us", "Careers", "Press Kit", "Contact"].map(link => (
+                                        <li key={link}><a href="#" style={{ color: "var(--gray-500)", textDecoration: "none", fontSize: "14px", transition: "color 0.2s" }}
+                                            onMouseEnter={(e) => { e.currentTarget.style.color = "white"; }}
+                                            onMouseLeave={(e) => { e.currentTarget.style.color = "var(--gray-500)"; }}
+                                        >{link}</a></li>
+                                    ))}
+                                </ul>
+                            </div>
+
+                            {/* Legal */}
+                            <div className="footer-col">
+                                <h4 style={{ fontSize: "11px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "2px", marginBottom: "24px", color: "var(--primary)" }}>LEGAL</h4>
+                                <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "14px" }}>
+                                    {["Privacy Policy", "Terms of Service", "Safety Guides", "Help Center"].map(link => (
+                                        <li key={link}><a href="#" style={{ color: "var(--gray-500)", textDecoration: "none", fontSize: "14px", transition: "color 0.2s" }}
+                                            onMouseEnter={(e) => { e.currentTarget.style.color = "white"; }}
+                                            onMouseLeave={(e) => { e.currentTarget.style.color = "var(--gray-500)"; }}
+                                        >{link}</a></li>
+                                    ))}
+                                </ul>
                             </div>
                         </div>
 
-                        {/* Links 1 */}
-                        <div className="footer-col">
-                            <h4 style={{ fontSize: "12px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "1px", marginBottom: "24px", color: "white" }}>COMPANY</h4>
-                            <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "16px" }}>
-                                {["About Us", "Careers", "Press Kit", "Contact"].map(link => (
-                                    <li key={link}><a href="#" style={{ color: "var(--gray-400)", textDecoration: "none", fontSize: "14px" }}>{link}</a></li>
+                        {/* Bottom bar */}
+                        <div style={{ padding: "24px 0 0", borderTop: "1px solid rgba(255,255,255,0.05)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
+                            <p style={{ color: "var(--gray-600)", fontSize: "12px", letterSpacing: "0.5px" }}>© 2026 AIRTRAINR. ALL RIGHTS RESERVED.</p>
+                            <div style={{ display: "flex", gap: "24px" }}>
+                                {["Privacy", "Terms", "Cookies"].map(l => (
+                                    <a key={l} href="#" style={{ color: "var(--gray-600)", fontSize: "12px", textDecoration: "none", letterSpacing: "0.5px" }}
+                                        onMouseEnter={(e) => { e.currentTarget.style.color = "var(--primary)"; }}
+                                        onMouseLeave={(e) => { e.currentTarget.style.color = "var(--gray-600)"; }}
+                                    >{l}</a>
                                 ))}
-                            </ul>
+                            </div>
                         </div>
-
-                        {/* Links 2 */}
-                        <div className="footer-col">
-                            <h4 style={{ fontSize: "12px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "1px", marginBottom: "24px", color: "white" }}>RESOURCES</h4>
-                            <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "16px" }}>
-                                {["Help Center", "Safety Guides", "Become a Partner", "Privacy Policy"].map(link => (
-                                    <li key={link}><a href="#" style={{ color: "var(--gray-400)", textDecoration: "none", fontSize: "14px" }}>{link}</a></li>
-                                ))}
-                            </ul>
-                        </div>
-                    </div>
-
-                    <div className="footer-bottom" style={{ padding: "32px 0 0", borderTop: "1px solid var(--gray-800)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "16px" }}>
-                        <p style={{ color: "var(--gray-500)", fontSize: "12px", letterSpacing: "0.5px" }}>© 2026 AIRTRAINR</p>
-                        <p style={{ color: "var(--gray-500)", fontSize: "12px", letterSpacing: "0.5px" }}>POWERED BY <strong style={{ color: "white" }}>ELITE PERFORMANCE TECH</strong></p>
                     </div>
                 </div>
             </footer>

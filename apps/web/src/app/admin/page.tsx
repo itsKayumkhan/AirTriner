@@ -155,7 +155,7 @@ export default function AdminDashboardPage() {
                                     <div className="w-full h-full flex items-end justify-center">
                                         <div
                                             style={{ height: `${heights[i]}%` }}
-                                            className={`w-8 md:w-12 rounded-t-xl transition-all duration-500 ease-out group-hover:bg-primary/80 ${isHigh ? "bg-primary shadow-[0_0_15px_rgba(163,255,18,0.25)]" : "bg-[#272A35]"}`}
+                                            className={`w-8 md:w-12 rounded-t-xl transition-all duration-500 ease-out group-hover:bg-primary/80 ${isHigh ? "bg-primary shadow-[0_0_15px_rgba(69,208,255,0.25)]" : "bg-[#272A35]"}`}
                                         ></div>
                                     </div>
                                     <span className="text-[10px] font-bold text-text-main/40 tracking-widest">{month}</span>

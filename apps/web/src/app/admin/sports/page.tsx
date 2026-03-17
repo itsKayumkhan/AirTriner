@@ -247,7 +247,7 @@ export default function AdminSportsPage() {
                 </div>
                 <button 
                     onClick={() => openModal()}
-                    className="flex items-center gap-2 px-6 py-3 rounded-full bg-primary text-bg font-black text-sm hover:shadow-[0_0_10px_rgba(163,255,18,0.2)] transition-all"
+                    className="flex items-center gap-2 px-6 py-3 rounded-full bg-primary text-bg font-black text-sm hover:shadow-[0_0_10px_rgba(69,208,255,0.2)] transition-all"
                 >
                     <Plus size={18} strokeWidth={3} /> Add New Sport
                 </button>
@@ -277,7 +277,7 @@ export default function AdminSportsPage() {
                         <Loader2 className="w-10 h-10 text-primary animate-spin" />
                     </div>
                 ) : filteredSports.length === 0 ? (
-                    <div className="col-span-full text-center py-20 bg-surface rounded-3xl border border-dashed border-white/10">
+                    <div className="col-span-full text-center py-20 bg-surface rounded-3xl border border-dashed border-white/[0.04]">
                         <Trophy size={48} className="mx-auto text-text-main/20 mb-4" />
                         <h3 className="text-lg font-bold text-text-main/40">No sports found</h3>
                     </div>
@@ -335,7 +335,7 @@ export default function AdminSportsPage() {
             {isAddModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
                     <div className="absolute inset-0 bg-bg/80 backdrop-blur-sm" onClick={closeModal}></div>
-                    <div className="relative bg-surface border border-white/10 w-full max-w-md rounded-3xl p-8 shadow-2xl overflow-hidden">
+                    <div className="relative bg-surface border border-white/[0.04] w-full max-w-md rounded-3xl p-8 shadow-2xl overflow-hidden">
                         <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 blur-3xl rounded-full translate-x-1/2 -translate-y-1/2"></div>
                         
                         <h2 className="text-2xl font-black text-text-main mb-6 flex items-center gap-3">
