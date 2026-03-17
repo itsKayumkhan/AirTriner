@@ -2,19 +2,19 @@
 
 :root {
   /* Brand Colors */
-  --color-brand-50: #f4fae6;
-  --color-brand-100: #e7f5c6;
-  --color-brand-500: #ccff00; /* Neon Lime */
-  --color-brand-600: #b3e600;
-  --color-brand-900: #4d6600;
-  --color-brand-950: #263300;
+  --color-brand-50: #e6f8ff;
+  --color-brand-100: #b3ecff;
+  --color-brand-500: #45D0FF; /* Bright Cyan */
+  --color-brand-600: #0047AB; /* Deep Royal Blue */
+  --color-brand-900: #002d6e;
+  --color-brand-950: #001540;
 
   /* Colors */
   --primary: var(--color-brand-500);
   --primary-dark: var(--color-brand-600);
   --primary-100: var(--color-brand-100);
   --primary-50: var(--color-brand-50);
-  --accent: #22c55e;
+  --accent: #ffffff;
   --success: #10b981;
   --error: #ef4444;
   --warning: #f59e0b;
@@ -31,15 +31,15 @@
   --gray-900: #18181b;
   --gray-950: #09090b;
 
-  --surface: #18181b;
-  --surface-elevated: #27272a;
-  --surface-glass: rgba(24, 24, 27, 0.85);
+  --surface: #161B22;
+  --surface-elevated: #1e2530;
+  --surface-glass: rgba(22, 27, 34, 0.85);
   --foreground: #ffffff;
 
   /* Gradients */
-  --gradient-primary: linear-gradient(135deg, var(--color-brand-500), var(--color-brand-600));
-  --gradient-hero: linear-gradient(to bottom, #111111, #1a1a1a);
-  --gradient-dark: linear-gradient(to right, #000000, #111111);
+  --gradient-primary: linear-gradient(135deg, #45D0FF, #0047AB);
+  --gradient-hero: linear-gradient(to bottom, #0A0D14, #161B22);
+  --gradient-dark: linear-gradient(to right, #0A0D14, #161B22);
 
   /* Radii */
   --radius-md: 8px;
@@ -60,11 +60,11 @@
 }
 
 @theme {
-  --color-primary: #a3ff12;
-  --color-primary-dark: #8fe60d;
-  --color-bg: #0f1115;
-  --color-surface: #1a1d23;
-  --color-accent: #22c55e;
+  --color-primary: #45D0FF;
+  --color-primary-dark: #0047AB;
+  --color-bg: #0A0D14;
+  --color-surface: #161B22;
+  --color-accent: #ffffff;
   --color-success: #10b981;
   --color-error: #ef4444;
   --color-warning: #f59e0b;
@@ -107,6 +107,6 @@ body {
 }
 
 ::selection {
-  background: var(--primary);
-  color: #000;
+  background: #45D0FF;
+  color: #0A0D14;
 }
