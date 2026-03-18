@@ -5,6 +5,7 @@ import { getSession, AuthUser } from "@/lib/auth";
 import { supabase, TrainerProfileRow } from "@/lib/supabase";
 import { PrimaryButton } from "@/components/ui/Buttons";
 import { ArrowRight, Search as SearchIcon, MapPin, ChevronLeft, ChevronRight, Star, Download } from "lucide-react";
+import { FoundingBadgeTooltip } from "@/components/ui/FoundingBadge";
 
 type TrainerWithUser = TrainerProfileRow & {
     user: { first_name: string; last_name: string; avatar_url: string | null };
@@ -143,7 +144,7 @@ export default function SearchTrainersPage() {
             // 2. Fetch Trainer Profiles
             let query = supabase
                 .from("trainer_profiles")
-                .select("*")
+                .select("*, is_founding_50")
                 .in("subscription_status", ["trial", "active"]);
             
             // Apply verification filter if required
@@ -299,78 +300,33 @@ export default function SearchTrainersPage() {
     return (
         <div className="max-w-[1400px] mx-auto pb-12">
 
-            {/* Filters Header (Dark style) */}
-            <div className="bg-surface border border-white/5 rounded-2xl p-6 mb-8 mt-2 shadow-[0_4px_24px_rgba(0,0,0,0.4)]">
-                <div className="flex flex-wrap lg:flex-nowrap gap-8">
+            {/* Filters Header */}
+            <div className="bg-surface border border-white/5 rounded-2xl p-5 mb-8 mt-2 shadow-[0_4px_24px_rgba(0,0,0,0.4)] space-y-4">
 
-                    {/* Sport Discipline */}
-                    <div className="flex-1 min-w-[200px]">
-                        <label className="block text-[10px] font-bold text-text-main/40 uppercase tracking-widest mb-3">Sport Discipline</label>
-                        <select
-                            value={sportFilter}
-                            onChange={(e) => setSportFilter(e.target.value)}
-                            className="w-full bg-[#272A35] border-none text-text-main text-sm rounded-xl px-4 py-3 outline-none focus:ring-1 focus:ring-primary appearance-none cursor-pointer"
-                            style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239CA3AF' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`, backgroundRepeat: "no-repeat", backgroundPosition: "right 1rem center" }}
-                        >
+                {/* Row 1: Sport | Location | Skill | Time */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div>
+                        <label className="block text-[10px] font-bold text-text-main/40 uppercase tracking-widest mb-2">Sport Discipline</label>
+                        <select value={sportFilter} onChange={(e) => setSportFilter(e.target.value)}
+                            className="w-full bg-[#272A35] text-text-main text-sm rounded-xl px-4 py-2.5 outline-none focus:ring-1 focus:ring-primary appearance-none cursor-pointer border-none"
+                            style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239CA3AF' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`, backgroundRepeat: "no-repeat", backgroundPosition: "right 1rem center" }}>
                             <option value="All Sports">All Sports</option>
-                            {Object.entries(SPORT_LABELS).map(([val, label]) => (
-                                <option key={val} value={val}>{label}</option>
-                            ))}
+                            {Object.entries(SPORT_LABELS).map(([val, label]) => <option key={val} value={val}>{label}</option>)}
                         </select>
                     </div>
-
-                    {/* Location */}
-                    <div className="flex-1 min-w-[200px]">
-                        <label className="block text-[10px] font-bold text-text-main/40 uppercase tracking-widest mb-3">Location</label>
+                    <div>
+                        <label className="block text-[10px] font-bold text-text-main/40 uppercase tracking-widest mb-2">Location</label>
                         <div className="relative">
-                            <MapPin size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-main/60" />
-                            <input
-                                type="text"
-                                value={locationFilter}
-                                onChange={(e) => setLocationFilter(e.target.value)}
-                                placeholder="Enter city or zip"
-                                className="w-full bg-[#272A35] border-none text-text-main text-sm rounded-xl pl-10 pr-4 py-3 outline-none focus:ring-1 focus:ring-primary placeholder-gray-500"
-                            />
+                            <MapPin size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-main/40" />
+                            <input type="text" value={locationFilter} onChange={(e) => setLocationFilter(e.target.value)}
+                                placeholder="City or zip"
+                                className="w-full bg-[#272A35] text-text-main text-sm rounded-xl pl-9 pr-4 py-2.5 outline-none focus:ring-1 focus:ring-primary placeholder-gray-600 border-none" />
                         </div>
                     </div>
-
-                    {/* Price Range */}
-                    <div className="flex-1 min-w-[200px]">
-                        <div className="flex justify-between items-center mb-3">
-                            <label className="block text-[10px] font-bold text-text-main/40 uppercase tracking-widest">Price Range</label>
-                            <span className="text-secondary font-bold text-xs">$0 - ${maxRate}</span>
-                        </div>
-                        <input
-                            type="range" min={20} max={300} step={10}
-                            value={maxRate} onChange={(e) => setMaxRate(Number(e.target.value))}
-                            className="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-primary"
-                        />
-                    </div>
-
-                    {/* Min Rating */}
-                    <div className="flex-1 min-w-[200px]">
-                        <label className="block text-[10px] font-bold text-text-main/40 uppercase tracking-widest mb-3">Min. Rating</label>
-                        <div className="flex gap-2">
-                            {[0, 3.5, 4.0, 4.5].map(r => (
-                                <button
-                                    key={r}
-                                    onClick={() => setMinRating(r)}
-                                    className={`flex-1 py-2 text-[11px] font-bold rounded-lg transition-colors ${minRating === r ? "bg-primary text-bg shadow-[0_0_10px_rgba(69,208,255,0.3)]" : "bg-[#272A35] text-text-main/60 hover:text-text-main"}`}
-                                >
-                                    {r === 0 ? "Any" : `${r}+`} {minRating === r && r !== 0 && "★"}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* Skill Level */}
-                    <div className="flex-1 min-w-[120px]">
-                        <label className="block text-[10px] font-bold text-text-main/40 uppercase tracking-widest mb-3">Skill Level</label>
-                        <select
-                            value={skillFilter}
-                            onChange={(e) => setSkillFilter(e.target.value)}
-                            className="w-full bg-[#272A35] border-none text-text-main text-sm rounded-xl px-4 py-3 outline-none focus:ring-1 focus:ring-primary appearance-none cursor-pointer"
-                        >
+                    <div>
+                        <label className="block text-[10px] font-bold text-text-main/40 uppercase tracking-widest mb-2">Skill Level</label>
+                        <select value={skillFilter} onChange={(e) => setSkillFilter(e.target.value)}
+                            className="w-full bg-[#272A35] text-text-main text-sm rounded-xl px-4 py-2.5 outline-none focus:ring-1 focus:ring-primary appearance-none cursor-pointer border-none">
                             <option value="any">Any Level</option>
                             <option value="beginner">Beginner</option>
                             <option value="intermediate">Intermediate</option>
@@ -378,23 +334,45 @@ export default function SearchTrainersPage() {
                             <option value="pro">Pro</option>
                         </select>
                     </div>
-
-                    {/* Time */}
-                    <div className="flex-1 min-w-[120px]">
-                        <label className="block text-[10px] font-bold text-text-main/40 uppercase tracking-widest mb-3">Time</label>
-                        <select
-                            value={timeFilter}
-                            onChange={(e) => setTimeFilter(e.target.value)}
-                            className="w-full bg-[#272A35] border-none text-text-main text-sm rounded-xl px-4 py-3 outline-none focus:ring-1 focus:ring-primary appearance-none cursor-pointer"
-                        >
+                    <div>
+                        <label className="block text-[10px] font-bold text-text-main/40 uppercase tracking-widest mb-2">Time</label>
+                        <select value={timeFilter} onChange={(e) => setTimeFilter(e.target.value)}
+                            className="w-full bg-[#272A35] text-text-main text-sm rounded-xl px-4 py-2.5 outline-none focus:ring-1 focus:ring-primary appearance-none cursor-pointer border-none">
                             <option value="any">Any Time</option>
                             <option value="morning">Morning</option>
                             <option value="afternoon">Afternoon</option>
                             <option value="evening">Evening</option>
                         </select>
                     </div>
-
                 </div>
+
+                {/* Divider */}
+                <div className="h-px bg-white/5" />
+
+                {/* Row 2: Price Range | Min Rating */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <div className="flex justify-between items-center mb-2">
+                            <label className="text-[10px] font-bold text-text-main/40 uppercase tracking-widest">Price Range</label>
+                            <span className="text-primary font-bold text-xs">$0 – ${maxRate}</span>
+                        </div>
+                        <input type="range" min={20} max={300} step={10} value={maxRate}
+                            onChange={(e) => setMaxRate(Number(e.target.value))}
+                            className="w-full h-1.5 bg-white/10 rounded-full appearance-none cursor-pointer accent-primary" />
+                    </div>
+                    <div>
+                        <label className="block text-[10px] font-bold text-text-main/40 uppercase tracking-widest mb-2">Min. Rating</label>
+                        <div className="flex gap-2">
+                            {[0, 3.5, 4.0, 4.5].map(r => (
+                                <button key={r} onClick={() => setMinRating(r)}
+                                    className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${minRating === r ? "bg-primary text-bg shadow-[0_0_10px_rgba(69,208,255,0.25)]" : "bg-[#272A35] text-text-main/50 hover:text-text-main"}`}>
+                                    {r === 0 ? "Any" : `${r}+`}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+
             </div>
 
             {/* Results Header */}
@@ -421,65 +399,78 @@ export default function SearchTrainersPage() {
             </div>
 
             {/* Trainer Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                {paginatedTrainers.map((trainer, idx) => (
-                    <div key={trainer.id} className="bg-surface border border-white/5 rounded-2xl overflow-hidden group hover:border-gray-600 transition-colors flex flex-col">
-
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {paginatedTrainers.map((trainer) => (
+                    <div
+                        key={trainer.id}
+                        onClick={() => window.location.href = `/dashboard/trainers/${trainer.id}`}
+                        className="bg-[#13151b] border border-white/[0.06] rounded-2xl overflow-hidden group hover:border-primary/30 hover:shadow-[0_4px_20px_rgba(69,208,255,0.06)] transition-all duration-300 cursor-pointer"
+                    >
                         {/* Image area */}
-                        <div className="h-[280px] relative overflow-hidden bg-gray-900">
-                            {/* Base Image */}
+                        <div className="h-[200px] relative overflow-hidden bg-[#0d0f14]">
                             <div
-                                className="absolute inset-0 bg-cover bg-center transition-transform duration-700 group-hover:scale-105"
+                                className="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-105"
                                 style={{ backgroundImage: `url(${trainer.cover_image})` }}
                             />
-                            {/* Overlay Gradient to make bottom text readable */}
-                            <div className="absolute inset-0 bg-gradient-to-t from-[#1A1D23] via-transparent to-transparent opacity-90" />
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/10" />
 
-                            {/* Top left badge */}
-                            <div className="absolute top-4 left-4">
+                            {/* Status badge — top left */}
+                            <div className="absolute top-3 left-3">
                                 {trainer.is_performance_verified ? (
-                                    <span className="bg-primary text-bg text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider shadow-[0_0_10px_rgba(69,208,255,0.4)]">Verified</span>
+                                    <span className="bg-primary text-bg text-[10px] font-black px-2.5 py-1 rounded-lg uppercase tracking-wider shadow-lg">Verified</span>
                                 ) : trainer.total_sessions > 0 ? (
-                                    <span className="bg-blue-400 text-bg text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider shadow-[0_0_10px_rgba(96,165,250,0.4)]">Pro</span>
+                                    <span className="bg-blue-500 text-white text-[10px] font-black px-2.5 py-1 rounded-lg uppercase tracking-wider shadow-lg">Pro</span>
                                 ) : (
-                                    <span className="bg-emerald-400 text-bg text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider shadow-[0_0_10px_rgba(52,211,153,0.4)]">New</span>
+                                    <span className="bg-white/20 backdrop-blur text-white text-[10px] font-black px-2.5 py-1 rounded-lg uppercase tracking-wider shadow-lg">New</span>
                                 )}
                             </div>
 
-                            {/* Rating badge bottom left above info */}
-                            <div className="absolute bottom-4 left-4 flex items-center gap-1.5 z-10">
-                                <Star className="text-primary w-4 h-4 fill-current" />
-                                <span className="text-text-main font-bold text-sm tracking-wide">{trainer.avg_rating.toFixed(1)}</span>
-                                <span className="text-text-main/60 text-xs">({trainer.review_count})</span>
-                            </div>
-                        </div>
-
-                        {/* Info area */}
-                        <div className="p-5 flex-1 flex flex-col">
-                            <div className="flex justify-between items-start mb-3">
-                                <h3 className="text-lg font-bold text-text-main tracking-tight">{trainer.user?.first_name} {trainer.user?.last_name}</h3>
-                                <div className="text-right">
-                                    <span className="text-primary font-black text-lg">${Number(trainer.hourly_rate).toFixed(0)}</span>
-                                    <span className="text-text-main/40 text-[10px] font-bold uppercase ml-1 tracking-widest">/hr</span>
+                            {/* Price — top right, highlighted */}
+                            <div className="absolute top-3 right-3">
+                                <div className="bg-primary/20 backdrop-blur-sm px-3 py-1.5 rounded-xl border border-primary/50 shadow-[0_0_12px_rgba(69,208,255,0.3)]">
+                                    <span className="text-primary font-black text-xl leading-none">${Number(trainer.hourly_rate).toFixed(0)}</span>
+                                    <span className="text-primary/60 text-[11px] font-bold">/hr</span>
                                 </div>
                             </div>
 
-                            <div className="flex flex-wrap gap-2 mb-6">
+                            {/* Rating — bottom left */}
+                            <div className="absolute bottom-3 left-3 flex items-center gap-1.5">
+                                <Star className="text-yellow-400 w-4 h-4 fill-current drop-shadow" />
+                                <span className="text-white font-black text-sm drop-shadow">{trainer.avg_rating.toFixed(1)}</span>
+                                <span className="text-white/50 text-xs">({trainer.review_count})</span>
+                            </div>
+
+                            {trainer.is_founding_50 && (
+                                <div className="absolute bottom-2.5 right-3">
+                                    <FoundingBadgeTooltip size={26} />
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Info area */}
+                        <div className="p-4 flex flex-col gap-3">
+                            {/* Name */}
+                            <h3 className="text-base font-bold text-white leading-tight truncate flex items-center gap-1.5">
+                                {trainer.user?.first_name} {trainer.user?.last_name}
+                                {trainer.is_founding_50 && <FoundingBadgeTooltip size={16} />}
+                            </h3>
+
+                            {/* Sport tags — min-height keeps button aligned */}
+                            <div className="flex flex-wrap gap-1.5 min-h-[24px]">
                                 {trainer.sports.slice(0, 3).map(sport => (
-                                    <span key={sport} className="bg-[#272A35] text-text-main/80 text-[10px] font-bold px-2.5 py-1 rounded-md uppercase tracking-wider">
+                                    <span key={sport} className="bg-white/8 border border-white/10 text-white/60 text-[10px] font-semibold px-2.5 py-0.5 rounded-full">
                                         {SPORT_LABELS[sport] || sport.replace(/_/g, " ")}
                                     </span>
                                 ))}
                             </div>
 
-                            <div className="mt-auto">
-                                <button
-                                    onClick={() => window.location.href = `/dashboard/trainers/${trainer.id}`}
-                                    className="w-full bg-white text-bg font-black text-xs px-4 py-3.5 rounded-xl uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-gray-200 transition-colors"
-                                >
-                                    View Profile <ArrowRight size={14} strokeWidth={3} />
-                                </button>
-                            </div>
+                            {/* Button */}
+                            <button
+                                onClick={(e) => { e.stopPropagation(); window.location.href = `/dashboard/trainers/${trainer.id}`; }}
+                                className="w-full bg-gradient-to-r from-primary to-[#0090d4] text-bg font-black text-sm px-4 py-3 rounded-2xl flex items-center justify-center gap-2 hover:opacity-90 transition-opacity shadow-[0_4px_15px_rgba(69,208,255,0.25)]"
+                            >
+                                View Profile <ArrowRight size={14} strokeWidth={3} />
+                            </button>
                         </div>
                     </div>
                 ))}

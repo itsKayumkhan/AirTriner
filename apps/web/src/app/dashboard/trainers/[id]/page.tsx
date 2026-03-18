@@ -404,6 +404,15 @@ export default function BookTrainerPage() {
     return (
         <div className="max-w-[1280px] mx-auto pb-20 px-4 md:px-8 mt-4">
 
+            {/* Back Button */}
+            <button
+                onClick={() => router.back()}
+                className="flex items-center gap-2 text-text-main/50 hover:text-primary transition-colors text-sm font-semibold mb-4 group"
+            >
+                <ChevronLeft size={18} className="group-hover:-translate-x-0.5 transition-transform" />
+                Back to Search
+            </button>
+
             {/* Cover Image */}
             <div className="w-full h-[320px] rounded-[32px] overflow-hidden relative mb-16 shadow-2xl">
                 <div

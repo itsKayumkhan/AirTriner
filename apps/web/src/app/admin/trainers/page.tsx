@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Download, Plus, FileText, CheckCircle, Search, XCircle, ChevronLeft, ChevronRight, UserCheck, UserX, Clock } from "lucide-react";
+import { Download, Plus, FileText, CheckCircle, Search, XCircle, ChevronLeft, ChevronRight, UserCheck, Clock, Award } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import { FoundingBadgeTooltip } from "@/components/ui/FoundingBadge";
 
 export default function AdminTrainersPage() {
     const [searchQuery, setSearchQuery] = useState("");
@@ -22,7 +23,7 @@ export default function AdminTrainersPage() {
                 if (!usersData) return;
 
                 const userIds = usersData.map(u => u.id);
-                const { data: profilesData } = await supabase.from("trainer_profiles").select("user_id, verification_status, sports").in("user_id", userIds);
+                const { data: profilesData } = await supabase.from("trainer_profiles").select("user_id, verification_status, sports, is_founding_50").in("user_id", userIds);
                 const profilesMap = new Map((profilesData || []).map(p => [p.user_id, p]));
 
                 setTrainers(usersData.map(u => {
@@ -40,7 +41,8 @@ export default function AdminTrainersPage() {
                         specialty: sports.length > 0 ? sports[0] : "General",
                         status: statusText,
                         isVerified,
-                        isDeclined
+                        isDeclined,
+                        isFounding50: profile?.is_founding_50 ?? false,
                     };
                 }));
             } catch (err) {
@@ -54,6 +56,25 @@ export default function AdminTrainersPage() {
 
     const [confirmModal, setConfirmModal] = useState<{isOpen: boolean, id: string | null, newStatus: string | null, name: string}>({isOpen: false, id: null, newStatus: null, name: ""});
     const [actionLoading, setActionLoading] = useState(false);
+    const [founding50Loading, setFounding50Loading] = useState<string | null>(null);
+
+    const founding50Count = trainers.filter(t => t.isFounding50).length;
+
+    const toggleFounding50 = async (id: string, current: boolean) => {
+        setFounding50Loading(id);
+        try {
+            await supabase.from("trainer_profiles").update({
+                is_founding_50: !current,
+                founding_50_granted_at: !current ? new Date().toISOString() : null,
+                ...((!current) ? { subscription_status: "active", subscription_expires_at: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString() } : {})
+            }).eq("user_id", id);
+            setTrainers(prev => prev.map(t => t.id === id ? { ...t, isFounding50: !current } : t));
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setFounding50Loading(null);
+        }
+    };
 
     const requestStatusUpdate = (id: string, name: string, newStatus: string) => {
         setConfirmModal({ isOpen: true, id, newStatus, name });
@@ -107,13 +128,12 @@ export default function AdminTrainersPage() {
     // Stats calculations
     const pendingCount = trainers.filter(t => !t.isVerified && !t.isDeclined).length;
     const verifiedCount = trainers.filter(t => t.isVerified).length;
-    const declinedCount = trainers.filter(t => t.isDeclined).length;
 
     const stats = [
         { title: "TOTAL TRAINERS", value: trainers.length, icon: <FileText size={18} />, highlight: "border-white/[0.04]" },
         { title: "PENDING REVIEW", value: pendingCount, icon: <Clock size={18} />, highlight: "border-orange-500", highlightColor: "text-orange-500" },
         { title: "VERIFIED", value: verifiedCount, icon: <UserCheck size={18} />, highlight: "border-primary", highlightColor: "text-primary" },
-        { title: "DECLINED", value: declinedCount, icon: <UserX size={18} />, highlight: "border-red-500", highlightColor: "text-red-500" },
+        { title: "FOUNDING 50", value: `${founding50Count}/50`, icon: <Award size={18} />, highlight: "border-yellow-500", highlightColor: "text-yellow-500" },
     ];
 
     return (
@@ -205,6 +225,7 @@ export default function AdminTrainersPage() {
                                 <th className="px-6 py-5 pl-8">Trainer Name</th>
                                 <th className="px-6 py-5">Specialty</th>
                                 <th className="px-6 py-5">Status</th>
+                                <th className="px-6 py-5">Founding 50</th>
                                 <th className="px-6 py-5">Documents</th>
                                 <th className="px-6 py-5 pr-8 text-right">Actions</th>
                             </tr>
@@ -233,7 +254,10 @@ export default function AdminTrainersPage() {
                                                 {t.initials}
                                             </div>
                                             <div>
-                                                <div className="font-bold text-text-main tracking-wide group-hover:text-primary transition-colors">{t.name}</div>
+                                                <div className="font-bold text-text-main tracking-wide group-hover:text-primary transition-colors flex items-center gap-1.5">
+                                                    {t.name}
+                                                    {t.isFounding50 && <FoundingBadgeTooltip size={18} />}
+                                                </div>
                                                 <div className="text-text-main/60 font-medium text-xs">{t.email}</div>
                                             </div>
                                         </div>
@@ -242,6 +266,32 @@ export default function AdminTrainersPage() {
                                         <div className="bg-white/5 text-text-main/90 font-bold text-[10px] uppercase tracking-wider px-3 py-1.5 rounded-lg inline-flex border border-white/[0.04]">
                                             {t.specialty}
                                         </div>
+                                    </td>
+                                    <td className="px-6 py-5">
+                                        {t.isVerified ? (
+                                            t.isFounding50 ? (
+                                                <div className="flex items-center gap-2">
+                                                    <FoundingBadgeTooltip size={28} />
+                                                    <button
+                                                        onClick={() => toggleFounding50(t.id, true)}
+                                                        disabled={founding50Loading === t.id}
+                                                        className="text-[10px] font-black uppercase tracking-wider text-yellow-500/60 hover:text-red-400 transition-colors"
+                                                    >
+                                                        Revoke
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <button
+                                                    onClick={() => founding50Count < 50 && toggleFounding50(t.id, false)}
+                                                    disabled={founding50Count >= 50 || founding50Loading === t.id}
+                                                    className="px-3 py-1.5 rounded-lg bg-yellow-500/10 text-yellow-500 border border-yellow-500/20 text-[10px] font-black uppercase tracking-wider hover:bg-yellow-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                                                >
+                                                    {founding50Loading === t.id ? "..." : founding50Count >= 50 ? "Slots Full" : "Grant F50"}
+                                                </button>
+                                            )
+                                        ) : (
+                                            <span className="text-text-main/30 text-[10px] font-bold uppercase tracking-wider">Verify First</span>
+                                        )}
                                     </td>
                                     <td className="px-6 py-5">
                                         <div className="flex items-center gap-2">

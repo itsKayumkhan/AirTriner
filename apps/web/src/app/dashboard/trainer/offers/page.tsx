@@ -325,7 +325,7 @@ export default function TrainingOffersPage() {
                                     </div>
 
                                     {/* Sports Tags */}
-                                    <div className="flex flex-wrap gap-2 mb-6">
+                                    <div className="flex flex-wrap gap-2 mb-6 flex-1 content-start">
                                         {(athlete.athlete_profile?.sports || []).slice(0, 3).map((s: string) => (
                                             <span key={s} className="inline-flex items-center px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-white/5 text-text-main/70 border border-white/5 whitespace-nowrap">
                                                 {s.replace(/_/g, " ")}
@@ -339,13 +339,13 @@ export default function TrainingOffersPage() {
                                     </div>
 
                                     <button
-                                        onClick={(e) => { 
-                                            e.stopPropagation(); 
-                                            setSelectedAthlete(athlete); 
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setSelectedAthlete(athlete);
                                             setOfferData(prev => ({ ...prev, sport: athlete.athlete_profile?.sports?.[0] || "" }));
-                                            setShowNewOffer(true); 
+                                            setShowNewOffer(true);
                                         }}
-                                        className="w-full py-3.5 rounded-xl border border-white/5 bg-[#272A35] text-white font-bold text-sm flex items-center justify-center gap-2 group-hover:bg-primary group-hover:text-bg group-hover:border-primary transition-colors"
+                                        className="mt-auto w-full py-3.5 rounded-xl border border-white/5 bg-[#272A35] text-white font-bold text-sm flex items-center justify-center gap-2 group-hover:bg-primary group-hover:text-bg group-hover:border-primary transition-colors"
                                     >
                                         <Send size={15} /> Send Offer
                                     </button>

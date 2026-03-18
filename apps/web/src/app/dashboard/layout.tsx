@@ -198,17 +198,14 @@ function DashboardLayoutContent({ user, mobileMenuOpen, setMobileMenuOpen, navIt
             {/* Sidebar */}
             <aside className={`fixed top-0 h-screen inset-y-0 left-0 w-[260px] bg-surface border-r border-white/5 flex-col z-50 transform transition-transform duration-300 ${mobileMenuOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0 flex`}>
                 {/* Logo Area */}
-                <div className="h-[72px] flex items-center justify-between px-6 border-b border-white/5">
-                    <Link href="/dashboard" className="flex items-center gap-3" onClick={() => setMobileMenuOpen(false)}>
-                        <div className="w-8 h-8 rounded overflow-hidden flex items-center justify-center bg-zinc-900 border border-white/10 shadow-[0_0_10px_rgba(255,255,255,0.05)]">
+                <div className="h-20 flex items-center justify-between px-6 border-b border-white/5 shrink-0">
+                    <Link href="/dashboard" className="flex items-center gap-2" onClick={() => setMobileMenuOpen(false)}>
+                        <div className="w-8 h-8 rounded overflow-hidden flex items-center justify-center bg-zinc-900 border border-white/10">
                             <img src="/logo.jpeg" alt="Logo" className="w-full h-full object-cover" />
                         </div>
-                        <div className="flex flex-col">
-                            <span className="text-lg font-black font-display uppercase tracking-wider leading-none">AirTrainr</span>
-                            <span className="text-[10px] text-text-main/40 font-medium uppercase tracking-widest mt-0.5">
-                                {user.role} Workspace
-                            </span>
-                        </div>
+                        <span className="text-lg font-black tracking-tight text-text-main leading-none">
+                            AirTrainr <span className="text-text-main/40 font-normal text-sm capitalize">{user.role}</span>
+                        </span>
                     </Link>
                     <button className="md:hidden text-text-main/60 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
                         <X size={20} />
@@ -216,11 +213,11 @@ function DashboardLayoutContent({ user, mobileMenuOpen, setMobileMenuOpen, navIt
                 </div>
 
                 {/* Navigation */}
-                <nav className="flex-1 overflow-y-auto py-6 px-4 space-y-1.5 scrollbar-thin">
+                <nav className="flex-1 overflow-y-auto py-6 px-3 space-y-1 sidebar-scroll">
                     {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                     {navItems.map((item: any) => {
                         if (item.divider) {
-                            return <div key={item.id} className="h-px bg-gray-800 my-4 mx-2" />;
+                            return <div key={item.id} className="h-px bg-white/5 my-3 mx-1" />;
                         }
                         const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href));
                         return (
@@ -228,21 +225,18 @@ function DashboardLayoutContent({ user, mobileMenuOpen, setMobileMenuOpen, navIt
                                 key={item.href}
                                 href={item.href}
                                 onClick={() => setMobileMenuOpen(false)}
-                                className={`
-                                    group flex items-center justify-between px-3 py-2.5 rounded-xl
-                                    transition-all duration-200
-                                    ${isActive
-                                        ? "bg-primary/10 text-primary border border-primary/20 shadow-[0_0_15px_rgba(69,208,255,0.1)]"
-                                        : "text-text-main/60 hover:bg-white/5 hover:text-text-main border border-transparent"
-                                    }
-                                `}
+                                className={`group flex items-center justify-between px-3 py-2.5 rounded-lg transition-all text-sm font-semibold ${
+                                    isActive
+                                        ? "bg-primary/10 text-primary border-l-2 border-primary"
+                                        : "text-text-main/50 hover:text-text-main hover:bg-white/5 border-l-2 border-transparent"
+                                }`}
                             >
                                 <div className="flex items-center gap-3">
                                     <item.icon size={20} className={isActive ? "text-primary" : "text-text-main/40 group-hover:text-text-main/80"} strokeWidth={isActive ? 2.5 : 2} />
-                                    <span className={`text-[15px] ${isActive ? "font-bold" : "font-semibold"}`}>{item.label}</span>
+                                    <span>{item.label}</span>
                                 </div>
                                 {(item.badge || (item.useBadgeContext && unreadCount > 0)) && (
-                                    <span className="bg-primary text-bg text-[11px] font-black px-2 py-0.5 rounded-full">
+                                    <span className="bg-primary text-bg text-[11px] font-black px-2 py-0.5 rounded-full min-w-[20px] text-center">
                                         {item.useBadgeContext ? unreadCount : item.badge}
                                     </span>
                                 )}
@@ -251,14 +245,14 @@ function DashboardLayoutContent({ user, mobileMenuOpen, setMobileMenuOpen, navIt
                     })}
                 </nav>
 
-                {/* Bottom Action */}
-                <div className="p-4 border-t border-white/5">
+                {/* Bottom — Logout */}
+                <div className="px-3 py-4 border-t border-white/5 shrink-0">
                     <button
                         onClick={handleLogout}
-                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-error/80 hover:text-error hover:bg-error/10 transition-colors"
+                        className="flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-semibold w-full text-text-main/50 hover:text-red-400 hover:bg-red-500/5 border-l-2 border-transparent"
                     >
-                        <LogOut size={20} />
-                        <span>Log Out</span>
+                        <LogOut size={18} className="text-text-main/40" />
+                        Log Out
                     </button>
                 </div>
             </aside>
@@ -318,12 +312,21 @@ function DashboardLayoutContent({ user, mobileMenuOpen, setMobileMenuOpen, navIt
                 </header>
 
                 {/* Page Content */}
-                <main className="flex-1 overflow-x-hidden overflow-y-auto w-full relative scrollbar-thin">
+                <main className="flex-1 overflow-x-hidden overflow-y-auto w-full relative custom-scrollbar">
                     <div className="w-full max-w-[1200px] mx-auto p-4 sm:p-6 lg:p-8">
                         {children}
                     </div>
                 </main>
             </div>
+
+            <style>{`
+                .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+                .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+                .custom-scrollbar::-webkit-scrollbar-thumb { background-color: rgba(255,255,255,0.08); border-radius: 10px; }
+                .custom-scrollbar::-webkit-scrollbar-thumb:hover { background-color: rgba(255,255,255,0.15); }
+                .sidebar-scroll::-webkit-scrollbar { width: 0px; }
+                .sidebar-scroll { scrollbar-width: none; }
+            `}</style>
         </div>
     );
 }
