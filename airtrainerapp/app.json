@@ -1,0 +1,53 @@
+{
+  "expo": {
+    "name": "AirTrainr",
+    "slug": "AirTrainrApp",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "scheme": "airtrainr",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0a0a0f"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.airtrainr.app",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "AirTrainr uses your location to find nearby trainers.",
+        "NSCameraUsageDescription": "AirTrainr needs camera access for profile photos.",
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0a0a0f"
+      },
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false,
+      "package": "com.airtrainr.app",
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "CAMERA"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-secure-store"
+    ],
+    "extra": {
+      "supabaseUrl": "https://duaqkmptxsnonvtfdohp.supabase.co",
+      "supabaseAnonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR1YXFrbXB0eHNub252dGZkb2hwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE1NjUwOTAsImV4cCI6MjA4NzE0MTA5MH0.5glBvL0FsyhWvtasjvmfOQwMOP8LFQf-Jq2e5ji92XE",
+      "eas": {
+        "projectId": "656c01bc-4cae-4491-b4c2-4182b93d4104"
+      }
+    }
+  }
+}
