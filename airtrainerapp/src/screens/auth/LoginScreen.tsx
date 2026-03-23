@@ -15,6 +15,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
+import { supabase } from '../../lib/supabase';
 import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows } from '../../theme';
 
 export default function LoginScreen({ navigation }: any) {
@@ -116,7 +117,23 @@ export default function LoginScreen({ navigation }: any) {
                         </View>
 
                         {/* Forgot Password */}
-                        <TouchableOpacity style={styles.forgotContainer}>
+                        <TouchableOpacity
+                            style={styles.forgotContainer}
+                            onPress={() => Alert.alert(
+                                'Reset Password',
+                                'Enter your email address and we will send you a reset link.',
+                                [
+                                    { text: 'Cancel', style: 'cancel' },
+                                    {
+                                        text: 'Send Reset Email',
+                                        onPress: async () => {
+                                            await supabase.auth.resetPasswordForEmail(email);
+                                            Alert.alert('Email Sent', 'Check your inbox for a password reset link.');
+                                        },
+                                    },
+                                ]
+                            )}
+                        >
                             <Text style={styles.forgotText}>Forgot Password?</Text>
                         </TouchableOpacity>
 
@@ -144,12 +161,18 @@ export default function LoginScreen({ navigation }: any) {
                         </View>
 
                         {/* Social Login */}
-                        <TouchableOpacity style={styles.socialButton}>
+                        <TouchableOpacity
+                            style={styles.socialButton}
+                            onPress={() => Alert.alert('Coming Soon', 'Google sign-in will be available soon.')}
+                        >
                             <Ionicons name="logo-google" size={20} color={Colors.text} />
                             <Text style={styles.socialButtonText}>Continue with Google</Text>
                         </TouchableOpacity>
 
-                        <TouchableOpacity style={styles.socialButton}>
+                        <TouchableOpacity
+                            style={styles.socialButton}
+                            onPress={() => Alert.alert('Coming Soon', 'Apple sign-in will be available soon.')}
+                        >
                             <Ionicons name="logo-apple" size={20} color={Colors.text} />
                             <Text style={styles.socialButtonText}>Continue with Apple</Text>
                         </TouchableOpacity>

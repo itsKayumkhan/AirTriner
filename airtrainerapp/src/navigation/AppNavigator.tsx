@@ -56,6 +56,7 @@ function TabNavigator() {
     const { user } = useAuth();
     const isTrainer = user?.role === 'trainer';
     const [unreadMessages, setUnreadMessages] = useState(0);
+    const [unreadNotifications, setUnreadNotifications] = useState(0);
 
     // Fetch unread message count
     const fetchUnreadCount = useCallback(async () => {
@@ -64,8 +65,20 @@ function TabNavigator() {
         setUnreadMessages(count);
     }, [user]);
 
+    // Fetch unread notification count
+    const fetchUnreadNotificationCount = useCallback(async () => {
+        if (!user) return;
+        const { count } = await supabase
+            .from('notifications')
+            .select('id', { count: 'exact', head: true })
+            .eq('user_id', user.id)
+            .eq('read', false);
+        setUnreadNotifications(count ?? 0);
+    }, [user]);
+
     useEffect(() => {
         fetchUnreadCount();
+        fetchUnreadNotificationCount();
 
         // Register for push notifications
         if (user) {
@@ -100,6 +113,8 @@ function TabNavigator() {
                 filter: `user_id=eq.${user.id}`,
             }, (payload) => {
                 const notif = payload.new as any;
+                // Increment unread notification badge
+                setUnreadNotifications((prev) => prev + 1);
                 // Show local push notification for in-app notifications
                 sendLocalNotification({
                     title: notif.title || 'AirTrainr',
@@ -107,20 +122,37 @@ function TabNavigator() {
                     data: notif.data || {},
                 });
             })
+            .on('postgres_changes', {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'notifications',
+                filter: `user_id=eq.${user.id}`,
+            }, () => {
+                // Re-fetch count when a notification is marked as read
+                fetchUnreadNotificationCount();
+            })
             .subscribe();
 
-        // Refresh count every 30 seconds
-        const interval = setInterval(fetchUnreadCount, 30000);
+        // Refresh counts every 30 seconds
+        const interval = setInterval(() => {
+            fetchUnreadCount();
+            fetchUnreadNotificationCount();
+        }, 30000);
 
         return () => {
             supabase.removeChannel(channel);
             clearInterval(interval);
         };
-    }, [user, fetchUnreadCount]);
+    }, [user, fetchUnreadCount, fetchUnreadNotificationCount]);
 
     // Reset badge when Messages tab is focused
     const handleMessagesTabFocus = () => {
         setUnreadMessages(0);
+    };
+
+    // Reset notification badge when Profile tab is focused
+    const handleProfileTabFocus = () => {
+        setUnreadNotifications(0);
     };
 
     return (
@@ -162,6 +194,13 @@ function TabNavigator() {
                                     </Text>
                                 </View>
                             )}
+                            {route.name === 'Profile' && unreadNotifications > 0 && (
+                                <View style={styles.badge}>
+                                    <Text style={styles.badgeText}>
+                                        {unreadNotifications > 99 ? '99+' : unreadNotifications}
+                                    </Text>
+                                </View>
+                            )}
                         </View>
                     );
                 },
@@ -195,6 +234,7 @@ function TabNavigator() {
                 name="Profile"
                 component={ProfileScreen}
                 options={{ tabBarLabel: 'Profile' }}
+                listeners={{ tabPress: handleProfileTabFocus }}
             />
         </Tab.Navigator>
     );

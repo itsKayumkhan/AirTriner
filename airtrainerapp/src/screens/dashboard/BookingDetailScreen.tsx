@@ -27,6 +27,26 @@ export default function BookingDetailScreen({ route, navigation }: any) {
     const [trainerNotes, setTrainerNotes] = useState('');
     const [isSaving, setIsSaving] = useState(false);
 
+    // Review state
+    const [existingReview, setExistingReview] = useState<any>(null);
+    const [reviewChecked, setReviewChecked] = useState(false);
+    const [reviewRating, setReviewRating] = useState(0);
+    const [reviewComment, setReviewComment] = useState('');
+    const [isSubmittingReview, setIsSubmittingReview] = useState(false);
+    const [reviewSubmitted, setReviewSubmitted] = useState(false);
+
+    const fetchExistingReview = useCallback(async (bId: string) => {
+        if (!user) return;
+        const { data } = await supabase
+            .from('reviews')
+            .select('*')
+            .eq('booking_id', bId)
+            .eq('reviewer_id', user.id)
+            .maybeSingle();
+        setExistingReview(data || null);
+        setReviewChecked(true);
+    }, [user]);
+
     const fetchBooking = useCallback(async () => {
         try {
             const { data, error } = await supabase
@@ -45,6 +65,12 @@ export default function BookingDetailScreen({ route, navigation }: any) {
     }, [bookingId]);
 
     useEffect(() => { fetchBooking(); }, [fetchBooking]);
+
+    useEffect(() => {
+        if (booking && booking.status === 'completed' && user?.role === 'athlete') {
+            fetchExistingReview(booking.id);
+        }
+    }, [booking, user, fetchExistingReview]);
 
     const isTrainer = user?.role === 'trainer';
     const otherUser = isTrainer ? booking?.athlete : booking?.trainer;
@@ -127,6 +153,54 @@ export default function BookingDetailScreen({ route, navigation }: any) {
             Alert.alert('Error', e.message);
         } finally {
             setIsSaving(false);
+        }
+    };
+
+    const handleSubmitReview = async () => {
+        if (reviewRating === 0) {
+            Alert.alert('Rating Required', 'Please select a star rating before submitting.');
+            return;
+        }
+        setIsSubmittingReview(true);
+        try {
+            // Insert review
+            const { error: insertError } = await supabase.from('reviews').insert({
+                booking_id: booking.id,
+                trainer_id: booking.trainer_id,
+                reviewer_id: user!.id,
+                reviewee_id: booking.trainer_id,
+                rating: reviewRating,
+                review_text: reviewComment.trim() || null,
+                created_at: new Date().toISOString(),
+            });
+            if (insertError) throw insertError;
+
+            // Fetch current trainer profile stats
+            const { data: profileData, error: profileFetchError } = await supabase
+                .from('trainer_profiles')
+                .select('average_rating, total_reviews')
+                .eq('user_id', booking.trainer_id)
+                .single();
+            if (profileFetchError) throw profileFetchError;
+
+            const currentCount = profileData?.total_reviews ?? 0;
+            const currentAvg = profileData?.average_rating ?? 0;
+            const newCount = currentCount + 1;
+            const newAvg = ((currentAvg * currentCount) + reviewRating) / newCount;
+
+            const { error: updateError } = await supabase
+                .from('trainer_profiles')
+                .update({ average_rating: newAvg, total_reviews: newCount })
+                .eq('user_id', booking.trainer_id);
+            if (updateError) throw updateError;
+
+            setReviewSubmitted(true);
+            setExistingReview({ rating: reviewRating, comment: reviewComment.trim() });
+            Alert.alert('Review Submitted', 'Thank you for your feedback!');
+        } catch (e: any) {
+            Alert.alert('Error', e.message);
+        } finally {
+            setIsSubmittingReview(false);
         }
     };
 
@@ -351,6 +425,64 @@ export default function BookingDetailScreen({ route, navigation }: any) {
                     </>
                 )}
 
+                {/* Review Section — athlete only, completed bookings */}
+                {!isTrainer && booking.status === 'completed' && reviewChecked && (
+                    <>
+                        <Text style={styles.sectionTitle}>Your Review</Text>
+                        {existingReview ? (
+                            <View style={styles.reviewSubmittedCard}>
+                                <Ionicons name="checkmark-circle" size={20} color={Colors.success} />
+                                <Text style={styles.reviewSubmittedText}>
+                                    You reviewed this session ⭐ {existingReview.rating}/5
+                                </Text>
+                            </View>
+                        ) : (
+                            <View style={styles.reviewCard}>
+                                {/* Star selector */}
+                                <Text style={styles.reviewLabel}>Rating</Text>
+                                <View style={styles.starsRow}>
+                                    {[1, 2, 3, 4, 5].map((star) => (
+                                        <TouchableOpacity
+                                            key={star}
+                                            onPress={() => setReviewRating(star)}
+                                            style={styles.starButton}
+                                        >
+                                            <Ionicons
+                                                name={star <= reviewRating ? 'star' : 'star-outline'}
+                                                size={32}
+                                                color={star <= reviewRating ? '#45D0FF' : 'rgba(255,255,255,0.3)'}
+                                            />
+                                        </TouchableOpacity>
+                                    ))}
+                                </View>
+
+                                {/* Comment input */}
+                                <Text style={[styles.reviewLabel, { marginTop: Spacing.md }]}>Comment (optional)</Text>
+                                <TextInput
+                                    style={styles.reviewInput}
+                                    value={reviewComment}
+                                    onChangeText={setReviewComment}
+                                    placeholder="Share your experience..."
+                                    placeholderTextColor={Colors.textTertiary}
+                                    multiline
+                                    textAlignVertical="top"
+                                />
+
+                                <TouchableOpacity
+                                    style={[styles.reviewSubmitButton, isSubmittingReview && { opacity: 0.6 }]}
+                                    onPress={handleSubmitReview}
+                                    disabled={isSubmittingReview}
+                                >
+                                    {isSubmittingReview
+                                        ? <ActivityIndicator size="small" color="#0A0D14" />
+                                        : <Text style={styles.reviewSubmitButtonText}>Submit Review</Text>
+                                    }
+                                </TouchableOpacity>
+                            </View>
+                        )}
+                    </>
+                )}
+
                 <View style={{ height: 60 }} />
             </ScrollView>
         </View>
@@ -394,4 +526,14 @@ const styles = StyleSheet.create({
     actionButtonText: { fontSize: FontSize.md, fontWeight: FontWeight.bold },
     actionButtonTextWhite: { fontSize: FontSize.md, fontWeight: FontWeight.bold, color: '#0A0D14' },
     futureNote: { fontSize: FontSize.xs, color: Colors.textTertiary, textAlign: 'center', marginTop: Spacing.md, fontStyle: 'italic' },
+    // Review styles
+    reviewCard: { backgroundColor: '#161B22', borderRadius: BorderRadius.lg, padding: Spacing.lg, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', marginBottom: Spacing.md },
+    reviewLabel: { fontSize: FontSize.sm, color: Colors.textSecondary, marginBottom: Spacing.sm },
+    starsRow: { flexDirection: 'row', gap: Spacing.sm },
+    starButton: { padding: 4 },
+    reviewInput: { backgroundColor: Colors.surface, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', padding: Spacing.md, color: '#FFFFFF', fontSize: FontSize.md, minHeight: 80 },
+    reviewSubmitButton: { marginTop: Spacing.lg, backgroundColor: '#45D0FF', borderRadius: BorderRadius.md, paddingVertical: Spacing.md, alignItems: 'center', justifyContent: 'center' },
+    reviewSubmitButtonText: { fontSize: FontSize.md, fontWeight: FontWeight.bold, color: '#0A0D14' },
+    reviewSubmittedCard: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, backgroundColor: '#161B22', borderRadius: BorderRadius.lg, padding: Spacing.lg, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', marginBottom: Spacing.md },
+    reviewSubmittedText: { fontSize: FontSize.md, color: Colors.textSecondary },
 });

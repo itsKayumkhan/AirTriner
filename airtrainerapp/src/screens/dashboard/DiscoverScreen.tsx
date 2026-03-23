@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase, TrainerProfileRow, UserRow } from '../../lib/supabase';
 import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows } from '../../theme';
+import Founding50Badge from '../../components/Founding50Badge';
 
 const SPORTS = [
     { name: 'All', emoji: '🏆' },
@@ -51,26 +52,8 @@ export default function DiscoverScreen({ navigation }: any) {
         }
     }, []);
 
-    // Also fetch unverified trainers as fallback (for demo purposes)
-    const fetchAllTrainers = useCallback(async () => {
-        try {
-            const { data, error } = await supabase
-                .from('trainer_profiles')
-                .select('*, users!trainer_profiles_user_id_fkey(*)')
-                .order('created_at', { ascending: false });
-
-            if (error) throw error;
-            setTrainers((data || []) as TrainerWithUser[]);
-            setFilteredTrainers((data || []) as TrainerWithUser[]);
-        } catch (error) {
-            console.error('Error fetching all trainers:', error);
-        } finally {
-            setIsLoading(false);
-        }
-    }, []);
-
     useEffect(() => {
-        fetchAllTrainers();
+        fetchTrainers();
     }, []);
 
     useEffect(() => {
@@ -93,7 +76,7 @@ export default function DiscoverScreen({ navigation }: any) {
 
     const onRefresh = async () => {
         setRefreshing(true);
-        await fetchAllTrainers();
+        await fetchTrainers();
         setRefreshing(false);
     };
 
@@ -118,6 +101,9 @@ export default function DiscoverScreen({ navigation }: any) {
                             <View style={styles.verifiedBadge}>
                                 <Ionicons name="checkmark-circle" size={16} color={Colors.primary} />
                             </View>
+                        )}
+                        {item.is_founding_50 && (
+                            <Founding50Badge size="small" />
                         )}
                     </View>
                     <Text style={styles.headline} numberOfLines={1}>

@@ -1,13 +1,52 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-    View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator,
+    View,
+    Text,
+    StyleSheet,
+    FlatList,
+    TouchableOpacity,
+    RefreshControl,
+    ActivityIndicator,
+    SectionList,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase, BookingRow, UserRow } from '../../lib/supabase';
 import { Colors, Spacing, BorderRadius, FontSize, FontWeight } from '../../theme';
 
-type HistoryBooking = BookingRow & { trainer: UserRow };
+type HistoryBooking = BookingRow & { trainer: Pick<UserRow, 'first_name' | 'last_name'> };
+
+type SectionData = {
+    title: string;
+    data: HistoryBooking[];
+};
+
+function formatMonthYear(dateStr: string): string {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+}
+
+function formatBookingDate(dateStr: string): string {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('en-US', {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+    });
+}
+
+function groupByMonth(bookings: HistoryBooking[]): SectionData[] {
+    const map = new Map<string, HistoryBooking[]>();
+    for (const b of bookings) {
+        const key = formatMonthYear(b.created_at);
+        if (!map.has(key)) map.set(key, []);
+        map.get(key)!.push(b);
+    }
+    const sections: SectionData[] = [];
+    map.forEach((data, title) => sections.push({ title, data }));
+    return sections;
+}
 
 export default function TrainingHistoryScreen({ navigation }: any) {
     const { user } = useAuth();
@@ -20,97 +59,143 @@ export default function TrainingHistoryScreen({ navigation }: any) {
         try {
             const { data, error } = await supabase
                 .from('bookings')
-                .select('*, trainer:users!bookings_trainer_id_fkey(*)')
+                .select('*, trainer:users!bookings_trainer_id_fkey(first_name, last_name)')
                 .eq('athlete_id', user.id)
-                .in('status', ['completed', 'cancelled', 'no_show'])
-                .order('scheduled_at', { ascending: false });
+                .eq('status', 'completed')
+                .order('created_at', { ascending: false });
 
             if (error) throw error;
             setBookings((data || []) as HistoryBooking[]);
-        } catch (error) {
-            console.error('Error fetching history:', error);
+        } catch (err) {
+            console.error('Error fetching history:', err);
         } finally {
             setIsLoading(false);
         }
     }, [user]);
 
-    useEffect(() => { fetchHistory(); }, [fetchHistory]);
-    const onRefresh = async () => { setRefreshing(true); await fetchHistory(); setRefreshing(false); };
+    useEffect(() => {
+        fetchHistory();
+    }, [fetchHistory]);
 
-    const statusConfig: Record<string, { color: string; icon: string; label: string }> = {
-        completed: { color: Colors.success, icon: 'checkmark-circle', label: 'Completed' },
-        cancelled: { color: Colors.error, icon: 'close-circle', label: 'Cancelled' },
-        no_show: { color: Colors.warning, icon: 'alert-circle', label: 'No Show' },
+    const onRefresh = async () => {
+        setRefreshing(true);
+        await fetchHistory();
+        setRefreshing(false);
     };
 
-    const totalSessions = bookings.filter(b => b.status === 'completed').length;
-    const totalSpent = bookings.filter(b => b.status === 'completed').reduce((s, b) => s + Number(b.total_paid), 0);
+    const totalSessions = bookings.length;
+    const totalSpent = bookings.reduce((sum, b) => sum + Number(b.total_paid || b.price || 0), 0);
+    const sections = groupByMonth(bookings);
 
     const renderBooking = ({ item }: { item: HistoryBooking }) => {
-        const cfg = statusConfig[item.status] || statusConfig.completed;
+        const initials =
+            (item.trainer?.first_name?.[0] || '') + (item.trainer?.last_name?.[0] || '');
         return (
             <View style={styles.card}>
-                <View style={styles.cardTop}>
+                <View style={styles.cardRow}>
                     <View style={styles.cardAvatar}>
-                        <Text style={styles.cardAvatarText}>{(item.trainer?.first_name?.[0] || '') + (item.trainer?.last_name?.[0] || '')}</Text>
+                        <Text style={styles.cardAvatarText}>{initials.toUpperCase()}</Text>
                     </View>
                     <View style={styles.cardInfo}>
-                        <Text style={styles.cardName}>{item.trainer?.first_name} {item.trainer?.last_name}</Text>
-                        <Text style={styles.cardSport}>{item.sport} • {item.duration_minutes}min</Text>
-                        <Text style={styles.cardDate}>{new Date(item.scheduled_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</Text>
+                        <Text style={styles.cardName}>
+                            {item.trainer?.first_name} {item.trainer?.last_name}
+                        </Text>
+                        <Text style={styles.cardSport}>{item.sport}</Text>
+                        <Text style={styles.cardDate}>{formatBookingDate(item.scheduled_at)}</Text>
                     </View>
                     <View style={styles.cardRight}>
-                        <View style={[styles.statusBadge, { backgroundColor: cfg.color + '20' }]}>
-                            <Ionicons name={cfg.icon as any} size={14} color={cfg.color} />
-                            <Text style={[styles.statusText, { color: cfg.color }]}>{cfg.label}</Text>
+                        <View style={styles.completedBadge}>
+                            <Ionicons name="checkmark-circle" size={12} color={Colors.success} />
+                            <Text style={styles.completedText}>Completed</Text>
                         </View>
-                        <Text style={styles.cardPrice}>${Number(item.total_paid).toFixed(0)}</Text>
+                        <Text style={styles.cardPrice}>
+                            ${Number(item.total_paid || item.price || 0).toFixed(0)}
+                        </Text>
                     </View>
                 </View>
             </View>
         );
     };
 
+    const renderSectionHeader = ({ section }: { section: SectionData }) => (
+        <View style={styles.sectionHeader}>
+            <Text style={styles.sectionHeaderText}>{section.title}</Text>
+            <Text style={styles.sectionCount}>
+                {section.data.length} session{section.data.length !== 1 ? 's' : ''}
+            </Text>
+        </View>
+    );
+
     if (isLoading) {
-        return <View style={[styles.container, styles.center]}><ActivityIndicator size="large" color={Colors.primary} /></View>;
+        return (
+            <View style={[styles.container, styles.center]}>
+                <ActivityIndicator size="large" color={Colors.primary} />
+            </View>
+        );
     }
 
     return (
         <View style={styles.container}>
+            {/* Header */}
             <View style={styles.header}>
-                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-                    <Ionicons name="arrow-back" size={24} color={Colors.text} />
+                <TouchableOpacity
+                    onPress={() => navigation.goBack()}
+                    style={styles.backButton}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                    <Ionicons name="arrow-back" size={22} color={Colors.text} />
                 </TouchableOpacity>
                 <Text style={styles.headerTitle}>Training History</Text>
                 <View style={{ width: 44 }} />
             </View>
 
+            {/* Stat cards */}
             {bookings.length > 0 && (
                 <View style={styles.statsRow}>
-                    <View style={styles.statItem}>
+                    <View style={styles.statCard}>
+                        <View style={styles.statIconWrap}>
+                            <Ionicons name="trophy" size={20} color={Colors.primary} />
+                        </View>
                         <Text style={styles.statValue}>{totalSessions}</Text>
-                        <Text style={styles.statLabel}>Sessions</Text>
+                        <Text style={styles.statLabel}>Total Sessions</Text>
                     </View>
                     <View style={styles.statDivider} />
-                    <View style={styles.statItem}>
+                    <View style={styles.statCard}>
+                        <View style={styles.statIconWrap}>
+                            <Ionicons name="wallet" size={20} color={Colors.primary} />
+                        </View>
                         <Text style={styles.statValue}>${totalSpent.toFixed(0)}</Text>
                         <Text style={styles.statLabel}>Total Spent</Text>
                     </View>
                 </View>
             )}
 
-            <FlatList
-                data={bookings}
-                renderItem={renderBooking}
+            {/* Section list grouped by month */}
+            <SectionList
+                sections={sections}
                 keyExtractor={(item) => item.id}
+                renderItem={renderBooking}
+                renderSectionHeader={renderSectionHeader}
                 contentContainerStyle={styles.listContent}
                 showsVerticalScrollIndicator={false}
-                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
+                stickySectionHeadersEnabled={false}
+                refreshControl={
+                    <RefreshControl
+                        refreshing={refreshing}
+                        onRefresh={onRefresh}
+                        tintColor={Colors.primary}
+                        colors={[Colors.primary]}
+                    />
+                }
                 ListEmptyComponent={
                     <View style={styles.emptyState}>
-                        <Ionicons name="trophy-outline" size={48} color={Colors.textTertiary} />
+                        <View style={styles.emptyIconWrap}>
+                            <Ionicons name="trophy-outline" size={40} color={Colors.primary} />
+                        </View>
                         <Text style={styles.emptyTitle}>No Training History</Text>
-                        <Text style={styles.emptyText}>Complete your first session to see it here.</Text>
+                        <Text style={styles.emptyText}>
+                            Complete your first session to see your history here.
+                        </Text>
                     </View>
                 }
             />
@@ -119,30 +204,207 @@ export default function TrainingHistoryScreen({ navigation }: any) {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: Colors.background },
-    center: { justifyContent: 'center', alignItems: 'center' },
-    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing.xxl, paddingTop: 60, paddingBottom: Spacing.lg, borderBottomWidth: 1, borderBottomColor: Colors.border },
-    backButton: { width: 44, height: 44, borderRadius: 14, backgroundColor: Colors.surface, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: Colors.border },
-    headerTitle: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: Colors.text },
-    statsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: Spacing.xl, marginHorizontal: Spacing.xxl, marginTop: Spacing.lg, backgroundColor: Colors.card, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: Colors.border, gap: Spacing.xxl },
-    statItem: { alignItems: 'center' },
-    statValue: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.text },
-    statLabel: { fontSize: FontSize.xs, color: Colors.textTertiary, marginTop: 2 },
-    statDivider: { width: 1, height: 36, backgroundColor: Colors.border },
-    listContent: { paddingHorizontal: Spacing.xxl, paddingTop: Spacing.lg, paddingBottom: 100 },
-    card: { backgroundColor: Colors.card, borderRadius: BorderRadius.lg, padding: Spacing.lg, marginBottom: Spacing.md, borderWidth: 1, borderColor: Colors.border },
-    cardTop: { flexDirection: 'row', alignItems: 'center' },
-    cardAvatar: { width: 44, height: 44, borderRadius: 14, backgroundColor: Colors.primaryGlow, justifyContent: 'center', alignItems: 'center', marginRight: Spacing.md },
-    cardAvatarText: { fontSize: FontSize.sm, fontWeight: FontWeight.bold, color: Colors.primary },
-    cardInfo: { flex: 1 },
-    cardName: { fontSize: FontSize.md, fontWeight: FontWeight.bold, color: Colors.text },
-    cardSport: { fontSize: FontSize.sm, color: Colors.primary, marginTop: 1 },
-    cardDate: { fontSize: FontSize.xs, color: Colors.textTertiary, marginTop: 2 },
-    cardRight: { alignItems: 'flex-end', gap: Spacing.xs },
-    statusBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.sm, paddingVertical: 3, borderRadius: BorderRadius.pill, gap: 3 },
-    statusText: { fontSize: FontSize.xs, fontWeight: FontWeight.medium },
-    cardPrice: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: Colors.text },
-    emptyState: { alignItems: 'center', paddingTop: 80, gap: Spacing.md },
-    emptyTitle: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.text },
-    emptyText: { fontSize: FontSize.md, color: Colors.textSecondary, textAlign: 'center' },
+    container: {
+        flex: 1,
+        backgroundColor: Colors.background,
+    },
+    center: {
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+
+    // Header
+    header: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: Spacing.xxl,
+        paddingTop: 60,
+        paddingBottom: Spacing.lg,
+        borderBottomWidth: 1,
+        borderBottomColor: Colors.border,
+    },
+    backButton: {
+        width: 44,
+        height: 44,
+        borderRadius: BorderRadius.md,
+        backgroundColor: Colors.surface,
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: Colors.border,
+    },
+    headerTitle: {
+        fontSize: FontSize.lg,
+        fontWeight: FontWeight.bold,
+        color: Colors.text,
+    },
+
+    // Stats
+    statsRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginHorizontal: Spacing.xxl,
+        marginTop: Spacing.xl,
+        backgroundColor: Colors.card,
+        borderRadius: BorderRadius.xl,
+        borderWidth: 1,
+        borderColor: Colors.border,
+        overflow: 'hidden',
+    },
+    statCard: {
+        flex: 1,
+        alignItems: 'center',
+        paddingVertical: Spacing.xl,
+        gap: Spacing.xs,
+    },
+    statIconWrap: {
+        width: 40,
+        height: 40,
+        borderRadius: BorderRadius.md,
+        backgroundColor: Colors.primaryGlow,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: Spacing.xs,
+    },
+    statValue: {
+        fontSize: FontSize.xxl,
+        fontWeight: FontWeight.bold,
+        color: Colors.text,
+    },
+    statLabel: {
+        fontSize: FontSize.xs,
+        color: Colors.textTertiary,
+        fontWeight: FontWeight.medium,
+    },
+    statDivider: {
+        width: 1,
+        height: 64,
+        backgroundColor: Colors.border,
+    },
+
+    // List
+    listContent: {
+        paddingHorizontal: Spacing.xxl,
+        paddingTop: Spacing.lg,
+        paddingBottom: 100,
+    },
+
+    // Section header
+    sectionHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingVertical: Spacing.md,
+        marginTop: Spacing.md,
+    },
+    sectionHeaderText: {
+        fontSize: FontSize.md,
+        fontWeight: FontWeight.bold,
+        color: Colors.text,
+    },
+    sectionCount: {
+        fontSize: FontSize.xs,
+        color: Colors.textTertiary,
+        fontWeight: FontWeight.medium,
+    },
+
+    // Booking card
+    card: {
+        backgroundColor: Colors.card,
+        borderRadius: BorderRadius.lg,
+        padding: Spacing.lg,
+        marginBottom: Spacing.sm,
+        borderWidth: 1,
+        borderColor: Colors.border,
+    },
+    cardRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    cardAvatar: {
+        width: 46,
+        height: 46,
+        borderRadius: BorderRadius.md,
+        backgroundColor: Colors.primaryGlow,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: Spacing.md,
+        borderWidth: 1,
+        borderColor: Colors.borderActive,
+    },
+    cardAvatarText: {
+        fontSize: FontSize.sm,
+        fontWeight: FontWeight.bold,
+        color: Colors.primary,
+    },
+    cardInfo: {
+        flex: 1,
+        gap: 3,
+    },
+    cardName: {
+        fontSize: FontSize.md,
+        fontWeight: FontWeight.bold,
+        color: Colors.text,
+    },
+    cardSport: {
+        fontSize: FontSize.sm,
+        color: Colors.primary,
+        fontWeight: FontWeight.medium,
+    },
+    cardDate: {
+        fontSize: FontSize.xs,
+        color: Colors.textTertiary,
+    },
+    cardRight: {
+        alignItems: 'flex-end',
+        gap: Spacing.xs,
+    },
+    completedBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        backgroundColor: Colors.successLight,
+        paddingHorizontal: Spacing.sm,
+        paddingVertical: 3,
+        borderRadius: BorderRadius.pill,
+    },
+    completedText: {
+        fontSize: FontSize.xs,
+        color: Colors.success,
+        fontWeight: FontWeight.medium,
+    },
+    cardPrice: {
+        fontSize: FontSize.lg,
+        fontWeight: FontWeight.bold,
+        color: Colors.text,
+    },
+
+    // Empty state
+    emptyState: {
+        alignItems: 'center',
+        paddingTop: 80,
+        gap: Spacing.md,
+    },
+    emptyIconWrap: {
+        width: 80,
+        height: 80,
+        borderRadius: 40,
+        backgroundColor: Colors.primaryGlow,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: Spacing.sm,
+    },
+    emptyTitle: {
+        fontSize: FontSize.xl,
+        fontWeight: FontWeight.bold,
+        color: Colors.text,
+    },
+    emptyText: {
+        fontSize: FontSize.md,
+        color: Colors.textSecondary,
+        textAlign: 'center',
+        lineHeight: 22,
+        paddingHorizontal: Spacing.xxl,
+    },
 });

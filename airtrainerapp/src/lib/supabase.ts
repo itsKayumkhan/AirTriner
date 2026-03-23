@@ -84,6 +84,9 @@ export type TrainerProfileRow = {
   created_at: string;
   trainingTypes: string[] | null;
   preferredTrainingTimes: string[] | null;
+  is_founding_50?: boolean;
+  average_rating?: number;
+  total_reviews?: number;
 };
 
 export type AthleteProfileRow = {
