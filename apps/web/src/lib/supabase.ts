@@ -41,6 +41,7 @@ export type TrainerProfileRow = {
     subscription_expires_at: string | null;
     trial_started_at: string | null;
     stripe_account_id: string | null;
+    is_founding_50: boolean;
     completion_rate: number;
     reliability_score: number;
     total_sessions: number;

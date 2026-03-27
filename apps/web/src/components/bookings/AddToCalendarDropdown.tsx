@@ -202,7 +202,7 @@ export function AddToCalendarDropdown({ bookingId }: AddToCalendarDropdownProps)
 
             {/* Dropdown Menu */}
             {isOpen && (
-                <div className="absolute right-0 mt-2 w-64 bg-surface-elevated border border-white/10 rounded-xl shadow-2xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
+                <div className="absolute right-0 mt-2 w-64 bg-[#1E2130] border border-white/15 rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.6)] z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
                     <div className="p-1.5">
                         {/* Google Calendar */}
                         <button

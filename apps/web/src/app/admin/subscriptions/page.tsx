@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import {
     Search, Download, RefreshCw, Loader2, Crown, Clock, XCircle, CheckCircle,
-    TrendingUp, Users, AlertTriangle, MoreHorizontal
+    TrendingUp, Users, AlertTriangle, Trophy
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import PopupModal from "@/components/common/PopupModal";
@@ -18,6 +18,7 @@ type Subscription = {
     expiresAt: string | null;
     trialStartedAt: string | null;
     sport: string;
+    isFounding50: boolean;
 };
 
 export default function AdminSubscriptionsPage() {
@@ -56,13 +57,13 @@ export default function AdminSubscriptionsPage() {
     const loadData = async () => {
         setLoading(true);
         try {
-            // Fetch trainer profiles with subscription data, joined with users for names/emails
             const { data, error } = await supabase
                 .from("trainer_profiles")
                 .select(`
-                    id, user_id, subscription_status, subscription_expires_at, trial_started_at, sports,
+                    id, user_id, subscription_status, subscription_expires_at, trial_started_at, sports, is_founding_50,
                     users (id, first_name, last_name, email)
                 `)
+                .order("is_founding_50", { ascending: false })
                 .order("subscription_status", { ascending: true });
 
             if (error) throw error;
@@ -91,6 +92,7 @@ export default function AdminSubscriptionsPage() {
                         expiresAt: tp.subscription_expires_at,
                         trialStartedAt: tp.trial_started_at,
                         sport: Array.isArray(tp.sports) && tp.sports.length > 0 ? tp.sports[0] : "General",
+                        isFounding50: tp.is_founding_50 || false,
                     };
                 });
 
@@ -105,6 +107,40 @@ export default function AdminSubscriptionsPage() {
         } finally {
             setLoading(false);
         }
+    };
+
+    // Grant Founding 50: 6 months free subscription
+    const handleApproveFounding50 = async (profileId: string, trainerName: string) => {
+        showConfirm(
+            "Approve Founding 50",
+            `Grant ${trainerName} 6 months of free Pro access as a Founding 50 member?`,
+            async () => {
+                setProcessing(profileId);
+                try {
+                    const expiresAt = new Date();
+                    expiresAt.setMonth(expiresAt.getMonth() + 6);
+
+                    const { error } = await supabase
+                        .from("trainer_profiles")
+                        .update({
+                            subscription_status: "active",
+                            subscription_expires_at: expiresAt.toISOString(),
+                            is_founding_50: true,
+                        })
+                        .eq("id", profileId);
+
+                    if (error) throw error;
+
+                    loadData();
+                    showAlert("success", "Founding 50 Approved", `${trainerName} now has 6 months of free Pro access.`);
+                } catch (err) {
+                    console.error(err);
+                    showAlert("error", "Error", "Failed to approve Founding 50. Please try again.");
+                } finally {
+                    setProcessing(null);
+                }
+            }
+        );
     };
 
     const handleStatusChange = async (profileId: string, newStatus: string) => {
@@ -159,13 +195,19 @@ export default function AdminSubscriptionsPage() {
     };
 
     const filteredSubs = subscriptions.filter(s => {
-        if (activeTab !== "ALL" && s.status !== activeTab.toLowerCase()) return false;
+        if (activeTab === "FOUNDING50") {
+            if (!s.isFounding50) return false;
+        } else if (activeTab !== "ALL" && s.status !== activeTab.toLowerCase()) {
+            return false;
+        }
         if (searchQuery) {
             const q = searchQuery.toLowerCase();
             if (!s.trainerName.toLowerCase().includes(q) && !s.email.toLowerCase().includes(q)) return false;
         }
         return true;
     });
+
+    const founding50PendingCount = subscriptions.filter(s => s.isFounding50 && s.status !== "active").length;
 
     const statusConfig: Record<string, { color: string; bg: string; border: string; icon: React.ReactNode }> = {
         active: { color: "text-primary", bg: "bg-primary/10", border: "border-primary/20", icon: <CheckCircle size={12} /> },
@@ -244,18 +286,26 @@ export default function AdminSubscriptionsPage() {
                     />
                 </div>
 
-                <div className="flex bg-surface border border-white/5 rounded-full p-1.5 self-start md:self-auto">
-                    {["ALL", "ACTIVE", "TRIAL", "EXPIRED", "CANCELLED"].map(tab => (
+                <div className="flex flex-wrap gap-1 bg-surface border border-white/5 rounded-full p-1.5 self-start md:self-auto">
+                    {["ALL", "ACTIVE", "TRIAL", "EXPIRED", "CANCELLED", "FOUNDING50"].map(tab => (
                         <button
                             key={tab}
                             onClick={() => setActiveTab(tab)}
-                            className={`px-5 py-2 text-[10px] font-black uppercase tracking-widest rounded-full transition-all ${
+                            className={`px-4 py-2 text-[10px] font-black uppercase tracking-widest rounded-full transition-all flex items-center gap-1.5 ${
                                 activeTab === tab
-                                    ? "bg-[#272A35] text-text-main shadow-sm"
+                                    ? tab === "FOUNDING50"
+                                        ? "bg-yellow-500/20 text-yellow-400 shadow-sm"
+                                        : "bg-[#272A35] text-text-main shadow-sm"
                                     : "text-text-main/40 hover:text-text-main/80"
                             }`}
                         >
-                            {tab}
+                            {tab === "FOUNDING50" && <Trophy size={10} />}
+                            {tab === "FOUNDING50" ? "Founding 50" : tab}
+                            {tab === "FOUNDING50" && founding50PendingCount > 0 && (
+                                <span className="bg-yellow-500 text-bg text-[9px] font-black px-1.5 py-0.5 rounded-full leading-none">
+                                    {founding50PendingCount}
+                                </span>
+                            )}
                         </button>
                     ))}
                 </div>
@@ -275,6 +325,7 @@ export default function AdminSubscriptionsPage() {
                                 <th className="px-6 py-5 text-right">Actions</th>
                             </tr>
                         </thead>
+
                         <tbody className="text-sm border-t border-white/5">
                             {loading ? (
                                 <tr>
@@ -296,14 +347,22 @@ export default function AdminSubscriptionsPage() {
                             ) : (
                                 filteredSubs.map((s) => {
                                     const cfg = statusConfig[s.status] || statusConfig.cancelled;
+                                    const isFoundingPending = s.isFounding50 && s.status !== "active";
                                     return (
-                                        <tr key={s.id} className="border-b border-white/5/50 hover:bg-white/5 transition-colors">
+                                        <tr key={s.id} className={`border-b border-white/5/50 hover:bg-white/5 transition-colors ${isFoundingPending ? "bg-yellow-500/[0.02]" : ""}`}>
                                             <td className="px-6 py-5">
                                                 <div className="flex items-center gap-3">
                                                     <div className="w-9 h-9 rounded-full bg-[#1e3a8a]/30 flex-shrink-0 border border-[#2563eb]/20 flex items-center justify-center text-xs font-bold text-white uppercase">
                                                         {s.initials}
                                                     </div>
-                                                    <span className="font-bold text-text-main tracking-wide">{s.trainerName}</span>
+                                                    <div>
+                                                        <span className="font-bold text-text-main tracking-wide block">{s.trainerName}</span>
+                                                        {s.isFounding50 && (
+                                                            <span className="flex items-center gap-1 text-[10px] font-black text-yellow-500 uppercase tracking-wider">
+                                                                <Trophy size={10} /> Founding 50
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             </td>
                                             <td className="px-6 py-5 text-text-main/60 font-medium">{s.email}</td>
@@ -318,7 +377,18 @@ export default function AdminSubscriptionsPage() {
                                             </td>
                                             <td className="px-6 py-5 text-right">
                                                 <div className="flex items-center justify-end gap-2">
-                                                    {s.status === "trial" || s.status === "expired" ? (
+                                                    {/* Founding 50 pending approval — show gold button first */}
+                                                    {isFoundingPending && (
+                                                        <button
+                                                            onClick={() => handleApproveFounding50(s.id, s.trainerName)}
+                                                            disabled={processing === s.id}
+                                                            className="px-4 py-2 rounded-full bg-yellow-500/10 text-yellow-500 border border-yellow-500/20 text-[10px] font-black uppercase tracking-widest hover:bg-yellow-500 hover:text-bg transition-all disabled:opacity-50 flex items-center gap-1.5"
+                                                        >
+                                                            {processing === s.id ? <Loader2 size={14} className="inline animate-spin" /> : <><Trophy size={12} /> Approve F50</>}
+                                                        </button>
+                                                    )}
+                                                    {/* Standard activate/cancel */}
+                                                    {!isFoundingPending && (s.status === "trial" || s.status === "expired") && (
                                                         <button
                                                             onClick={() => handleStatusChange(s.id, "active")}
                                                             disabled={processing === s.id}
@@ -326,7 +396,8 @@ export default function AdminSubscriptionsPage() {
                                                         >
                                                             {processing === s.id ? <Loader2 size={14} className="inline animate-spin" /> : "Activate"}
                                                         </button>
-                                                    ) : s.status === "active" ? (
+                                                    )}
+                                                    {s.status === "active" && (
                                                         <button
                                                             onClick={() => handleStatusChange(s.id, "cancelled")}
                                                             disabled={processing === s.id}
@@ -334,7 +405,8 @@ export default function AdminSubscriptionsPage() {
                                                         >
                                                             {processing === s.id ? <Loader2 size={14} className="inline animate-spin" /> : "Cancel"}
                                                         </button>
-                                                    ) : (
+                                                    )}
+                                                    {!isFoundingPending && s.status === "cancelled" && (
                                                         <button
                                                             onClick={() => handleStatusChange(s.id, "active")}
                                                             disabled={processing === s.id}

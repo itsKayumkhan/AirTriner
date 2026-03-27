@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, CheckCircle, User, Edit2, ShieldAlert, MapPin, Clock } from "lucide-react";
+import { AlertTriangle, CheckCircle, User, Edit2, ShieldAlert, MapPin, Clock, Eye } from "lucide-react";
 import { useEffect, useState } from "react";
 import { getSession, setSession, clearSession, AuthUser } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
@@ -239,6 +239,18 @@ export default function ProfilePage() {
                         </>
                     ) : (
                         <>
+                            {isTrainer && user?.id && (
+                                <a
+                                    href={`/dashboard/trainers/${user.id}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-center gap-2 px-5 py-2.5 rounded-full border border-white/15 text-text-main/70 font-bold text-sm bg-white/4 hover:bg-white/8 hover:text-white transition-all"
+                                    title="See your profile as athletes see it"
+                                >
+                                    <Eye size={15} strokeWidth={2} />
+                                    Preview Public Profile
+                                </a>
+                            )}
                             <button
                                 onClick={() => setShowDeleteConfirm(true)}
                                 className="px-6 py-2.5 rounded-full border border-red-500/30 bg-red-500/10 text-red-500 font-bold text-sm hover:bg-red-500/20 transition-colors"

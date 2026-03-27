@@ -21,7 +21,8 @@ import {
     Menu,
     X,
     HelpCircle,
-    Send
+    Send,
+    Crown
 } from "lucide-react";
 import { IconButton } from "@/components/ui/Buttons";
 import { AuthContext } from "@/context/AuthContext";
@@ -143,6 +144,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             { label: "Bookings", href: "/dashboard/bookings", icon: Calendar },
             { label: "Payments", href: "/dashboard/earnings", icon: CreditCard },
             { label: "Reviews", href: "/dashboard/reviews", icon: Star },
+            {
+                label: "Subscription",
+                href: "/dashboard/subscription",
+                icon: Crown,
+                badge: (user.trainerProfile?.subscription_status === "trial" || user.trainerProfile?.subscription_status === "expired")
+                    ? (user.trainerProfile?.subscription_status === "expired" ? "!" : "Trial")
+                    : undefined,
+            },
         ] : []),
         ...(user.role === "athlete" ? [
             { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },

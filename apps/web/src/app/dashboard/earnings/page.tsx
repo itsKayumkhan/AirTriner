@@ -1,61 +1,150 @@
 "use client";
 
-import { Wallet, Download } from "lucide-react";
+import { Wallet, Download, Clock, ShieldCheck, TrendingUp, RotateCcw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { getSession, AuthUser } from "@/lib/auth";
 import { supabase, BookingRow } from "@/lib/supabase";
 
+type PaymentTransaction = {
+    id: string;
+    booking_id: string;
+    amount: number;
+    platform_fee: number;
+    trainer_payout: number;
+    status: string;
+    hold_until: string | null;
+    created_at: string;
+};
+
+type UpcomingBooking = BookingRow & {
+    payment_transaction?: PaymentTransaction | null;
+    athlete_name?: string;
+    trainer_name?: string;
+};
+
 export default function EarningsPage() {
     const [user, setUser] = useState<AuthUser | null>(null);
     const [completedBookings, setCompletedBookings] = useState<BookingRow[]>([]);
+    const [upcomingPaid, setUpcomingPaid] = useState<UpcomingBooking[]>([]);
+    // Athlete-specific: all payment transactions made by athlete
+    const [athleteTransactions, setAthleteTransactions] = useState<(PaymentTransaction & { booking?: BookingRow; trainer_name?: string })[]>([]);
     const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
 
     useEffect(() => {
         const session = getSession();
-        if (session) {
-            setUser(session);
-            loadEarnings(session);
-        }
+        if (session) { setUser(session); loadEarnings(session); }
     }, []);
 
-    const loadEarnings = async (u: AuthUser) => {
+    const loadEarnings = async (u: AuthUser, isRefresh = false) => {
+        if (isRefresh) setRefreshing(true);
         try {
             const column = u.role === "trainer" ? "trainer_id" : "athlete_id";
-            const { data } = await supabase
-                .from("bookings")
-                .select("*")
-                .eq(column, u.id)
-                .eq("status", "completed")
-                .order("scheduled_at", { ascending: false });
 
-            setCompletedBookings((data || []) as BookingRow[]);
+            // Completed bookings (for both roles — history)
+            const { data: completed } = await supabase
+                .from("bookings").select("*").eq(column, u.id)
+                .eq("status", "completed").order("scheduled_at", { ascending: false });
+            setCompletedBookings((completed || []) as BookingRow[]);
+
+            if (u.role === "trainer") {
+                // Trainer: upcoming confirmed with held payments
+                const { data: confirmedBookings } = await supabase
+                    .from("bookings").select("*").eq("trainer_id", u.id)
+                    .eq("status", "confirmed").order("scheduled_at", { ascending: true });
+
+                if (confirmedBookings?.length) {
+                    const bookingIds = confirmedBookings.map((b: BookingRow) => b.id);
+                    const { data: txData } = await supabase
+                        .from("payment_transactions").select("*").in("booking_id", bookingIds).eq("status", "held");
+                    const txMap = new Map((txData || []).map((t: PaymentTransaction) => [t.booking_id, t]));
+
+                    const athleteIds = [...new Set(confirmedBookings.map((b: BookingRow) => b.athlete_id))];
+                    const { data: athletes } = await supabase.from("users").select("id, first_name, last_name").in("id", athleteIds);
+                    const athleteMap = new Map((athletes || []).map((a: any) => [a.id, `${a.first_name} ${a.last_name}`]));
+
+                    setUpcomingPaid(
+                        confirmedBookings.filter((b: BookingRow) => txMap.has(b.id)).map((b: BookingRow) => ({
+                            ...b,
+                            payment_transaction: txMap.get(b.id) || null,
+                            athlete_name: athleteMap.get(b.athlete_id) as string || "Unknown",
+                        }))
+                    );
+                }
+            } else {
+                // Athlete: fetch ALL their bookings then get payment_transactions for those booking IDs
+                const { data: allBookings } = await supabase
+                    .from("bookings").select("*").eq("athlete_id", u.id).order("scheduled_at", { ascending: false });
+
+                if (allBookings?.length) {
+                    const bookingIds = allBookings.map((b: BookingRow) => b.id);
+                    const { data: txData } = await supabase
+                        .from("payment_transactions").select("*").in("booking_id", bookingIds).order("created_at", { ascending: false });
+
+                    const bookingMap = new Map((allBookings as BookingRow[]).map((b) => [b.id, b]));
+                    const trainerIds = [...new Set((allBookings as BookingRow[]).map((b) => b.trainer_id))];
+                    const { data: trainers } = await supabase.from("users").select("id, first_name, last_name").in("id", trainerIds);
+                    const trainerMap = new Map((trainers || []).map((t: any) => [t.id, `${t.first_name} ${t.last_name}`]));
+
+                    setAthleteTransactions(
+                        (txData || []).map((tx: PaymentTransaction) => ({
+                            ...tx,
+                            booking: bookingMap.get(tx.booking_id),
+                            trainer_name: trainerMap.get(bookingMap.get(tx.booking_id)?.trainer_id || "") || "Unknown",
+                        }))
+                    );
+
+                    // Upcoming confirmed paid (in escrow for athlete view)
+                    const { data: confirmedPaid } = await supabase
+                        .from("payment_transactions").select("*").in("booking_id", bookingIds).eq("status", "held");
+                    const confirmedTxMap = new Map((confirmedPaid || []).map((t: PaymentTransaction) => [t.booking_id, t]));
+                    const confirmedBookings = (allBookings as BookingRow[]).filter((b) => b.status === "confirmed" && confirmedTxMap.has(b.id));
+
+                    setUpcomingPaid(
+                        confirmedBookings.map((b) => ({
+                            ...b,
+                            payment_transaction: confirmedTxMap.get(b.id) || null,
+                            trainer_name: trainerMap.get(b.trainer_id) || "Unknown",
+                        }))
+                    );
+                }
+            }
         } catch (err) {
             console.error("Failed to load records:", err);
         } finally {
             setLoading(false);
+            setRefreshing(false);
         }
     };
 
     const isTrainer = user?.role === "trainer";
+
+    // Trainer stats
     const totalEarnings = completedBookings.reduce((s, b) => s + Number(b.price), 0);
     const totalFees = completedBookings.reduce((s, b) => s + Number(b.platform_fee), 0);
     const netEarnings = totalEarnings - totalFees;
+    const pendingPayout = upcomingPaid.reduce((s, b) => s + Number(b.payment_transaction?.trainer_payout || 0), 0);
 
-    const exportData = () => {
-        alert("Exporting CSV data...");
-    };
+    // Athlete stats (from payment_transactions)
+    const athleteTotalPaid = athleteTransactions.filter((t) => t.status !== "refunded").reduce((s, t) => s + Number(t.amount), 0);
+    const athleteRefunded = athleteTransactions.filter((t) => t.status === "refunded").reduce((s, t) => s + Number(t.amount), 0);
+    const athleteInEscrow = athleteTransactions.filter((t) => t.status === "held").reduce((s, t) => s + Number(t.amount), 0);
 
-    // Group by month
-    const monthlyData = new Map<string, { earnings: number; sessions: number }>();
-    completedBookings.forEach((b) => {
-        const month = new Date(b.scheduled_at).toLocaleString("en-US", { month: "short", year: "numeric" });
-        const existing = monthlyData.get(month) || { earnings: 0, sessions: 0 };
-        monthlyData.set(month, {
-            earnings: existing.earnings + Number(b.price),
-            sessions: existing.sessions + 1,
+    // Group by month (trainer: completed; athlete: from transactions)
+    const monthlyData = new Map<string, { amount: number; sessions: number }>();
+    if (isTrainer) {
+        completedBookings.forEach((b) => {
+            const month = new Date(b.scheduled_at).toLocaleString("en-US", { month: "short", year: "numeric" });
+            const ex = monthlyData.get(month) || { amount: 0, sessions: 0 };
+            monthlyData.set(month, { amount: ex.amount + Number(b.price), sessions: ex.sessions + 1 });
         });
-    });
-
+    } else {
+        athleteTransactions.filter((t) => t.status !== "refunded").forEach((t) => {
+            const month = new Date(t.created_at).toLocaleString("en-US", { month: "short", year: "numeric" });
+            const ex = monthlyData.get(month) || { amount: 0, sessions: 0 };
+            monthlyData.set(month, { amount: ex.amount + Number(t.amount), sessions: ex.sessions + 1 });
+        });
+    }
     const months = Array.from(monthlyData.entries());
 
     if (loading) {
@@ -74,36 +163,132 @@ export default function EarningsPage() {
                     <p className="text-text-main/60 text-sm">{isTrainer ? "Track your income from completed sessions." : "Track your payments for completed sessions."}</p>
                 </div>
                 <button
-                    onClick={exportData}
-                    className="flex items-center gap-2 px-4 py-2 bg-[#272A35] hover:bg-white/10 border border-white/5 rounded-xl text-sm font-bold text-white transition-colors"
+                    onClick={() => user && loadEarnings(user, true)}
+                    disabled={refreshing}
+                    className="flex items-center gap-2 px-4 py-2 bg-[#272A35] hover:bg-white/10 border border-white/5 rounded-xl text-sm font-bold text-white transition-colors disabled:opacity-50"
                 >
-                    <Download size={16} /> Export CSV
+                    <RotateCcw size={14} className={refreshing ? "animate-spin" : ""} />
+                    {refreshing ? "Refreshing..." : "Refresh"}
                 </button>
             </div>
 
             {/* Summary Cards */}
-            <div className={`grid gap-5 mb-8 ${isTrainer ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-4" : "grid-cols-1 sm:grid-cols-2"}`}>
-                <div className="bg-surface rounded-2xl p-7 border border-white/5">
-                    <div className="text-xs text-text-main/50 mb-2 uppercase tracking-wider font-bold">{isTrainer ? "Total Earned" : "Total Spent"}</div>
-                    <div className="text-3xl font-black font-display text-green-500">${totalEarnings.toFixed(2)}</div>
-                </div>
-                {isTrainer && (
-                    <>
-                        <div className="bg-surface rounded-2xl p-7 border border-white/5">
-                            <div className="text-xs text-text-main/50 mb-2 uppercase tracking-wider font-bold">Platform Fees</div>
-                            <div className="text-3xl font-black font-display text-orange-500">-${totalFees.toFixed(2)}</div>
+            {isTrainer ? (
+                <div className="grid gap-5 mb-8 grid-cols-2 lg:grid-cols-4">
+                    <div className="bg-surface rounded-2xl p-7 border border-white/5">
+                        <div className="text-xs text-text-main/50 mb-2 uppercase tracking-wider font-bold">Total Earned</div>
+                        <div className="text-3xl font-black font-display text-green-500">${totalEarnings.toFixed(2)}</div>
+                    </div>
+                    <div className="bg-surface rounded-2xl p-7 border border-white/5">
+                        <div className="text-xs text-text-main/50 mb-2 uppercase tracking-wider font-bold">Platform Fees</div>
+                        <div className="text-3xl font-black font-display text-orange-500">-${totalFees.toFixed(2)}</div>
+                    </div>
+                    <div className="bg-surface rounded-2xl p-7 border border-white/5">
+                        <div className="text-xs text-text-main/50 mb-2 uppercase tracking-wider font-bold">Net Earnings</div>
+                        <div className="text-3xl font-black font-display bg-primary bg-clip-text text-transparent">${netEarnings.toFixed(2)}</div>
+                    </div>
+                    <div className="bg-surface rounded-2xl p-7 border border-white/5 border-l-2 border-l-yellow-500/50">
+                        <div className="flex items-center gap-2 text-xs text-text-main/50 mb-2 uppercase tracking-wider font-bold">
+                            <Clock size={12} className="text-yellow-500" /> In Escrow
                         </div>
-                        <div className="bg-surface rounded-2xl p-7 border border-white/5">
-                            <div className="text-xs text-text-main/50 mb-2 uppercase tracking-wider font-bold">Net Earnings</div>
-                            <div className="text-3xl font-black font-display bg-primary bg-clip-text text-transparent">${netEarnings.toFixed(2)}</div>
-                        </div>
-                    </>
-                )}
-                <div className="bg-surface rounded-2xl p-7 border border-white/5">
-                    <div className="text-xs text-text-main/50 mb-2 uppercase tracking-wider font-bold">Completed Sessions</div>
-                    <div className="text-3xl font-black font-display">{completedBookings.length}</div>
+                        <div className="text-3xl font-black font-display text-yellow-400">${pendingPayout.toFixed(2)}</div>
+                        <div className="text-[10px] text-text-main/40 mt-1 font-medium">{upcomingPaid.length} session{upcomingPaid.length !== 1 ? "s" : ""} pending</div>
+                    </div>
                 </div>
-            </div>
+            ) : (
+                <div className="grid gap-5 mb-8 grid-cols-2 lg:grid-cols-4">
+                    <div className="bg-surface rounded-2xl p-7 border border-white/5">
+                        <div className="text-xs text-text-main/50 mb-2 uppercase tracking-wider font-bold">Total Paid</div>
+                        <div className="text-3xl font-black font-display text-green-500">${athleteTotalPaid.toFixed(2)}</div>
+                        <div className="text-[10px] text-text-main/40 mt-1">{athleteTransactions.filter(t => t.status !== "refunded").length} payment{athleteTransactions.filter(t => t.status !== "refunded").length !== 1 ? "s" : ""}</div>
+                    </div>
+                    <div className="bg-surface rounded-2xl p-7 border border-white/5 border-l-2 border-l-yellow-500/50">
+                        <div className="flex items-center gap-2 text-xs text-text-main/50 mb-2 uppercase tracking-wider font-bold">
+                            <Clock size={12} className="text-yellow-500" /> In Escrow
+                        </div>
+                        <div className="text-3xl font-black font-display text-yellow-400">${athleteInEscrow.toFixed(2)}</div>
+                        <div className="text-[10px] text-text-main/40 mt-1">{upcomingPaid.length} upcoming session{upcomingPaid.length !== 1 ? "s" : ""}</div>
+                    </div>
+                    <div className="bg-surface rounded-2xl p-7 border border-white/5">
+                        <div className="text-xs text-text-main/50 mb-2 uppercase tracking-wider font-bold">Completed Sessions</div>
+                        <div className="text-3xl font-black font-display">{completedBookings.length}</div>
+                    </div>
+                    {athleteRefunded > 0 && (
+                        <div className="bg-surface rounded-2xl p-7 border border-white/5 border-l-2 border-l-blue-500/50">
+                            <div className="text-xs text-text-main/50 mb-2 uppercase tracking-wider font-bold">Refunded</div>
+                            <div className="text-3xl font-black font-display text-blue-400">${athleteRefunded.toFixed(2)}</div>
+                            <div className="text-[10px] text-text-main/40 mt-1">{athleteTransactions.filter(t => t.status === "refunded").length} refund{athleteTransactions.filter(t => t.status === "refunded").length !== 1 ? "s" : ""}</div>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* Upcoming Payments in Escrow — trainer only */}
+            {isTrainer && upcomingPaid.length > 0 && (
+                <div className="bg-surface rounded-2xl border border-white/5 mb-8 overflow-hidden">
+                    <div className="px-6 py-5 border-b border-white/5 flex items-center gap-3">
+                        <ShieldCheck size={18} className="text-yellow-400" />
+                        <div>
+                            <h3 className="text-base font-bold font-display uppercase tracking-wider">Upcoming Payouts</h3>
+                            <p className="text-xs text-text-main/50 font-medium mt-0.5">Funds held in escrow — released after session completes</p>
+                        </div>
+                    </div>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                            <thead>
+                                <tr className="bg-[#272A35]">
+                                    <th className="text-left px-6 py-3 font-bold text-text-main/40 text-[10px] uppercase tracking-widest">Session Date</th>
+                                    <th className="text-left px-4 py-3 font-bold text-text-main/40 text-[10px] uppercase tracking-widest">Athlete</th>
+                                    <th className="text-left px-4 py-3 font-bold text-text-main/40 text-[10px] uppercase tracking-widest">Sport</th>
+                                    <th className="text-left px-4 py-3 font-bold text-text-main/40 text-[10px] uppercase tracking-widest">Releases</th>
+                                    <th className="text-right px-6 py-3 font-bold text-text-main/40 text-[10px] uppercase tracking-widest">Your Payout</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {upcomingPaid.map((b) => {
+                                    const sessionDate = new Date(b.scheduled_at);
+                                    const isPast = sessionDate < new Date();
+                                    const holdUntil = b.payment_transaction?.hold_until
+                                        ? new Date(b.payment_transaction.hold_until)
+                                        : null;
+
+                                    return (
+                                        <tr key={b.id} className="border-b border-white/5 last:border-0 hover:bg-white/5 transition-colors">
+                                            <td className="px-6 py-4 whitespace-nowrap">
+                                                <div className="font-bold text-sm">{sessionDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</div>
+                                                <div className="text-xs text-text-main/40 font-medium">{sessionDate.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}</div>
+                                            </td>
+                                            <td className="px-4 py-4 font-medium whitespace-nowrap">{b.athlete_name}</td>
+                                            <td className="px-4 py-4 font-medium capitalize whitespace-nowrap">{b.sport.replace(/_/g, " ")} · {b.duration_minutes}min</td>
+                                            <td className="px-4 py-4 whitespace-nowrap">
+                                                {holdUntil ? (
+                                                    <span className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-lg ${isPast ? "bg-green-500/10 text-green-400" : "bg-yellow-500/10 text-yellow-400"}`}>
+                                                        <Clock size={11} />
+                                                        {isPast ? "Ready soon" : holdUntil.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-text-main/40 text-xs">After session</span>
+                                                )}
+                                            </td>
+                                            <td className="px-6 py-4 text-right whitespace-nowrap">
+                                                <div className="font-black text-yellow-400">${Number(b.payment_transaction?.trainer_payout || 0).toFixed(2)}</div>
+                                                <div className="text-[10px] text-text-main/40 font-medium">of ${Number(b.total_paid).toFixed(2)} paid</div>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div className="px-6 py-4 border-t border-white/5 bg-yellow-500/5 flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-xs text-yellow-400/80 font-medium">
+                            <TrendingUp size={14} />
+                            Complete sessions to release funds to your account
+                        </div>
+                        <div className="text-sm font-black text-yellow-400">Total: ${pendingPayout.toFixed(2)}</div>
+                    </div>
+                </div>
+            )}
 
             {/* Monthly Breakdown */}
             {months.length > 0 && (
@@ -118,46 +303,109 @@ export default function EarningsPage() {
                                     <div className="font-bold text-sm mb-0.5">{month}</div>
                                     <div className="text-xs text-text-main/50 font-medium">{data.sessions} session{data.sessions !== 1 ? "s" : ""}</div>
                                 </div>
-                                <div className="text-base font-black text-green-500">${data.earnings.toFixed(2)}</div>
+                                <div className="text-base font-black text-green-500">${data.amount.toFixed(2)}</div>
                             </div>
                         ))}
                     </div>
                 </div>
             )}
 
-            {/* Recent Transactions */}
+            {/* Session History */}
             <div className="bg-surface rounded-2xl border border-white/5 overflow-hidden">
                 <div className="px-6 py-5 border-b border-white/5">
-                    <h3 className="text-base font-bold font-display uppercase tracking-wider">Session History</h3>
+                    <h3 className="text-base font-bold font-display uppercase tracking-wider">
+                        {isTrainer ? "Session History" : "Payment History"}
+                    </h3>
                 </div>
-                {completedBookings.length === 0 ? (
-                    <div className="p-12 text-center">
-                        <Wallet className="text-text-main/20 w-12 h-12 mb-4 mx-auto" strokeWidth={1} />
-                        <p className="text-text-main/50 font-medium tracking-wide">No completed sessions yet. {isTrainer ? "Start accepting bookings!" : "Book your first session!"}</p>
-                    </div>
-                ) : (
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                            <thead>
-                                <tr className="bg-[#272A35]">
-                                    <th className="text-left px-6 py-3 font-bold text-text-main/40 text-[10px] uppercase tracking-widest leading-none">Date</th>
-                                    <th className="text-left px-4 py-3 font-bold text-text-main/40 text-[10px] uppercase tracking-widest leading-none">Sport</th>
-                                    <th className="text-left px-4 py-3 font-bold text-text-main/40 text-[10px] uppercase tracking-widest leading-none">Duration</th>
-                                    <th className="text-right px-6 py-3 font-bold text-text-main/40 text-[10px] uppercase tracking-widest leading-none">Amount</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {completedBookings.map((b) => (
-                                    <tr key={b.id} className="border-b border-white/5 last:border-0 hover:bg-white/5 transition-colors">
-                                        <td className="px-6 py-4 font-medium whitespace-nowrap">{new Date(b.scheduled_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</td>
-                                        <td className="px-4 py-4 font-medium capitalize whitespace-nowrap">{b.sport.replace(/_/g, " ")}</td>
-                                        <td className="px-4 py-4 font-medium text-text-main/60 whitespace-nowrap">{b.duration_minutes} min</td>
-                                        <td className="px-6 py-4 text-right font-black text-green-500 whitespace-nowrap">${Number(b.price).toFixed(2)}</td>
+
+                {/* Trainer history */}
+                {isTrainer && (
+                    completedBookings.length === 0 ? (
+                        <div className="p-12 text-center">
+                            <Wallet className="text-text-main/20 w-12 h-12 mb-4 mx-auto" strokeWidth={1} />
+                            <p className="text-text-main/50 font-medium">No completed sessions yet. Start accepting bookings!</p>
+                        </div>
+                    ) : (
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                                <thead>
+                                    <tr className="bg-[#272A35]">
+                                        <th className="text-left px-6 py-3 font-bold text-text-main/40 text-[10px] uppercase tracking-widest">Date</th>
+                                        <th className="text-left px-4 py-3 font-bold text-text-main/40 text-[10px] uppercase tracking-widest">Sport</th>
+                                        <th className="text-left px-4 py-3 font-bold text-text-main/40 text-[10px] uppercase tracking-widest">Duration</th>
+                                        <th className="text-right px-6 py-3 font-bold text-text-main/40 text-[10px] uppercase tracking-widest">Amount</th>
                                     </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
+                                </thead>
+                                <tbody>
+                                    {completedBookings.map((b) => (
+                                        <tr key={b.id} className="border-b border-white/5 last:border-0 hover:bg-white/5 transition-colors">
+                                            <td className="px-6 py-4 font-medium whitespace-nowrap">{new Date(b.scheduled_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</td>
+                                            <td className="px-4 py-4 font-medium capitalize whitespace-nowrap">{b.sport.replace(/_/g, " ")}</td>
+                                            <td className="px-4 py-4 font-medium text-text-main/60 whitespace-nowrap">{b.duration_minutes} min</td>
+                                            <td className="px-6 py-4 text-right font-black text-green-500 whitespace-nowrap">${Number(b.price).toFixed(2)}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )
+                )}
+
+                {/* Athlete history — from payment_transactions */}
+                {!isTrainer && (
+                    athleteTransactions.length === 0 ? (
+                        <div className="p-12 text-center">
+                            <Wallet className="text-text-main/20 w-12 h-12 mb-4 mx-auto" strokeWidth={1} />
+                            <p className="text-text-main/50 font-medium">No payments yet. Book your first session!</p>
+                        </div>
+                    ) : (
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                                <thead>
+                                    <tr className="bg-[#272A35]">
+                                        <th className="text-left px-6 py-3 font-bold text-text-main/40 text-[10px] uppercase tracking-widest">Date Paid</th>
+                                        <th className="text-left px-4 py-3 font-bold text-text-main/40 text-[10px] uppercase tracking-widest">Trainer</th>
+                                        <th className="text-left px-4 py-3 font-bold text-text-main/40 text-[10px] uppercase tracking-widest">Sport</th>
+                                        <th className="text-left px-4 py-3 font-bold text-text-main/40 text-[10px] uppercase tracking-widest">Status</th>
+                                        <th className="text-right px-6 py-3 font-bold text-text-main/40 text-[10px] uppercase tracking-widest">Amount</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {athleteTransactions.map((tx) => (
+                                        <tr key={tx.id} className="border-b border-white/5 last:border-0 hover:bg-white/5 transition-colors">
+                                            <td className="px-6 py-4 font-medium whitespace-nowrap">
+                                                {new Date(tx.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                                            </td>
+                                            <td className="px-4 py-4 font-medium whitespace-nowrap">{tx.trainer_name}</td>
+                                            <td className="px-4 py-4 font-medium capitalize whitespace-nowrap">
+                                                {tx.booking?.sport?.replace(/_/g, " ") || "—"} · {tx.booking?.duration_minutes || "—"}min
+                                            </td>
+                                            <td className="px-4 py-4 whitespace-nowrap">
+                                                {tx.status === "held" && (
+                                                    <span className="inline-flex items-center gap-1 text-[11px] font-bold text-yellow-400 bg-yellow-500/10 border border-yellow-500/20 px-2 py-0.5 rounded-lg">
+                                                        <Clock size={10} /> In Escrow
+                                                    </span>
+                                                )}
+                                                {tx.status === "released" && (
+                                                    <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-lg">
+                                                        <ShieldCheck size={10} /> Released
+                                                    </span>
+                                                )}
+                                                {tx.status === "refunded" && (
+                                                    <span className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-400 bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded-lg">
+                                                        ↩ Refunded
+                                                    </span>
+                                                )}
+                                            </td>
+                                            <td className={`px-6 py-4 text-right font-black whitespace-nowrap ${tx.status === "refunded" ? "text-blue-400 line-through opacity-60" : "text-green-500"}`}>
+                                                ${Number(tx.amount).toFixed(2)}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )
                 )}
             </div>
         </div>

@@ -3,11 +3,16 @@
 import { useEffect, useState } from "react";
 import { getSession, AuthUser } from "@/lib/auth";
 import { supabase, BookingRow } from "@/lib/supabase";
-import { Inbox, Activity, Clock, DollarSign, MapPin, Star, Check, X, RefreshCw, FileText, CalendarClock } from "lucide-react";
+import {
+    Inbox, Activity, Clock, DollarSign, MapPin, Star, Check, X,
+    RefreshCw, FileText, CalendarClock, CreditCard, ShieldCheck,
+    Loader2, AlertCircle, RotateCcw, ChevronRight, Zap,
+} from "lucide-react";
 import { RescheduleDialog } from "@/components/bookings/RescheduleDialog";
 import { AddToCalendarDropdown } from "@/components/bookings/AddToCalendarDropdown";
 import { CancelBookingDialog } from "@/components/bookings/CancelBookingDialog";
 import { ReviewModal } from "@/components/bookings/ReviewModal";
+import { ToastContainer, useToast } from "@/components/ui/Toast";
 
 type RescheduleInfo = {
     id: string;
@@ -22,14 +27,32 @@ type BookingWithUser = BookingRow & {
     review?: { rating: number; review_text: string | null } | null;
 };
 
+const STATUS_CFG: Record<string, {
+    label: string; pill: string; bar: string;
+    dot: string; glow: string; dimCard: boolean;
+}> = {
+    pending:              { label: "Pending",      pill: "bg-amber-500/12 text-amber-400 border-amber-500/25",   bar: "bg-amber-500",   dot: "bg-amber-400",   glow: "shadow-amber-500/10",  dimCard: false },
+    confirmed:            { label: "Confirmed",    pill: "bg-sky-500/12 text-sky-400 border-sky-500/25",         bar: "bg-sky-500",     dot: "bg-sky-400",     glow: "shadow-sky-500/10",    dimCard: false },
+    completed:            { label: "Completed",    pill: "bg-emerald-500/12 text-emerald-400 border-emerald-500/25", bar: "bg-emerald-500", dot: "bg-emerald-400", glow: "shadow-emerald-500/10", dimCard: false },
+    cancelled:            { label: "Cancelled",    pill: "bg-red-500/10 text-red-400 border-red-500/20",         bar: "bg-red-500",     dot: "bg-red-400",     glow: "",                     dimCard: true  },
+    rejected:             { label: "Rejected",     pill: "bg-red-500/10 text-red-400 border-red-500/20",         bar: "bg-red-500",     dot: "bg-red-400",     glow: "",                     dimCard: true  },
+    no_show:              { label: "No Show",      pill: "bg-purple-500/10 text-purple-400 border-purple-500/20",bar: "bg-purple-500",  dot: "bg-purple-400",  glow: "",                     dimCard: true  },
+    disputed:             { label: "Disputed",     pill: "bg-red-500/10 text-red-400 border-red-500/20",         bar: "bg-red-500",     dot: "bg-red-400",     glow: "",                     dimCard: true  },
+    reschedule_requested: { label: "Rescheduling", pill: "bg-cyan-500/12 text-cyan-400 border-cyan-500/25",      bar: "bg-cyan-500",    dot: "bg-cyan-400",    glow: "shadow-cyan-500/10",   dimCard: false },
+};
+
 export default function BookingsPage() {
     const [user, setUser] = useState<AuthUser | null>(null);
     const [bookings, setBookings] = useState<BookingWithUser[]>([]);
     const [filter, setFilter] = useState<string>("all");
     const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
     const [actionLoading, setActionLoading] = useState<string | null>(null);
+    const { toasts, remove, success: toastSuccess, error: toastError } = useToast();
 
-    // Review modal state
+    const [paidBookingIds, setPaidBookingIds] = useState<Set<string>>(new Set());
+    const [paymentLoading, setPaymentLoading] = useState<string | null>(null);
+
     const [reviewModalOpen, setReviewModalOpen] = useState(false);
     const [reviewBooking, setReviewBooking] = useState<BookingWithUser | null>(null);
     const [reviewRating, setReviewRating] = useState(5);
@@ -37,617 +60,535 @@ export default function BookingsPage() {
     const [submittingReview, setSubmittingReview] = useState(false);
     const [isReviewReadOnly, setIsReviewReadOnly] = useState(false);
 
-    // Reschedule dialog state
     const [rescheduleBooking, setRescheduleBooking] = useState<BookingWithUser | null>(null);
-
-    // Cancel dialog state
     const [cancelBooking, setCancelBooking] = useState<BookingWithUser | null>(null);
 
     useEffect(() => {
         const session = getSession();
-        if (session) {
-            setUser(session);
-            loadBookings(session);
-        }
+        if (session) { setUser(session); loadBookings(session); }
     }, []);
 
-    // Subscribe to realtime booking status changes
     useEffect(() => {
         if (!user) return;
-
         const column = user.role === "trainer" ? "trainer_id" : "athlete_id";
-        const subscription = supabase
-            .channel(`bookings:${user.id}`)
-            .on(
-                "postgres_changes",
-                {
-                    event: "UPDATE",
-                    schema: "public",
-                    table: "bookings",
-                    filter: `${column}=eq.${user.id}`,
-                },
-                () => {
-                    // Refetch all bookings when any booking is updated
-                    loadBookings(user);
-                }
-            )
+        const sub = supabase.channel(`bookings:${user.id}`)
+            .on("postgres_changes", { event: "UPDATE", schema: "public", table: "bookings", filter: `${column}=eq.${user.id}` },
+                () => loadBookings(user))
             .subscribe();
-
-        return () => {
-            subscription.unsubscribe();
-        };
+        return () => { sub.unsubscribe(); };
     }, [user]);
 
-    const loadBookings = async (u: AuthUser) => {
+    const loadBookings = async (u: AuthUser, isRefresh = false) => {
+        if (isRefresh) setRefreshing(true);
         try {
             const column = u.role === "trainer" ? "trainer_id" : "athlete_id";
-            const { data: bookingData } = await supabase
-                .from("bookings")
-                .select("*")
-                .eq(column, u.id)
-                .order("scheduled_at", { ascending: false });
+            const { data: bookingData } = await supabase.from("bookings").select("*").eq(column, u.id).order("scheduled_at", { ascending: false });
 
-            const allBookings = (bookingData || []) as BookingRow[];
-            const otherIds = allBookings.map((b) => (u.role === "trainer" ? b.athlete_id : b.trainer_id));
-
-            const { data: users } = await supabase
-                .from("users")
-                .select("id, first_name, last_name, email")
-                .in("id", [...new Set(otherIds)]);
-
-            const usersMap = new Map(
-                (users || []).map((u: { id: string; first_name: string; last_name: string; email: string }) => [u.id, u])
-            );
-
-            // Fetch pending reschedule requests for these bookings
-            const rescheduleBookingIds = allBookings
-                .filter((b) => b.status === "reschedule_requested")
-                .map((b) => b.id);
-
-            let rescheduleMap = new Map<string, RescheduleInfo>();
-            if (rescheduleBookingIds.length > 0) {
-                const { data: rescheduleData } = await supabase
-                    .from("reschedule_requests")
-                    .select("id, booking_id, proposed_time, reason, initiated_by")
-                    .in("booking_id", rescheduleBookingIds)
-                    .eq("status", "pending");
-
-                (rescheduleData || []).forEach((r: any) => {
-                    rescheduleMap.set(r.booking_id, {
-                        id: r.id,
-                        proposed_time: r.proposed_time,
-                        reason: r.reason,
-                        initiated_by: r.initiated_by,
-                    });
-                });
+            if (bookingData?.length) {
+                const ids = bookingData.map((b: BookingRow) => b.id);
+                const { data: txData } = await supabase.from("payment_transactions").select("booking_id").in("booking_id", ids);
+                setPaidBookingIds(new Set((txData || []).map((t: any) => t.booking_id)));
             }
 
-            // Fetch reviews for these bookings
-            const { data: reviewData } = await supabase
-                .from("reviews")
-                .select("booking_id, rating, review_text")
-                .in("booking_id", allBookings.map((b) => b.id));
+            const all = (bookingData || []) as BookingRow[];
+            const otherIds = all.map((b) => (u.role === "trainer" ? b.athlete_id : b.trainer_id));
+            const { data: users } = await supabase.from("users").select("id, first_name, last_name, email").in("id", [...new Set(otherIds)]);
+            const usersMap = new Map((users || []).map((u: any) => [u.id, u]));
 
-            const reviewMap = new Map((reviewData || []).map((r) => [r.booking_id, r]));
+            const reschedIds = all.filter((b) => b.status === "reschedule_requested").map((b) => b.id);
+            let reschedMap = new Map<string, RescheduleInfo>();
+            if (reschedIds.length) {
+                const { data: rd } = await supabase.from("reschedule_requests").select("id, booking_id, proposed_time, reason, initiated_by").in("booking_id", reschedIds).eq("status", "pending");
+                (rd || []).forEach((r: any) => reschedMap.set(r.booking_id, { id: r.id, proposed_time: r.proposed_time, reason: r.reason, initiated_by: r.initiated_by }));
+            }
 
-            setBookings(
-                allBookings.map((b) => ({
-                    ...b,
-                    other_user: usersMap.get(u.role === "trainer" ? b.athlete_id : b.trainer_id) as BookingWithUser["other_user"],
-                    reschedule_request: rescheduleMap.get(b.id) || null,
-                    review: reviewMap.get(b.id) || null,
-                }))
-            );
-        } catch (err) {
-            console.error("Failed to load bookings:", err);
-        } finally {
-            setLoading(false);
-        }
+            const { data: revData } = await supabase.from("reviews").select("booking_id, rating, review_text").in("booking_id", all.map((b) => b.id));
+            const revMap = new Map((revData || []).map((r) => [r.booking_id, r]));
+
+            setBookings(all.map((b) => ({
+                ...b,
+                other_user: usersMap.get(u.role === "trainer" ? b.athlete_id : b.trainer_id) as BookingWithUser["other_user"],
+                reschedule_request: reschedMap.get(b.id) || null,
+                review: revMap.get(b.id) || null,
+            })));
+        } catch (err) { console.error(err); }
+        finally { setLoading(false); setRefreshing(false); }
     };
 
     const cancelWithReason = async (bookingId: string, reason: string) => {
         setActionLoading(bookingId);
         try {
-            await supabase.from("bookings").update({
-                status: "cancelled",
-                cancelled_at: new Date().toISOString(),
-                cancellation_reason: reason,
-                updated_at: new Date().toISOString(),
-            }).eq("id", bookingId);
-
-            // Send notification to the other party
-            const booking = bookings.find((b) => b.id === bookingId);
-            if (booking && user) {
-                const notifyUserId = user.role === "trainer" ? booking.athlete_id : booking.trainer_id;
-                await supabase.from("notifications").insert({
-                    user_id: notifyUserId,
-                    type: "BOOKING_CANCELLED",
-                    title: "Booking Cancelled",
-                    body: `Your ${booking.sport} booking has been cancelled. Reason: ${reason}`,
-                    data: { booking_id: bookingId },
-                    read: false,
-                });
+            if (paidBookingIds.has(bookingId)) {
+                const res = await fetch("/api/stripe/refund-booking", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ bookingId, cancelledBy: user?.role, reason }) });
+                const data = await res.json();
+                if (!res.ok) { toastError("Refund Failed", data.error); return; }
+                setPaidBookingIds((p) => { const n = new Set(p); n.delete(bookingId); return n; });
             }
-
-            // Refresh bookings list
+            await supabase.from("bookings").update({ status: "cancelled", cancelled_at: new Date().toISOString(), cancellation_reason: reason, updated_at: new Date().toISOString() }).eq("id", bookingId);
             if (user) loadBookings(user);
-        } catch (err) {
-            console.error("Failed to cancel booking:", err);
-        } finally {
-            setActionLoading(null);
-        }
+        } catch (err) { console.error(err); }
+        finally { setActionLoading(null); }
     };
 
-    const updateBookingStatus = async (bookingId: string, newStatus: string) => {
+    const updateStatus = async (bookingId: string, newStatus: string) => {
         setActionLoading(bookingId);
         try {
-            const updates: Record<string, unknown> = { status: newStatus, updated_at: new Date().toISOString() };
-
-            const { data, error } = await supabase
-                .from("bookings")
-                .update(updates)
-                .eq("id", bookingId)
-                .select("*");
-
-            if (error) {
-                console.error(`Error updating booking ${bookingId} to ${newStatus}:`, error);
-                alert(`Failed to update status: ${error.message}`);
-                return;
-            }
-
-            if (!data || data.length === 0) {
-                alert("Failed to update status: Permission denied or record not found.");
-                return;
-            }
-
-            // Get booking details for notification
-            const booking = bookings.find((b) => b.id === bookingId);
-            if (booking) {
-                const isTrainer = user?.role === "trainer";
-                const isAthlete = user?.role === "athlete";
-
-                // Send notification when coach confirms booking
-                if (newStatus === "confirmed" && isTrainer) {
-                    await supabase.from("notifications").insert({
-                        user_id: booking.athlete_id,
-                        type: "BOOKING_CONFIRMED",
-                        title: "Booking Confirmed",
-                        body: `Your trainer has confirmed your booking for ${booking.sport}.`,
-                        data: { booking_id: bookingId },
-                        read: false,
-                    });
-                }
-
-                // Send notification when coach marks complete
-                if (newStatus === "completed" && isTrainer) {
-                    await supabase.from("notifications").insert({
-                        user_id: booking.athlete_id,
-                        type: "BOOKING_COMPLETED",
-                        title: "Session Completed",
-                        body: `Your ${booking.sport} session has been marked as completed. Please leave a review!`,
-                        data: { booking_id: bookingId },
-                        read: false,
-                    });
-                }
-
-                // Send notification when athlete cancels (to trainer)
-                if (newStatus === "cancelled" && isAthlete) {
-                    await supabase.from("notifications").insert({
-                        user_id: booking.trainer_id,
-                        type: "BOOKING_CANCELLED",
-                        title: "Booking Cancelled",
-                        body: `A booking for ${booking.sport} has been cancelled by the athlete.`,
-                        data: { booking_id: bookingId },
-                        read: false,
-                    });
-                }
-
-                // Send notification when trainer rejects booking
-                if (newStatus === "rejected" && isTrainer) {
-                    await supabase.from("notifications").insert({
-                        user_id: booking.athlete_id,
-                        type: "BOOKING_REJECTED",
-                        title: "Booking Rejected",
-                        body: `Your booking request for ${booking.sport} was declined by the trainer.`,
-                        data: { booking_id: bookingId },
-                        read: false,
-                    });
-                }
-
-                // Send notification when trainer cancels (to athlete)
-                if (newStatus === "cancelled" && isTrainer) {
-                    await supabase.from("notifications").insert({
-                        user_id: booking.athlete_id,
-                        type: "BOOKING_CANCELLED",
-                        title: "Booking Cancelled",
-                        body: `Your booking for ${booking.sport} has been cancelled by the trainer.`,
-                        data: { booking_id: bookingId },
-                        read: false,
-                    });
-                }
-            }
-
-            setBookings((prev) =>
-                prev.map((b) => (b.id === bookingId ? { ...b, status: newStatus as BookingRow["status"] } : b))
-            );
-
-            alert(`Booking successfully marked as ${newStatus}!`);
-        } catch (err: any) {
-            console.error("Failed to update booking:", err);
-            alert(`Error: ${err.message || "Unknown error"}`);
-        } finally {
-            setActionLoading(null);
-        }
+            const { data, error } = await supabase.from("bookings").update({ status: newStatus, updated_at: new Date().toISOString() }).eq("id", bookingId).select("*");
+            if (error || !data?.length) { toastError("Failed", error?.message || "Permission denied"); return; }
+            setBookings((p) => p.map((b) => b.id === bookingId ? { ...b, status: newStatus as BookingRow["status"] } : b));
+            const labels: Record<string, string> = { confirmed: "Booking Confirmed", completed: "Session Complete", cancelled: "Cancelled", rejected: "Rejected" };
+            toastSuccess(labels[newStatus] || "Updated");
+        } catch (err: any) { toastError("Error", err.message); }
+        finally { setActionLoading(null); }
     };
 
     const respondToReschedule = async (bookingId: string, rescheduleId: string, accept: boolean, proposedTime?: string) => {
         setActionLoading(bookingId);
         try {
-            // Update reschedule request status
-            await supabase
-                .from("reschedule_requests")
-                .update({ status: accept ? "accepted" : "declined", updated_at: new Date().toISOString() })
-                .eq("id", rescheduleId);
-
-            if (accept && proposedTime) {
-                // Update booking with new time and set back to confirmed
-                await supabase
-                    .from("bookings")
-                    .update({ scheduled_at: proposedTime, status: "confirmed", updated_at: new Date().toISOString() })
-                    .eq("id", bookingId);
-            } else {
-                // Declined — revert booking to confirmed with original time
-                await supabase
-                    .from("bookings")
-                    .update({ status: "confirmed", updated_at: new Date().toISOString() })
-                    .eq("id", bookingId);
-            }
-
-            // Send notification
+            await supabase.from("reschedule_requests").update({ status: accept ? "accepted" : "declined", updated_at: new Date().toISOString() }).eq("id", rescheduleId);
+            await supabase.from("bookings").update({ ...(accept && proposedTime ? { scheduled_at: proposedTime } : {}), status: "confirmed", updated_at: new Date().toISOString() }).eq("id", bookingId);
             const booking = bookings.find((b) => b.id === bookingId);
             if (booking?.reschedule_request) {
-                const notifyUserId = booking.reschedule_request.initiated_by;
-                await supabase.from("notifications").insert({
-                    user_id: notifyUserId,
-                    type: accept ? "RESCHEDULE_ACCEPTED" : "RESCHEDULE_DECLINED",
-                    title: accept ? "Reschedule Accepted" : "Reschedule Declined",
-                    body: accept
-                        ? `Your reschedule request for ${booking.sport} has been accepted!`
-                        : `Your reschedule request for ${booking.sport} was declined. The original time remains.`,
-                    data: { booking_id: bookingId },
-                    read: false,
-                });
+                await supabase.from("notifications").insert({ user_id: booking.reschedule_request.initiated_by, type: accept ? "RESCHEDULE_ACCEPTED" : "RESCHEDULE_DECLINED", title: accept ? "Reschedule Accepted" : "Reschedule Declined", body: accept ? `Reschedule for ${booking.sport} accepted!` : `Reschedule for ${booking.sport} declined.`, data: { booking_id: bookingId }, read: false });
             }
-
-            // Refresh bookings
             if (user) loadBookings(user);
-        } catch (err) {
-            console.error("Failed to respond to reschedule:", err);
-        } finally {
-            setActionLoading(null);
-        }
+        } catch (err) { console.error(err); }
+        finally { setActionLoading(null); }
     };
 
     const submitReview = async () => {
         if (!user || !reviewBooking) return;
         setSubmittingReview(true);
         try {
-            await supabase.from("reviews").insert({
-                booking_id: reviewBooking.id,
-                reviewer_id: user.id,
-                reviewee_id: reviewBooking.trainer_id,
-                rating: reviewRating,
-                review_text: reviewText || null,
-                is_public: true,
-            });
-
-            // Send notification to trainer
-            await supabase.from("notifications").insert({
-                user_id: reviewBooking.trainer_id,
-                type: "REVIEW_RECEIVED",
-                title: "New Review Received",
-                body: `You received a ${reviewRating}-star review for your ${reviewBooking.sport} session.`,
-                data: { booking_id: reviewBooking.id },
-                read: false,
-            });
-
-            setReviewModalOpen(false);
-            setReviewBooking(null);
-            setReviewRating(5);
-            setReviewText("");
-        } catch (err) {
-            console.error("Failed to submit review:", err);
-        } finally {
-            setSubmittingReview(false);
-        }
+            await supabase.from("reviews").insert({ booking_id: reviewBooking.id, reviewer_id: user.id, reviewee_id: reviewBooking.trainer_id, rating: reviewRating, review_text: reviewText || null, is_public: true });
+            await supabase.from("notifications").insert({ user_id: reviewBooking.trainer_id, type: "REVIEW_RECEIVED", title: "New Review", body: `You got a ${reviewRating}-star review for ${reviewBooking.sport}.`, data: { booking_id: reviewBooking.id }, read: false });
+            setReviewModalOpen(false); setReviewBooking(null); setReviewRating(5); setReviewText("");
+        } catch (err) { console.error(err); }
+        finally { setSubmittingReview(false); }
     };
 
-    const openReviewModal = (booking: BookingWithUser, readOnly: boolean = false) => {
-        setReviewBooking(booking);
-        setIsReviewReadOnly(readOnly);
-        if (readOnly && booking.review) {
-            setReviewRating(booking.review.rating);
-            setReviewText(booking.review.review_text || "");
-        } else {
-            setReviewRating(5);
-            setReviewText("");
-        }
+    const openReview = (booking: BookingWithUser, readOnly = false) => {
+        setReviewBooking(booking); setIsReviewReadOnly(readOnly);
+        setReviewRating(readOnly && booking.review ? booking.review.rating : 5);
+        setReviewText(readOnly && booking.review ? (booking.review.review_text || "") : "");
         setReviewModalOpen(true);
     };
 
-    const filteredBookings = filter === "all" ? bookings : bookings.filter((b) => b.status === filter);
-
-    const statusColors: Record<string, { bg: string; text: string; border: string }> = {
-        pending: { bg: "bg-orange-500/10", text: "text-orange-500", border: "border-orange-500/20" },
-        confirmed: { bg: "bg-blue-500/10", text: "text-blue-500", border: "border-blue-500/20" },
-        completed: { bg: "bg-primary/10", text: "text-primary", border: "border-primary/20" },
-        cancelled: { bg: "bg-red-500/10", text: "text-red-500", border: "border-red-500/20" },
-        rejected: { bg: "bg-red-500/10", text: "text-red-500", border: "border-red-500/20" },
-        no_show: { bg: "bg-purple-500/10", text: "text-purple-500", border: "border-purple-500/20" },
-        disputed: { bg: "bg-red-500/10", text: "text-red-500", border: "border-red-500/20" },
-        reschedule_requested: { bg: "bg-cyan-500/10", text: "text-cyan-500", border: "border-cyan-500/20" },
+    const handlePayNow = async (booking: BookingWithUser) => {
+        if (!user) return;
+        setPaymentLoading(booking.id);
+        try {
+            const res = await fetch("/api/stripe/create-booking-payment", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ bookingId: booking.id, athleteId: user.id, athleteEmail: user.email }) });
+            const data = await res.json();
+            if (!res.ok || !data.url) throw new Error(data.error || "Failed");
+            window.location.href = data.url;
+        } catch (err: any) { toastError("Payment Error", err.message); setPaymentLoading(null); }
     };
 
+    const isTrainerView = user?.role === "trainer";
+
+    // Show all bookings for both roles — past ones get a visual "expired" treatment
+    const visibleBookings = bookings;
+
+    const sortedBookings = [...visibleBookings].sort((a, b) => {
+        const now = new Date();
+        const da = new Date(a.scheduled_at), db = new Date(b.scheduled_at);
+        const futureA = da >= now, futureB = db >= now;
+        const terminal = new Set(["cancelled", "rejected", "no_show", "disputed"]);
+
+        if (isTrainerView) {
+            const order: Record<string, number> = { pending: 0, reschedule_requested: 1, confirmed: 2, completed: 3, cancelled: 4, rejected: 5, no_show: 5, disputed: 5 };
+            const oa = order[a.status] ?? 9, ob = order[b.status] ?? 9;
+            return oa !== ob ? oa - ob : da.getTime() - db.getTime();
+        }
+        // Groups: 0=upcoming active, 1=past active(expired), 2=completed, 3=terminal(cancelled/rejected)
+        const activeStatuses = !terminal.has(a.status) && a.status !== "completed";
+        const activeStatusesB = !terminal.has(b.status) && b.status !== "completed";
+        const gA = terminal.has(a.status) ? 3 : a.status === "completed" ? 2 : !futureA && activeStatuses ? 1 : futureA ? 0 : 1;
+        const gB = terminal.has(b.status) ? 3 : b.status === "completed" ? 2 : !futureB && activeStatusesB ? 1 : futureB ? 0 : 1;
+        if (gA !== gB) return gA - gB;
+        if (gA === 0) {
+            const pA = paidBookingIds.has(a.id), pB = paidBookingIds.has(b.id);
+            const uA = a.status === "confirmed" && !pA ? 0 : a.status === "confirmed" ? 1 : 2;
+            const uB = b.status === "confirmed" && !pB ? 0 : b.status === "confirmed" ? 1 : 2;
+            return uA !== uB ? uA - uB : da.getTime() - db.getTime();
+        }
+        return db.getTime() - da.getTime();
+    });
+
+    const filteredBookings = filter === "all" ? sortedBookings : sortedBookings.filter((b) => b.status === filter);
     const filters = ["all", "pending", "confirmed", "completed", "cancelled", "rejected"];
 
     if (loading) {
         return (
-            <div className="flex justify-center items-center h-full min-h-[50vh]">
-                <div className="w-12 h-12 border-4 border-primary/20 border-t-primary rounded-full animate-spin"></div>
+            <div className="flex flex-col justify-center items-center min-h-[60vh] gap-4">
+                <div className="w-10 h-10 border-2 border-primary/20 border-t-primary rounded-full animate-spin" />
+                <p className="text-xs text-text-main/30 font-medium tracking-widest uppercase">Loading sessions...</p>
             </div>
         );
     }
 
     return (
-        <div className="max-w-[1000px] w-full pb-12">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+        <div className="max-w-[960px] w-full pb-16">
+            <ToastContainer toasts={toasts} onRemove={remove} />
+
+            {/* ── Page Header ── */}
+            <div className="flex items-end justify-between gap-4 mb-10">
                 <div>
-                    <h1 className="text-[32px] font-black font-display italic tracking-wide text-white uppercase mb-1 leading-none drop-shadow-sm">
-                        {user?.role === "trainer" ? "My Sessions" : "My Bookings"}
+                    <p className="text-[11px] font-bold tracking-[0.2em] text-primary/60 uppercase mb-2">
+                        {isTrainerView ? "Coach Portal" : "Athlete Portal"}
+                    </p>
+                    <h1 className="text-[38px] font-black uppercase tracking-tight text-white leading-none">
+                        {isTrainerView ? "Sessions" : "My Bookings"}
                     </h1>
-                    <p className="text-text-main/60 font-medium text-[15px]">{bookings.length} total bookings</p>
+                    <p className="text-text-main/40 text-sm mt-1.5 font-medium">
+                        {bookings.length} session{bookings.length !== 1 ? "s" : ""} total
+                    </p>
                 </div>
-                {user?.role === "athlete" && (
-                    <a
-                        href="/dashboard/search"
-                        className="px-6 py-3 rounded-xl bg-primary text-bg font-black text-sm uppercase tracking-widest hover:shadow-[0_0_15px_rgba(69,208,255,0.3)] transition-all whitespace-nowrap"
-                    >
-                        + Book Trainer
-                    </a>
-                )}
-            </div>
-
-            {/* Filters */}
-            <div className="flex flex-wrap gap-2 mb-8 bg-[#1A1C23] p-2 rounded-2xl border border-white/5 shadow-sm w-fit">
-                {filters.map((f) => (
+                <div className="flex items-center gap-2.5 pb-1">
                     <button
-                        key={f}
-                        onClick={() => setFilter(f)}
-                        className={`px-5 py-2.5 rounded-xl text-xs font-bold capitalize transition-all ${filter === f
-                            ? "bg-[#272A35] text-white shadow-md border border-white/10"
-                            : "bg-transparent text-text-main/50 hover:text-white hover:bg-white/5 border border-transparent"
-                            }`}
+                        onClick={() => user && loadBookings(user, true)}
+                        disabled={refreshing}
+                        className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/4 border border-white/8 text-text-main/50 text-[11px] font-bold uppercase tracking-wider hover:bg-white/8 hover:text-white/70 transition-all disabled:opacity-40"
                     >
-                        {f === "all" ? `All (${bookings.length})` : `${f} (${bookings.filter((b) => b.status === f).length})`}
+                        <RotateCcw size={12} className={refreshing ? "animate-spin" : ""} />
+                        {refreshing ? "Syncing..." : "Refresh"}
                     </button>
-                ))}
+                    {!isTrainerView && (
+                        <a
+                            href="/dashboard/search"
+                            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-bg font-black text-[11px] uppercase tracking-widest hover:shadow-[0_0_20px_rgba(69,208,255,0.4)] transition-all"
+                        >
+                            <Zap size={12} />
+                            Book Trainer
+                        </a>
+                    )}
+                </div>
             </div>
 
-            {/* Bookings List */}
+            {/* ── Filter Tabs ── */}
+            <div className="flex gap-1.5 mb-8 bg-[#0D0F17] border border-white/6 rounded-2xl p-1.5 w-fit flex-wrap">
+                {filters.map((f) => {
+                    const count = f === "all" ? bookings.length : bookings.filter((b) => b.status === f).length;
+                    const active = filter === f;
+                    const cfg = f !== "all" ? STATUS_CFG[f] : null;
+                    return (
+                        <button
+                            key={f}
+                            onClick={() => setFilter(f)}
+                            className={`relative px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-[0.08em] transition-all flex items-center gap-2 ${
+                                active
+                                    ? "bg-[#1E2130] text-white shadow-lg border border-white/10"
+                                    : "text-text-main/40 hover:text-text-main/70 hover:bg-white/4 border border-transparent"
+                            }`}
+                        >
+                            {f === "all" ? "All" : f.replace("_", " ")}
+                            <span className={`min-w-[18px] h-[18px] rounded-full flex items-center justify-center text-[9px] font-black ${
+                                active
+                                    ? "bg-primary/20 text-primary"
+                                    : "bg-white/6 text-text-main/30"
+                            }`}>
+                                {count}
+                            </span>
+                        </button>
+                    );
+                })}
+            </div>
+
+            {/* ── Empty State ── */}
             {filteredBookings.length === 0 ? (
-                <div className="bg-[#1A1C23] rounded-[20px] border border-white/5 p-16 text-center shadow-md">
-                    <div className="flex justify-center mb-4 text-text-main/20">
-                        <Inbox size={48} strokeWidth={1.5} />
+                <div className="flex flex-col items-center justify-center py-24 gap-4">
+                    <div className="w-16 h-16 rounded-2xl bg-white/3 border border-white/6 flex items-center justify-center">
+                        <Inbox size={28} className="text-text-main/20" strokeWidth={1.5} />
                     </div>
-                    <h3 className="text-white font-bold text-lg mb-2">No bookings found</h3>
-                    <p className="text-text-main/50 text-sm">You have no {filter !== "all" ? filter : ""} bookings at the moment.</p>
+                    <div className="text-center">
+                        <p className="text-white font-bold text-base">No sessions found</p>
+                        <p className="text-text-main/35 text-sm mt-1">
+                            {filter !== "all" ? `No ${filter} bookings yet.` : "Your sessions will appear here."}
+                        </p>
+                    </div>
                 </div>
             ) : (
-                <div className="flex flex-col gap-5">
+                <div className="flex flex-col gap-3">
                     {filteredBookings.map((booking) => {
-                        const sc = statusColors[booking.status] || statusColors.pending;
+                        const sc = STATUS_CFG[booking.status] || STATUS_CFG.pending;
                         const date = new Date(booking.scheduled_at);
                         const isPast = date < new Date();
+                        const isActiveStatus = !["completed", "cancelled", "rejected", "no_show", "disputed"].includes(booking.status);
+                        const isExpired = isPast && isActiveStatus; // past but not properly closed out
                         const isTrainer = user?.role === "trainer";
+                        const isPaid = paidBookingIds.has(booking.id);
+                        const needsPayment = !isTrainer && booking.status === "confirmed" && !isPaid && !isPast;
+                        const otherName = booking.other_user ? `${booking.other_user.first_name} ${booking.other_user.last_name}` : "Unknown";
+                        const initials = booking.other_user ? `${booking.other_user.first_name[0]}${booking.other_user.last_name[0]}`.toUpperCase() : "?";
+
+                        const weekday = date.toLocaleDateString("en-US", { weekday: "short" }).toUpperCase();
+                        const dayNum = date.getDate();
+                        const monthStr = date.toLocaleDateString("en-US", { month: "short" }).toUpperCase();
+                        const timeStr = date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+
+                        // Cards that are past but not explicitly completed/cancelled look "expired"
+                        const cardDim = sc.dimCard || isExpired;
 
                         return (
                             <div
                                 key={booking.id}
-                                className="bg-[#1A1C23] rounded-[20px] border border-white/5 p-6 lg:p-8 transition-all hover:border-white/10 shadow-md group"
+                                className={`group relative rounded-2xl border transition-all duration-300 ${
+                                    cardDim
+                                        ? "bg-[#0F111A] border-white/5 opacity-60 hover:opacity-85"
+                                        : `bg-[#13151E] border-white/7 hover:border-white/14 hover:shadow-[0_8px_40px_rgba(0,0,0,0.5)] ${sc.glow}`
+                                }`}
                             >
-                                <div className="flex items-start justify-between gap-6 flex-wrap">
-                                    {/* Left: User + details */}
-                                    <div className="flex gap-5 flex-1 min-w-[280px]">
-                                        <div className="w-14 h-14 rounded-2xl bg-primary/10 text-primary flex items-center justify-center font-black text-xl border border-primary/20 shrink-0 shadow-sm">
-                                            {booking.other_user ? `${booking.other_user.first_name[0]}${booking.other_user.last_name[0]}` : "?"}
-                                        </div>
-                                        <div className="flex flex-col justify-center">
-                                            <div className="text-[18px] font-bold text-white mb-2 leading-none">
-                                                {booking.other_user ? `${booking.other_user.first_name} ${booking.other_user.last_name}` : "Unknown User"}
+                                {/* Status bar — top */}
+                                <div className={`h-[3px] w-full rounded-t-2xl ${isExpired ? "bg-white/20" : sc.bar} ${cardDim ? "opacity-30" : "opacity-70"}`} />
+
+                                <div className="p-5">
+                                    {/* ── Card Body ── */}
+                                    <div className="flex gap-4 items-start">
+
+                                        {/* Avatar */}
+                                        {!isTrainer && booking.trainer_id ? (
+                                            <a href={`/dashboard/trainers/${booking.trainer_id}`} title="View trainer profile"
+                                                className="relative shrink-0 group/av">
+                                                <div className={`w-11 h-11 rounded-full flex items-center justify-center font-black text-sm text-white ${sc.dimCard ? "bg-white/8" : "bg-white/10"} ring-2 ring-offset-2 ring-offset-[#13151E] ${sc.dimCard ? "ring-white/10" : "ring-white/15"} group-hover/av:ring-primary/50 transition-all`}>
+                                                    {initials}
+                                                </div>
+                                                <div className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-[2px] border-[#13151E] ${sc.dot}`} />
+                                            </a>
+                                        ) : (
+                                            <div className="relative shrink-0">
+                                                <div className={`w-11 h-11 rounded-full flex items-center justify-center font-black text-sm text-white ${sc.dimCard ? "bg-white/8" : "bg-white/10"} ring-2 ring-offset-2 ring-offset-[#13151E] ring-white/15`}>
+                                                    {initials}
+                                                </div>
+                                                <div className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-[2px] border-[#13151E] ${sc.dot}`} />
                                             </div>
-                                            <div className="text-sm text-text-main/60 flex flex-wrap gap-x-6 gap-y-2 font-medium">
-                                                <span className="flex items-center gap-2"><Activity size={16} className="text-primary" /> {booking.sport}</span>
-                                                <span className="flex items-center gap-2"><Clock size={16} className="text-text-main/40" /> {booking.duration_minutes} min</span>
-                                                <span className="flex items-center gap-1.5 font-bold text-white bg-[#12141A] px-2 py-0.5 rounded-md border border-white/5"><DollarSign size={14} className="text-green-500" /> {Number(booking.total_paid).toFixed(2)}</span>
+                                        )}
+
+                                        {/* Center info */}
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div className="min-w-0">
+                                                    {!isTrainer && booking.trainer_id ? (
+                                                        <a href={`/dashboard/trainers/${booking.trainer_id}`}
+                                                            className="block text-[15px] font-bold text-white hover:text-primary transition-colors leading-tight truncate">
+                                                            {otherName}
+                                                        </a>
+                                                    ) : (
+                                                        <p className="text-[15px] font-bold text-white leading-tight truncate">{otherName}</p>
+                                                    )}
+                                                    {booking.other_user?.email && (
+                                                        <p className="text-[11px] text-text-main/35 mt-0.5 truncate">{booking.other_user.email}</p>
+                                                    )}
+                                                </div>
+
+                                                {/* Date block */}
+                                                <div className="shrink-0 text-right">
+                                                    <p className="text-[10px] font-black tracking-[0.15em] text-text-main/35 uppercase">{weekday}</p>
+                                                    <p className="text-[36px] font-black text-white leading-none">{dayNum}</p>
+                                                    <p className="text-[11px] text-text-main/40 font-semibold">{monthStr} · {timeStr}</p>
+                                                </div>
                                             </div>
+
+                                            {/* Meta pills row */}
+                                            <div className="flex flex-wrap items-center gap-1.5 mt-3">
+                                                {/* Sport */}
+                                                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-text-main/55 bg-white/5 px-2.5 py-1 rounded-lg border border-white/6 capitalize">
+                                                    <Activity size={10} className="text-primary/70" />
+                                                    {booking.sport}
+                                                </span>
+                                                {/* Duration */}
+                                                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-text-main/55 bg-white/5 px-2.5 py-1 rounded-lg border border-white/6">
+                                                    <Clock size={10} className="text-text-main/30" />
+                                                    {booking.duration_minutes}m
+                                                </span>
+                                                {/* Price */}
+                                                <span className="inline-flex items-center gap-0.5 text-[11px] font-black text-emerald-400 bg-emerald-500/8 px-2.5 py-1 rounded-lg border border-emerald-500/15">
+                                                    <DollarSign size={10} />
+                                                    {Number(booking.total_paid).toFixed(2)}
+                                                </span>
+
+                                                {/* Status badge */}
+                                                <span className={`inline-flex items-center text-[10px] font-black uppercase tracking-[0.08em] px-2.5 py-1 rounded-lg border ${sc.pill}`}>
+                                                    {sc.label}
+                                                </span>
+
+                                                {/* Past session indicator */}
+                                                {isExpired && (
+                                                    <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-text-main/35 bg-white/4 border border-white/8 px-2.5 py-1 rounded-lg">
+                                                        <Clock size={9} /> Expired
+                                                    </span>
+                                                )}
+                                                {isPast && booking.status === "completed" && (
+                                                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-text-main/30 px-1">
+                                                        Past Session
+                                                    </span>
+                                                )}
+
+                                                {/* Payment status */}
+                                                {isTrainer && booking.status === "confirmed" && (
+                                                    isPaid
+                                                        ? <span className="inline-flex items-center gap-1 text-[10px] font-black text-emerald-400 bg-emerald-500/8 border border-emerald-500/15 px-2.5 py-1 rounded-lg uppercase tracking-wider"><ShieldCheck size={9} />Paid · Escrow</span>
+                                                        : <span className="inline-flex items-center gap-1 text-[10px] font-black text-amber-400 bg-amber-500/8 border border-amber-500/15 px-2.5 py-1 rounded-lg uppercase tracking-wider"><Clock size={9} />Awaiting Pay</span>
+                                                )}
+                                                {!isTrainer && booking.status === "confirmed" && isPaid && (
+                                                    <span className="inline-flex items-center gap-1 text-[10px] font-black text-emerald-400 bg-emerald-500/8 border border-emerald-500/15 px-2.5 py-1 rounded-lg uppercase tracking-wider"><ShieldCheck size={9} />Paid · Escrow</span>
+                                                )}
+                                            </div>
+
+                                            {/* Address */}
                                             {booking.address && (
-                                                <div className="text-[13px] text-text-main/50 mt-3 flex items-start gap-2 bg-[#12141A] p-2 rounded-lg border border-white/5 w-fit">
-                                                    <MapPin size={14} className="text-primary/70 shrink-0 mt-0.5" />
-                                                    <span>{booking.address}</span>
+                                                <div className="flex items-center gap-1.5 mt-2 text-[11px] text-text-main/35 font-medium">
+                                                    <MapPin size={10} className="text-primary/40 shrink-0" />
+                                                    {booking.address}
                                                 </div>
                                             )}
                                         </div>
                                     </div>
 
-                                    {/* Right: Date + status + actions */}
-                                    <div className="text-right min-w-[200px] lg:flex lg:flex-col lg:items-end">
-                                        <div className="text-[15px] font-bold text-white mb-1">
-                                            {date.toLocaleDateString("en-US", { weekday: "short", month: "long", day: "numeric", year: "numeric" })}
-                                        </div>
-                                        <div className="text-[13px] font-bold text-text-main/40 uppercase tracking-widest mb-3">
-                                            {date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
-                                        </div>
-                                        <span
-                                            className={`inline-flex px-3 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-widest border ${sc.bg} ${sc.text} ${sc.border}`}
-                                        >
-                                            {booking.status.replace("_", " ")}
-                                        </span>
+                                    {/* ── Action Row ── */}
+                                    <div className="flex flex-wrap items-center justify-end gap-2 mt-4 pt-4 border-t border-white/5">
 
-                                        {/* Action buttons */}
-                                        <div className="mt-5 flex gap-3 justify-end flex-wrap">
-                                            {booking.status === "pending" && isTrainer && (
-                                                <>
-                                                    <button
-                                                        onClick={() => updateBookingStatus(booking.id, "confirmed")}
-                                                        disabled={actionLoading === booking.id}
-                                                        className="px-4 py-2.5 rounded-xl bg-green-500/10 border border-green-500/20 text-green-500 text-xs font-bold hover:bg-green-500 hover:text-white transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-                                                    >
-                                                        {actionLoading === booking.id ? "..." : <><Check size={16} strokeWidth={2.5} /> Confirm</>}
-                                                    </button>
-                                                    <button
-                                                        onClick={() => updateBookingStatus(booking.id, "rejected")}
-                                                        disabled={actionLoading === booking.id}
-                                                        className="px-4 py-2.5 rounded-xl bg-[#12141A] border border-red-500/20 text-red-500 text-xs font-bold hover:bg-red-500/10 transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-                                                    >
-                                                        <X size={16} strokeWidth={2.5} /> Reject
-                                                    </button>
-                                                </>
-                                            )}
-                                            {booking.status === "confirmed" && !isPast && (
-                                                <>
-                                                    <button
-                                                        onClick={() => setRescheduleBooking(booking)}
-                                                        className="px-4 py-2.5 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-500 text-xs font-bold hover:bg-cyan-500/20 transition-all flex items-center justify-center gap-1.5"
-                                                    >
-                                                        <RefreshCw size={14} strokeWidth={2.5} /> Reschedule
-                                                    </button>
-                                                    <button
-                                                        onClick={() => setCancelBooking(booking)}
-                                                        className="px-4 py-2.5 rounded-xl bg-[#12141A] border border-red-500/20 text-red-500 text-xs font-bold hover:bg-red-500/10 transition-colors"
-                                                    >
-                                                        Cancel
-                                                    </button>
-                                                </>
-                                            )}
-                                            {booking.status === "pending" && !isTrainer && (
-                                                <button
-                                                    onClick={() => setCancelBooking(booking)}
-                                                    className="px-4 py-2.5 rounded-xl bg-[#12141A] border border-red-500/20 text-red-500 text-xs font-bold hover:bg-red-500/10 transition-colors"
-                                                >
-                                                    Cancel Request
+                                        {/* Waiting badge */}
+                                        {booking.status === "reschedule_requested" && booking.reschedule_request?.initiated_by === user?.id && (
+                                            <span className="text-[11px] text-cyan-500/50 font-semibold flex items-center gap-1.5 mr-auto">
+                                                <Clock size={11} /> Awaiting response...
+                                            </span>
+                                        )}
+
+                                        {/* Pay Now */}
+                                        {needsPayment && (
+                                            <button onClick={() => handlePayNow(booking)} disabled={paymentLoading === booking.id}
+                                                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-bg text-[11px] font-black uppercase tracking-wider hover:shadow-[0_0_16px_rgba(69,208,255,0.4)] transition-all disabled:opacity-50">
+                                                {paymentLoading === booking.id ? <><Loader2 size={11} className="animate-spin" />Processing...</> : <><CreditCard size={11} />Pay ${Number(booking.total_paid).toFixed(2)}</>}
+                                            </button>
+                                        )}
+
+                                        {/* Trainer: Confirm / Reject */}
+                                        {booking.status === "pending" && isTrainer && (
+                                            <>
+                                                <button onClick={() => updateStatus(booking.id, "confirmed")} disabled={actionLoading === booking.id}
+                                                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[11px] font-bold hover:bg-emerald-500 hover:text-white hover:border-emerald-500 transition-all disabled:opacity-50">
+                                                    {actionLoading === booking.id ? <Loader2 size={11} className="animate-spin" /> : <Check size={13} strokeWidth={2.5} />}
+                                                    Confirm
                                                 </button>
-                                            )}
-                                            {booking.status === "confirmed" && isTrainer && isPast && (
-                                                <button
-                                                    onClick={() => updateBookingStatus(booking.id, "completed")}
-                                                    disabled={actionLoading === booking.id}
-                                                    className="px-5 py-2.5 rounded-xl bg-primary text-bg text-xs font-black uppercase tracking-widest hover:shadow-[0_0_15px_rgba(69,208,255,0.3)] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                                                >
-                                                    Mark Complete
+                                                <button onClick={() => updateStatus(booking.id, "rejected")} disabled={actionLoading === booking.id}
+                                                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-red-500/8 border border-red-500/18 text-red-400 text-[11px] font-bold hover:bg-red-500/15 transition-all disabled:opacity-50">
+                                                    <X size={13} strokeWidth={2.5} /> Reject
                                                 </button>
-                                            )}
-                                            {booking.status === "completed" && (
-                                                <>
-                                                    {booking.review ? (
-                                                        <button
-                                                            onClick={() => openReviewModal(booking, true)}
-                                                            className="flex items-center gap-2 px-6 py-3.5 rounded-2xl bg-[#272A35] text-white font-black text-[13px] uppercase tracking-widest hover:bg-[#323644] transition-all border border-white/5 active:scale-95 group/btn"
-                                                        >
-                                                            <FileText size={16} className="text-primary group-hover/btn:scale-110 transition-transform" />
-                                                            View Review
-                                                        </button>
-                                                    ) : !isTrainer ? (
-                                                        <button
-                                                            onClick={() => openReviewModal(booking, false)}
-                                                            className="flex items-center gap-2 px-8 py-3.5 rounded-2xl bg-gradient-to-br from-orange-500 to-orange-600 text-white font-black text-[13px] uppercase tracking-widest hover:shadow-[0_8px_20px_rgba(249,115,22,0.3)] transition-all hover:-translate-y-0.5 active:scale-95 group/btn border border-orange-400/20"
-                                                        >
-                                                            <Star size={16} className="fill-current group-hover/btn:rotate-12 transition-transform" />
-                                                            Leave Review
-                                                        </button>
-                                                    ) : null}
-                                                </>
-                                            )}
+                                            </>
+                                        )}
 
-                                            {/* Reschedule Response — Accept/Decline for the other party */}
-                                            {booking.status === "reschedule_requested" && booking.reschedule_request && booking.reschedule_request.initiated_by !== user?.id && (
-                                                <>
-                                                    <button
-                                                        onClick={() => respondToReschedule(booking.id, booking.reschedule_request!.id, true, booking.reschedule_request!.proposed_time)}
-                                                        disabled={actionLoading === booking.id}
-                                                        className="px-4 py-2.5 rounded-xl bg-green-500/10 border border-green-500/20 text-green-500 text-xs font-bold hover:bg-green-500 hover:text-white transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-                                                    >
-                                                        {actionLoading === booking.id ? "..." : <><Check size={16} strokeWidth={2.5} /> Accept</>}
-                                                    </button>
-                                                    <button
-                                                        onClick={() => respondToReschedule(booking.id, booking.reschedule_request!.id, false)}
-                                                        disabled={actionLoading === booking.id}
-                                                        className="px-4 py-2.5 rounded-xl bg-[#12141A] border border-red-500/20 text-red-500 text-xs font-bold hover:bg-red-500/10 transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-                                                    >
-                                                        <X size={16} strokeWidth={2.5} /> Decline
-                                                    </button>
-                                                </>
-                                            )}
+                                        {/* Reschedule + Cancel for confirmed future */}
+                                        {booking.status === "confirmed" && !isPast && (
+                                            <>
+                                                <button onClick={() => setRescheduleBooking(booking)}
+                                                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-cyan-500/8 border border-cyan-500/18 text-cyan-400 text-[11px] font-bold hover:bg-cyan-500/16 transition-all">
+                                                    <RefreshCw size={11} strokeWidth={2.5} /> Reschedule
+                                                </button>
+                                                <button onClick={() => setCancelBooking(booking)}
+                                                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-transparent border border-red-500/18 text-red-400/70 text-[11px] font-bold hover:bg-red-500/8 hover:text-red-400 transition-all">
+                                                    <X size={11} /> Cancel
+                                                </button>
+                                            </>
+                                        )}
 
-                                            {/* Waiting badge for the requester */}
-                                            {booking.status === "reschedule_requested" && booking.reschedule_request && booking.reschedule_request.initiated_by === user?.id && (
-                                                <span className="px-4 py-2.5 rounded-xl bg-cyan-500/5 border border-cyan-500/10 text-cyan-500/60 text-xs font-bold flex items-center gap-1.5">
-                                                    <Clock size={14} /> Waiting for response...
-                                                </span>
-                                            )}
+                                        {/* Athlete: Cancel pending */}
+                                        {booking.status === "pending" && !isTrainer && !isPast && (
+                                            <button onClick={() => setCancelBooking(booking)}
+                                                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-transparent border border-red-500/18 text-red-400/70 text-[11px] font-bold hover:bg-red-500/8 hover:text-red-400 transition-all">
+                                                <X size={11} /> Cancel Request
+                                            </button>
+                                        )}
 
-                                            {/* Calendar Sync — show for confirmed or completed bookings */}
-                                            {(booking.status === "confirmed" || booking.status === "completed") && (
-                                                <AddToCalendarDropdown bookingId={booking.id} />
-                                            )}
-                                        </div>
+                                        {/* Mark Complete */}
+                                        {booking.status === "confirmed" && isTrainer && isPast && (
+                                            <button onClick={() => updateStatus(booking.id, "completed")} disabled={actionLoading === booking.id}
+                                                className="flex items-center gap-1.5 px-5 py-2 rounded-xl bg-primary text-bg text-[11px] font-black uppercase tracking-wider hover:shadow-[0_0_14px_rgba(69,208,255,0.35)] transition-all disabled:opacity-50">
+                                                {actionLoading === booking.id ? <Loader2 size={11} className="animate-spin" /> : <Check size={12} strokeWidth={2.5} />}
+                                                Mark Complete
+                                            </button>
+                                        )}
+
+                                        {/* Review */}
+                                        {booking.status === "completed" && (
+                                            booking.review ? (
+                                                <button onClick={() => openReview(booking, true)}
+                                                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white/4 border border-white/8 text-text-main/50 text-[11px] font-bold hover:text-white hover:bg-white/8 transition-all">
+                                                    <FileText size={11} /> View Review
+                                                </button>
+                                            ) : !isTrainer ? (
+                                                <button onClick={() => openReview(booking, false)}
+                                                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-orange-500/10 border border-orange-500/20 text-orange-400 text-[11px] font-bold hover:bg-orange-500/20 transition-all">
+                                                    <Star size={11} className="fill-current" /> Leave Review
+                                                </button>
+                                            ) : null
+                                        )}
+
+                                        {/* Reschedule respond */}
+                                        {booking.status === "reschedule_requested" && booking.reschedule_request && booking.reschedule_request.initiated_by !== user?.id && (
+                                            <>
+                                                <button onClick={() => respondToReschedule(booking.id, booking.reschedule_request!.id, true, booking.reschedule_request!.proposed_time)} disabled={actionLoading === booking.id}
+                                                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[11px] font-bold hover:bg-emerald-500 hover:text-white hover:border-emerald-500 transition-all disabled:opacity-50">
+                                                    {actionLoading === booking.id ? <Loader2 size={11} className="animate-spin" /> : <Check size={13} strokeWidth={2.5} />}
+                                                    Accept
+                                                </button>
+                                                <button onClick={() => respondToReschedule(booking.id, booking.reschedule_request!.id, false)} disabled={actionLoading === booking.id}
+                                                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-red-500/8 border border-red-500/18 text-red-400 text-[11px] font-bold hover:bg-red-500/15 transition-all disabled:opacity-50">
+                                                    <X size={13} strokeWidth={2.5} /> Decline
+                                                </button>
+                                            </>
+                                        )}
+
+                                        {/* Calendar — only for confirmed future sessions or completed */}
+                                        {booking.status === "confirmed" && !isExpired && (
+                                            <AddToCalendarDropdown bookingId={booking.id} />
+                                        )}
+                                        {booking.status === "completed" && (
+                                            <AddToCalendarDropdown bookingId={booking.id} />
+                                        )}
                                     </div>
                                 </div>
 
-                                {/* Reschedule Request Info Banner */}
+                                {/* ── Reschedule Info Banner ── */}
                                 {booking.status === "reschedule_requested" && booking.reschedule_request && (
-                                    <div className="mt-6 p-5 bg-cyan-500/5 rounded-xl border border-cyan-500/10">
-                                        <div className="text-[11px] font-bold text-cyan-500/60 uppercase tracking-widest mb-2 flex items-center gap-2">
-                                            <CalendarClock size={12} /> Reschedule Request
+                                    <div className="mx-5 mb-5 p-3.5 bg-cyan-500/5 rounded-xl border border-cyan-500/12 flex gap-3">
+                                        <CalendarClock size={13} className="text-cyan-400 shrink-0 mt-0.5" />
+                                        <div>
+                                            <p className="text-[10px] font-black text-cyan-400/60 uppercase tracking-widest mb-1">New Proposed Time</p>
+                                            <p className="text-sm font-bold text-white">
+                                                {new Date(booking.reschedule_request.proposed_time).toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                                            </p>
+                                            {booking.reschedule_request.reason && (
+                                                <p className="text-[11px] text-text-main/45 mt-1">{booking.reschedule_request.reason}</p>
+                                            )}
                                         </div>
-                                        <div className="text-[14px] text-text-main/80 font-medium">
-                                            <span className="text-text-main/40 text-xs">Proposed time: </span>
-                                            <span className="text-white font-bold">
-                                                {new Date(booking.reschedule_request.proposed_time).toLocaleString("en-US", {
-                                                    weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit"
-                                                })}
-                                            </span>
-                                        </div>
-                                        {booking.reschedule_request.reason && (
-                                            <div className="text-[13px] text-text-main/50 mt-2">
-                                                <span className="text-text-main/40 text-xs">Reason: </span>{booking.reschedule_request.reason}
-                                            </div>
-                                        )}
                                     </div>
                                 )}
 
-                                {/* Cancellation Reason Banner */}
+                                {/* ── Cancellation Banner ── */}
                                 {booking.status === "cancelled" && booking.cancellation_reason && (
-                                    <div className="mt-6 p-5 bg-red-500/5 rounded-xl border border-red-500/10">
-                                        <div className="text-[11px] font-bold text-red-500/60 uppercase tracking-widest mb-2 flex items-center gap-2">
-                                            <X size={12} /> Cancellation Reason
+                                    <div className="mx-5 mb-5 p-3.5 bg-red-500/5 rounded-xl border border-red-500/12 flex gap-3">
+                                        <AlertCircle size={13} className="text-red-400/70 shrink-0 mt-0.5" />
+                                        <div>
+                                            <p className="text-[10px] font-black text-red-400/50 uppercase tracking-widest mb-1">Cancellation Reason</p>
+                                            <p className="text-sm text-text-main/60 leading-relaxed">{booking.cancellation_reason}</p>
+                                            {booking.cancelled_at && (
+                                                <p className="text-[10px] text-text-main/25 mt-1.5">
+                                                    {new Date(booking.cancelled_at).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}
+                                                </p>
+                                            )}
                                         </div>
-                                        <div className="text-[14px] text-text-main/80 font-medium leading-relaxed">
-                                            {booking.cancellation_reason}
-                                        </div>
-                                        {booking.cancelled_at && (
-                                            <div className="text-[11px] text-text-main/30 mt-2 italic">
-                                                Cancelled on {new Date(booking.cancelled_at).toLocaleString()}
-                                            </div>
-                                        )}
                                     </div>
                                 )}
 
+                                {/* ── Notes ── */}
                                 {booking.athlete_notes && (
-                                    <div className="mt-6 p-5 bg-[#12141A] rounded-xl border border-white/5">
-                                        <div className="text-[11px] font-bold text-text-main/40 uppercase tracking-widest mb-2 flex items-center gap-2">
-                                            <FileText size={12} /> Notes
+                                    <div className="mx-5 mb-5 p-3.5 bg-white/3 rounded-xl border border-white/6 flex gap-3">
+                                        <FileText size={12} className="text-text-main/25 shrink-0 mt-0.5" />
+                                        <div>
+                                            <p className="text-[10px] font-black text-text-main/25 uppercase tracking-widest mb-1">Session Notes</p>
+                                            <p className="text-[12px] text-text-main/55 leading-relaxed">{booking.athlete_notes}</p>
                                         </div>
-                                        <div className="text-[14px] text-text-main/80 font-medium leading-relaxed">{booking.athlete_notes}</div>
                                     </div>
                                 )}
                             </div>
@@ -656,45 +597,15 @@ export default function BookingsPage() {
                 </div>
             )}
 
-            {/* Review Modal */}
-            <ReviewModal
-                isOpen={reviewModalOpen}
-                onClose={() => setReviewModalOpen(false)}
-                booking={reviewBooking}
-                rating={reviewRating}
-                setRating={setReviewRating}
-                text={reviewText}
-                setText={setReviewText}
-                onSubmit={submitReview}
-                isSubmitting={submittingReview}
-                readOnly={isReviewReadOnly}
-            />
+            {/* ── Modals ── */}
+            <ReviewModal isOpen={reviewModalOpen} onClose={() => setReviewModalOpen(false)} booking={reviewBooking} rating={reviewRating} setRating={setReviewRating} text={reviewText} setText={setReviewText} onSubmit={submitReview} isSubmitting={submittingReview} readOnly={isReviewReadOnly} />
 
-            {/* Reschedule Dialog */}
             {rescheduleBooking && (
-                <RescheduleDialog
-                    bookingId={rescheduleBooking.id}
-                    currentTime={rescheduleBooking.scheduled_at}
-                    sport={rescheduleBooking.sport}
-                    isOpen={true}
-                    onClose={() => setRescheduleBooking(null)}
-                    onSuccess={() => {
-                        setRescheduleBooking(null);
-                        if (user) loadBookings(user);
-                    }}
-                />
+                <RescheduleDialog bookingId={rescheduleBooking.id} currentTime={rescheduleBooking.scheduled_at} sport={rescheduleBooking.sport} isOpen={true} onClose={() => setRescheduleBooking(null)} onSuccess={() => { setRescheduleBooking(null); if (user) loadBookings(user); }} />
             )}
 
-            {/* Cancel Dialog */}
             {cancelBooking && (
-                <CancelBookingDialog
-                    bookingId={cancelBooking.id}
-                    sport={cancelBooking.sport}
-                    otherUserName={cancelBooking.other_user ? `${cancelBooking.other_user.first_name} ${cancelBooking.other_user.last_name}` : "Unknown User"}
-                    isOpen={true}
-                    onClose={() => setCancelBooking(null)}
-                    onConfirm={cancelWithReason}
-                />
+                <CancelBookingDialog bookingId={cancelBooking.id} sport={cancelBooking.sport} otherUserName={cancelBooking.other_user ? `${cancelBooking.other_user.first_name} ${cancelBooking.other_user.last_name}` : "Unknown"} isOpen={true} isPaid={paidBookingIds.has(cancelBooking.id)} totalPaid={Number(cancelBooking.total_paid)} onClose={() => setCancelBooking(null)} onConfirm={cancelWithReason} />
             )}
         </div>
     );

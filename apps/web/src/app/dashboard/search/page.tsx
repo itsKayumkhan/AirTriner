@@ -105,6 +105,7 @@ export default function SearchTrainersPage() {
     const [sortBy, setSortBy] = useState<string>("match");
     const [skillFilter, setSkillFilter] = useState<string>("any");
     const [timeFilter, setTimeFilter] = useState<string>("any");
+    const [nameFilter, setNameFilter] = useState<string>("");
 
     // Pagination
     const [currentPage, setCurrentPage] = useState(1);
@@ -253,6 +254,10 @@ export default function SearchTrainersPage() {
 
     const filteredTrainers = useMemo(() => {
         const result = trainers.filter((t) => {
+            if (nameFilter) {
+                const fullName = `${t.user?.first_name || ""} ${t.user?.last_name || ""}`.toLowerCase();
+                if (!fullName.includes(nameFilter.toLowerCase())) return false;
+            }
             if (sportFilter !== "All Sports" && !(t.sports || []).some((s: string) => s.toLowerCase() === sportFilter.toLowerCase())) return false;
             if (Number(t.hourly_rate) > maxRate) return false;
             if (minRating > 0 && t.avg_rating < minRating) return false;
@@ -276,12 +281,12 @@ export default function SearchTrainersPage() {
         }
 
         return result;
-    }, [trainers, sportFilter, maxRate, minRating, locationFilter, sortBy, skillFilter, timeFilter]);
+    }, [trainers, sportFilter, maxRate, minRating, locationFilter, sortBy, skillFilter, timeFilter, nameFilter]);
 
     // Reset to page 1 when filters change
     useEffect(() => {
         setCurrentPage(1);
-    }, [sportFilter, maxRate, minRating, locationFilter, sortBy, skillFilter, timeFilter]);
+    }, [sportFilter, maxRate, minRating, locationFilter, sortBy, skillFilter, timeFilter, nameFilter]);
 
     const totalPages = Math.ceil(filteredTrainers.length / itemsPerPage);
     const paginatedTrainers = filteredTrainers.slice(
@@ -302,6 +307,24 @@ export default function SearchTrainersPage() {
 
             {/* Filters Header */}
             <div className="bg-surface border border-white/5 rounded-2xl p-5 mb-8 mt-2 shadow-[0_4px_24px_rgba(0,0,0,0.4)] space-y-4">
+
+                {/* Name Search */}
+                <div>
+                    <label className="block text-[10px] font-bold text-text-main/40 uppercase tracking-widest mb-2">Search by Name</label>
+                    <div className="relative">
+                        <SearchIcon size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-main/40" />
+                        <input
+                            type="text"
+                            value={nameFilter}
+                            onChange={(e) => setNameFilter(e.target.value)}
+                            placeholder="Coach name..."
+                            className="w-full bg-[#272A35] text-text-main text-sm rounded-xl pl-9 pr-4 py-2.5 outline-none focus:ring-1 focus:ring-primary placeholder-gray-600 border-none"
+                        />
+                    </div>
+                </div>
+
+                {/* Divider */}
+                <div className="h-px bg-white/5" />
 
                 {/* Row 1: Sport | Location | Skill | Time */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

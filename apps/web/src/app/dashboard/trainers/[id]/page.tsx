@@ -6,6 +6,8 @@ import { getSession, AuthUser } from "@/lib/auth";
 import { supabase, TrainerProfileRow } from "@/lib/supabase";
 import { Star, MapPin, Award, GraduationCap, Clock, MessageSquare, BadgeCheck, ChevronLeft, ChevronRight } from "lucide-react";
 import { ReviewSection } from "@/components/trainers/ReviewSection";
+import { FoundingBadgeTooltip } from "@/components/ui/FoundingBadge";
+import { ToastContainer, useToast } from "@/components/ui/Toast";
 
 type Review = {
     id: string;
@@ -94,8 +96,10 @@ export default function BookTrainerPage() {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const [user, setUser] = useState<AuthUser | null>(null);
     const [trainer, setTrainer] = useState<TrainerWithUser | null>(null);
+    const [trainerProfileId, setTrainerProfileId] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [processing, setProcessing] = useState(false);
+    const { toasts, remove, warning, error: toastError, success } = useToast();
 
     // Date generation state
     const [currentMonthDate, setCurrentMonthDate] = useState(new Date());
@@ -166,12 +170,12 @@ export default function BookTrainerPage() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [trainerId, router]);
 
-    // Fetch availability slots when date changes
+    // Fetch availability slots when date or trainerProfileId changes
     useEffect(() => {
-        if (trainerId && selectedDate) {
+        if (trainerProfileId && selectedDate) {
             loadAvailability(selectedDate);
         }
-    }, [trainerId, selectedDate]);
+    }, [trainerProfileId, selectedDate]);
 
     const formatTimeTo12h = (time24: string) => {
         const [hours, minutes] = time24.split(':');
@@ -182,23 +186,71 @@ export default function BookTrainerPage() {
         return `${h.toString().padStart(2, '0')}:${minutes} ${ampm}`;
     };
 
-    const loadAvailability = async (dateStr: string) => {
+    const loadAvailability = async (dateStr: string, profileId?: string) => {
         setSlotsLoading(true);
         try {
-            const date = new Date(dateStr);
-            const dayOfWeek = date.getDay(); // 0 is Sunday, 1 is Monday...
+            // availability_slots stores trainer_id as trainer_profiles.id (not users.id)
+            const slotTrainerId = profileId || trainerProfileId;
+            if (!slotTrainerId) return;
 
+            const date = new Date(dateStr + "T00:00:00");
+            const dayOfWeek = date.getDay();
+
+            // Fetch slots for this day
             const { data, error } = await supabase
                 .from("availability_slots")
                 .select("start_time, end_time")
-                .eq("trainer_id", trainerId)
+                .eq("trainer_id", slotTrainerId)
                 .eq("day_of_week", dayOfWeek)
                 .eq("is_blocked", false)
                 .order("start_time");
 
             if (error) throw error;
 
-            const formattedSlots = (data || []).map(s => formatTimeTo12h(s.start_time));
+            // Fetch already-booked times for this trainer on this date
+            const dayStart = new Date(dateStr + "T00:00:00").toISOString();
+            const dayEnd = new Date(dateStr + "T23:59:59").toISOString();
+
+            // We need the trainer's users.id to query bookings — use the trainer state if loaded, otherwise skip
+            let trainerUserId: string | null = null;
+            if (trainer?.user_id) {
+                trainerUserId = trainer.user_id;
+            } else {
+                // Look up user_id from profile id
+                const { data: prof } = await supabase
+                    .from("trainer_profiles")
+                    .select("user_id")
+                    .eq("id", slotTrainerId)
+                    .maybeSingle();
+                trainerUserId = prof?.user_id || null;
+            }
+
+            let bookedStartTimes: Set<string> = new Set();
+            if (trainerUserId) {
+                const { data: existingBookings } = await supabase
+                    .from("bookings")
+                    .select("scheduled_at, duration_minutes")
+                    .eq("trainer_id", trainerUserId)
+                    .in("status", ["pending", "confirmed", "reschedule_requested"])
+                    .gte("scheduled_at", dayStart)
+                    .lte("scheduled_at", dayEnd);
+
+                // Build set of booked start times in "HH:MM" format (24h)
+                (existingBookings || []).forEach((b: any) => {
+                    const d = new Date(b.scheduled_at);
+                    const hh = d.getHours().toString().padStart(2, "0");
+                    const mm = d.getMinutes().toString().padStart(2, "0");
+                    bookedStartTimes.add(`${hh}:${mm}`);
+                });
+            }
+
+            // Filter out booked slots
+            const availableSlots = (data || []).filter(s => {
+                const slotHH = s.start_time.slice(0, 5); // "09:00"
+                return !bookedStartTimes.has(slotHH);
+            });
+
+            const formattedSlots = availableSlots.map(s => formatTimeTo12h(s.start_time));
             setSlots(formattedSlots);
 
             // Clear selected time if it's no longer available
@@ -214,13 +266,28 @@ export default function BookTrainerPage() {
 
     const loadTrainer = async () => {
         try {
-            const { data: profile } = await supabase
+            // trainerId may be the trainer_profiles.id OR users.id (user_id)
+            // Try user_id first (used when linking from bookings), then fall back to profile id
+            let { data: profile } = await supabase
                 .from("trainer_profiles")
                 .select("*")
-                .eq("id", trainerId)
-                .single();
+                .eq("user_id", trainerId)
+                .maybeSingle();
+
+            if (!profile) {
+                // Fall back: maybe it's the trainer_profiles.id
+                const { data: profileById } = await supabase
+                    .from("trainer_profiles")
+                    .select("*")
+                    .eq("id", trainerId)
+                    .maybeSingle();
+                profile = profileById;
+            }
 
             if (!profile) throw new Error("Trainer not found");
+
+            // Store trainer_profiles.id (used for availability_slots queries)
+            setTrainerProfileId(profile.id);
 
             const { data: userData } = await supabase
                 .from("users")
@@ -277,6 +344,9 @@ export default function BookTrainerPage() {
                 dispute_count: finalDisputeCount,
                 is_performance_verified: isPerformanceVerified
             });
+
+            // Load availability now that we have profile.id
+            loadAvailability(selectedDate, profile.id);
         } catch (err) {
             console.error(err);
         } finally {
@@ -285,15 +355,22 @@ export default function BookTrainerPage() {
     };
 
     const handleBook = async () => {
+        if (!user || !trainer) return;
+
+        // Block trainer from booking their own profile
+        if (user.id === trainer.user_id) {
+            warning("Cannot Book Yourself", "You cannot book a session with your own profile.");
+            return;
+        }
+
         if (!selectedSport) {
-            alert("Please select a sport.");
+            warning("Select a Sport", "Please choose a sport before booking.");
             return;
         }
         if (!selectedTime) {
-            alert("Please select a time slot.");
+            warning("Select a Time Slot", "Please choose an available time slot.");
             return;
         }
-        if (!user || !trainer) return;
 
         // Block past time slot bookings
         const [chkTime, chkMod] = selectedTime.split(" ");
@@ -303,7 +380,7 @@ export default function BookTrainerPage() {
         if (chkMod === "AM" && chkHrs === 12) chkHrs = 0;
         const checkDate = new Date(`${selectedDate}T${chkHrs.toString().padStart(2, "0")}:${chkM}:00`);
         if (checkDate <= new Date()) {
-            alert("You cannot book a past time slot. Please select a future date and time.");
+            warning("Past Time Slot", "Please select a future date and time.");
             return;
         }
 
@@ -348,7 +425,7 @@ export default function BookTrainerPage() {
             });
 
             if (hasOverlap) {
-                alert("This trainer already has a booking during this time slot. Please select a different time.");
+                warning("Time Slot Taken", "This trainer already has a booking at this time. Please select a different slot.");
                 setProcessing(false);
                 return;
             }
@@ -369,10 +446,11 @@ export default function BookTrainerPage() {
             const { error } = await supabase.from("bookings").insert(insertData);
 
             if (error) throw error;
-            router.push("/dashboard/bookings");
+            success("Booking Requested!", "Your session request has been sent to the trainer.");
+            setTimeout(() => router.push("/dashboard/bookings"), 1200);
         } catch (error) {
             console.error("Booking failed:", error);
-            alert("Failed to create booking.");
+            toastError("Booking Failed", "Something went wrong. Please try again.");
             setProcessing(false);
         }
     };
@@ -403,6 +481,7 @@ export default function BookTrainerPage() {
 
     return (
         <div className="max-w-[1280px] mx-auto pb-20 px-4 md:px-8 mt-4">
+            <ToastContainer toasts={toasts} onRemove={remove} />
 
             {/* Back Button */}
             <button
@@ -445,8 +524,9 @@ export default function BookTrainerPage() {
 
                 {/* Name & Titles */}
                 <div className="pb-2">
-                    <h1 className="text-5xl font-black text-text-main tracking-tight mb-2">
+                    <h1 className="text-5xl font-black text-text-main tracking-tight mb-2 flex items-center gap-3">
                         {trainer.user?.first_name} {trainer.user?.last_name}
+                        {trainer.is_founding_50 && <FoundingBadgeTooltip size={36} />}
                     </h1>
                     <div className="flex items-center gap-4 text-sm font-bold">
                         {trainer.is_performance_verified ? (
@@ -671,17 +751,26 @@ export default function BookTrainerPage() {
 
                         {/* Actions */}
                         <div className="space-y-4">
-                            <button
-                                onClick={handleBook}
-                                disabled={processing}
-                                className="w-full bg-primary text-bg font-black text-[15px] py-4 rounded-2xl hover:shadow-[0_0_15px_rgba(69,208,255,0.25)] hover:-translate-y-0.5 transition-all disabled:opacity-50"
-                            >
-                                {processing ? "Processing..." : "Book Session"}
-                            </button>
+                            {user?.id === trainer?.user_id ? (
+                                <div className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-4 text-center">
+                                    <p className="text-text-main/50 text-xs font-bold uppercase tracking-widest">This is your profile</p>
+                                    <p className="text-text-main/30 text-[11px] mt-1">You cannot book yourself</p>
+                                </div>
+                            ) : (
+                                <button
+                                    onClick={handleBook}
+                                    disabled={processing}
+                                    className="w-full bg-primary text-bg font-black text-[15px] py-4 rounded-2xl hover:shadow-[0_0_15px_rgba(69,208,255,0.25)] hover:-translate-y-0.5 transition-all disabled:opacity-50"
+                                >
+                                    {processing ? "Processing..." : "Book Session"}
+                                </button>
+                            )}
 
-                            <button className="w-full flex items-center justify-center gap-2 text-text-main/80 font-bold text-xs py-2 hover:text-text-main transition-colors">
-                                <MessageSquare size={14} /> Message Trainer
-                            </button>
+                            {user?.id !== trainer?.user_id && (
+                                <button className="w-full flex items-center justify-center gap-2 text-text-main/80 font-bold text-xs py-2 hover:text-text-main transition-colors">
+                                    <MessageSquare size={14} /> Message Trainer
+                                </button>
+                            )}
 
                             <div className="text-center text-[9px] text-gray-600 font-bold uppercase tracking-widest mt-4">
                                 SECURE CHECKOUT VIA AIRTRAINR PAY

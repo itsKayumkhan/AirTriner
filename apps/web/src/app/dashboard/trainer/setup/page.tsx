@@ -17,7 +17,8 @@ import {
     CheckCircle,
     AlertTriangle,
     MapPin,
-    Clock
+    Clock,
+    Eye
 } from "lucide-react";
 
 const SPORTS_LIST = [
@@ -276,7 +277,18 @@ export default function TrainerEditProfilePage() {
                         Enhance your visibility to prospective athletes.
                     </p>
                 </div>
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-3">
+                    {user?.id && (
+                        <a
+                            href={`/dashboard/trainers/${user.id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-2 px-5 py-2.5 rounded-full border border-white/15 text-text-main/60 font-bold text-sm bg-white/4 hover:bg-white/8 hover:text-white transition-all"
+                        >
+                            <Eye size={15} strokeWidth={2} />
+                            Preview Profile
+                        </a>
+                    )}
                     <button
                         onClick={() => router.push("/dashboard")}
                         className="px-6 py-2.5 rounded-full border border-white/10 text-white font-bold text-sm bg-transparent hover:bg-white/5 transition-colors"
