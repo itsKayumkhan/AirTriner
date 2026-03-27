@@ -570,7 +570,7 @@ export default function BookTrainerPage() {
                             <div className="text-[10px] text-text-main/40 font-bold uppercase tracking-widest">{trainer.review_count} REVIEWS</div>
                         </div>
                         <div>
-                            <div className="text-3xl font-black text-text-main mb-3">{(trainer.years_experience || 0)}+</div>
+                            <div className="text-3xl font-black text-text-main mb-3">{Math.max(0, trainer.years_experience || 0)}+</div>
                             <div className="text-[10px] text-text-main/40 font-bold uppercase tracking-widest mt-1">YEARS EXP.</div>
                         </div>
                         <div>

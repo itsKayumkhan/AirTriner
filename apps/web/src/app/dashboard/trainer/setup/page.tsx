@@ -124,7 +124,7 @@ export default function TrainerEditProfilePage() {
             const updateData: Record<string, unknown> = {
                 bio: formData.bio,
                 sports: formData.sports,
-                years_experience: parseInt(formData.yearsExperience) || null,
+                years_experience: Math.max(0, parseInt(formData.yearsExperience) || 0),
                 hourly_rate: parseFloat(formData.hourlyRate) || 75,
                 certifications: formData.certifications,
                 city: formData.city || null,
@@ -431,8 +431,10 @@ export default function TrainerEditProfilePage() {
                                 <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">YEARS IN COACHING</label>
                                 <input
                                     type="number"
+                                    min="0"
+                                    max="60"
                                     value={formData.yearsExperience}
-                                    onChange={(e) => setFormData({ ...formData, yearsExperience: e.target.value })}
+                                    onChange={(e) => setFormData({ ...formData, yearsExperience: String(Math.max(0, parseInt(e.target.value) || 0)) })}
                                     placeholder="e.g. 8"
                                     className="w-full bg-[#12141A] border border-white/5 mx-0 rounded-2xl px-5 py-3.5 text-white text-sm outline-none focus:border-primary/50 transition-colors placeholder:text-text-main/30"
                                 />
