@@ -19,6 +19,7 @@ export type UserRow = {
     email_verified: boolean;
     phone_verified: boolean;
     is_approved: boolean;
+    is_suspended: boolean;
     avatar_url: string | null;
     created_at: string;
     updated_at: string;
@@ -42,6 +43,9 @@ export type TrainerProfileRow = {
     trial_started_at: string | null;
     stripe_account_id: string | null;
     is_founding_50: boolean;
+    founding_50_granted_at: string | null;
+    is_sponsored: boolean;
+    profile_views: number;
     completion_rate: number;
     reliability_score: number;
     total_sessions: number;
@@ -50,6 +54,8 @@ export type TrainerProfileRow = {
     city: string | null;
     state: string | null;
     country: string | null;
+    address_line1: string | null;
+    zip_code: string | null;
     latitude: number | null;
     longitude: number | null;
     travel_radius_miles: number;
@@ -67,6 +73,8 @@ export type AthleteProfileRow = {
     city: string | null;
     state: string | null;
     country: string | null;
+    address_line1: string | null;
+    zip_code: string | null;
     latitude: number | null;
     longitude: number | null;
     travel_radius_miles: number;
@@ -119,5 +127,105 @@ export type NotificationRow = {
     body: string;
     data: Record<string, unknown> | null;
     read: boolean;
+    created_at: string;
+};
+
+export type MessageRow = {
+    id: string;
+    booking_id: string;
+    sender_id: string;
+    content: string;
+    read_at: string | null;
+    created_at: string;
+};
+
+export type PaymentTransactionRow = {
+    id: string;
+    booking_id: string;
+    athlete_id: string;
+    trainer_id: string;
+    amount: number;
+    platform_fee: number;
+    trainer_payout: number;
+    stripe_payment_intent_id: string | null;
+    stripe_transfer_id: string | null;
+    status: 'pending' | 'completed' | 'refunded' | 'failed';
+    created_at: string;
+};
+
+export type TrainingOfferRow = {
+    id: string;
+    trainer_id: string;
+    athlete_id: string;
+    sport: string | null;
+    message: string | null;
+    price: number;
+    session_length_min: number;
+    proposed_dates: unknown;
+    status: 'pending' | 'accepted' | 'declined' | 'expired';
+    created_at: string;
+    expires_at: string | null;
+};
+
+export type AvailabilitySlotRow = {
+    id: string;
+    trainer_id: string;
+    day_of_week: number | null;
+    start_time: string;
+    end_time: string;
+    is_recurring: boolean;
+    specific_date: string | null;
+    created_at: string;
+};
+
+export type SubAccountRow = {
+    id: string;
+    parent_athlete_id: string;
+    first_name: string;
+    last_name: string;
+    date_of_birth: string | null;
+    sport: string | null;
+    skill_level: string | null;
+    created_at: string;
+};
+
+export type DisputeRow = {
+    id: string;
+    booking_id: string;
+    raised_by: string;
+    reason: string | null;
+    description: string | null;
+    status: 'open' | 'under_review' | 'resolved' | 'closed';
+    resolution: string | null;
+    resolved_at: string | null;
+    created_at: string;
+};
+
+export type PlatformSettingsRow = {
+    id: string;
+    platform_fee_percentage: number;
+    require_trainer_verification: boolean;
+    allow_athlete_registration: boolean;
+    allow_trainer_registration: boolean;
+    maintenance_mode: boolean;
+    updated_at: string;
+};
+
+export type SportRow = {
+    id: string;
+    name: string;
+    slug: string;
+    icon: string | null;
+    is_active: boolean;
+    image_url: string | null;
+};
+
+export type TrainerMediaRow = {
+    id: string;
+    trainer_id: string;
+    url: string;
+    type: 'image' | 'video';
+    caption: string | null;
+    sort_order: number;
     created_at: string;
 };

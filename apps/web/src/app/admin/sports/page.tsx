@@ -304,7 +304,7 @@ export default function AdminSportsPage() {
                                         className={`p-2 transition-colors hover:bg-white/5 rounded-lg ${sport.is_active ? 'text-text-main/40 hover:text-red-500' : 'text-primary'}`}
                                         title={sport.is_active ? "Deactivate" : "Activate"}
                                     >
-                                        {sport.is_active ? <EyeOff size={16} /> : <Eye size={16} />}
+                                        {sport.is_active ? <Eye size={16} /> : <EyeOff size={16} />}
                                     </button>
                                     <button 
                                         onClick={() => deleteSport(sport.id)}

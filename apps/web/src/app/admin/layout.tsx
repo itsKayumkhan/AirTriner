@@ -21,7 +21,8 @@ import {
     X,
     AlertCircle,
     CheckCircle2,
-    Info
+    Info,
+    Menu
 } from "lucide-react";
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
@@ -30,6 +31,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     const [showNotifications, setShowNotifications] = useState(false);
     const [notifications, setNotifications] = useState<any[]>([]);
     const [unreadCount, setUnreadCount] = useState(0);
+    const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const notifRef = useRef<HTMLDivElement>(null);
     const router = useRouter();
     const pathname = usePathname();
@@ -153,70 +155,109 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         { icon: <Crown size={20} />, label: "Subscriptions", href: "/admin/subscriptions" },
     ];
 
+    const SidebarContent = ({ onNavClick }: { onNavClick?: () => void }) => (
+        <>
+            {/* Logo */}
+            <div className="h-20 flex items-center px-6 border-b border-white/5 shrink-0">
+                <Link href="/admin" className="flex items-center gap-2" onClick={onNavClick}>
+                    <div className="w-8 h-8 rounded overflow-hidden flex items-center justify-center bg-zinc-900 border border-white/10">
+                        <img src="/logo.jpeg" alt="Logo" className="w-full h-full object-cover" />
+                    </div>
+                    <span className="text-lg font-black tracking-tight text-text-main leading-none">AirTrainr <span className="text-text-main/40 font-normal text-sm">Admin</span></span>
+                </Link>
+            </div>
+
+            {/* Nav items */}
+            <nav className="flex-1 px-3 py-6 space-y-1 overflow-y-auto sidebar-scroll">
+                {menuItems.map((item) => {
+                    const isActive = item.href === "/admin" ? pathname === "/admin" : pathname.startsWith(item.href);
+                    return (
+                        <Link
+                            key={item.label}
+                            href={item.href}
+                            onClick={onNavClick}
+                            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-semibold ${isActive
+                                ? "bg-white/[0.06] text-text-main border-l-2 border-primary/70"
+                                : "text-text-main/50 hover:text-text-main hover:bg-white/[0.04] border-l-2 border-transparent"
+                                }`}
+                        >
+                            <span className={isActive ? "text-primary/80" : "text-text-main/40"}>{item.icon}</span>
+                            {item.label}
+                        </Link>
+                    )
+                })}
+            </nav>
+
+            {/* Bottom section — Settings & Logout */}
+            <div className="px-3 py-4 border-t border-white/5 shrink-0 space-y-1">
+                <Link
+                    href="/admin/settings"
+                    onClick={onNavClick}
+                    className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-semibold w-full ${pathname.startsWith("/admin/settings")
+                        ? "bg-white/[0.06] text-text-main border-l-2 border-primary/70"
+                        : "text-text-main/50 hover:text-text-main hover:bg-white/[0.04] border-l-2 border-transparent"
+                    }`}
+                >
+                    <Settings size={18} className={pathname.startsWith("/admin/settings") ? "text-primary/80" : "text-text-main/40"} />
+                    Settings
+                </Link>
+                <button
+                    onClick={() => { onNavClick?.(); handleLogout(); }}
+                    className="flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-semibold w-full text-text-main/50 hover:text-red-400 hover:bg-red-500/5 border-l-2 border-transparent"
+                >
+                    <LogOut size={18} className="text-text-main/40" />
+                    Logout
+                </button>
+            </div>
+        </>
+    );
+
     return (
         <div className="flex h-screen bg-bg text-text-main font-sans overflow-hidden">
             {/* Desktop Sidebar */}
             <aside className="w-64 bg-surface border-r border-white/5 flex-col hidden lg:flex relative">
-                {/* Logo */}
-                <div className="h-20 flex items-center px-6 border-b border-white/5 shrink-0">
-                    <Link href="/admin" className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded overflow-hidden flex items-center justify-center bg-zinc-900 border border-white/10">
-                            <img src="/logo.jpeg" alt="Logo" className="w-full h-full object-cover" />
-                        </div>
-                        <span className="text-lg font-black tracking-tight text-text-main leading-none">AirTrainr <span className="text-text-main/40 font-normal text-sm">Admin</span></span>
-                    </Link>
-                </div>
-
-                {/* Nav items */}
-                <nav className="flex-1 px-3 py-6 space-y-1 overflow-y-auto sidebar-scroll">
-                    {menuItems.map((item) => {
-                        const isActive = item.href === "/admin" ? pathname === "/admin" : pathname.startsWith(item.href);
-                        return (
-                            <Link
-                                key={item.label}
-                                href={item.href}
-                                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-semibold ${isActive
-                                    ? "bg-primary/10 text-primary border-l-2 border-primary"
-                                    : "text-text-main/50 hover:text-text-main hover:bg-white/5 border-l-2 border-transparent"
-                                    }`}
-                            >
-                                <span className={isActive ? "text-primary" : "text-text-main/40"}>{item.icon}</span>
-                                {item.label}
-                            </Link>
-                        )
-                    })}
-                </nav>
-
-                {/* Bottom section — Settings & Logout */}
-                <div className="px-3 py-4 border-t border-white/5 shrink-0 space-y-1">
-                    <Link
-                        href="/admin/settings"
-                        className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-semibold w-full ${pathname.startsWith("/admin/settings")
-                            ? "bg-primary/10 text-primary border-l-2 border-primary"
-                            : "text-text-main/50 hover:text-text-main hover:bg-white/5 border-l-2 border-transparent"
-                        }`}
-                    >
-                        <Settings size={18} className={pathname.startsWith("/admin/settings") ? "text-primary" : "text-text-main/40"} />
-                        Settings
-                    </Link>
-                    <button
-                        onClick={handleLogout}
-                        className="flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-semibold w-full text-text-main/50 hover:text-red-400 hover:bg-red-500/5 border-l-2 border-transparent"
-                    >
-                        <LogOut size={18} className="text-text-main/40" />
-                        Logout
-                    </button>
-                </div>
+                <SidebarContent />
             </aside>
+
+            {/* Mobile Sidebar Overlay */}
+            {isMobileMenuOpen && (
+                <div className="fixed inset-0 z-50 lg:hidden">
+                    {/* Backdrop */}
+                    <div
+                        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+                        onClick={() => setIsMobileMenuOpen(false)}
+                    />
+                    {/* Drawer */}
+                    <aside className="absolute left-0 top-0 h-full w-64 bg-surface border-r border-white/5 flex flex-col z-10 animate-in slide-in-from-left duration-200">
+                        {/* Close button */}
+                        <button
+                            onClick={() => setIsMobileMenuOpen(false)}
+                            className="absolute top-5 right-4 w-8 h-8 flex items-center justify-center rounded-full bg-white/5 text-text-main/60 hover:text-text-main hover:bg-white/10 transition-colors z-10"
+                        >
+                            <X size={16} />
+                        </button>
+                        <SidebarContent onNavClick={() => setIsMobileMenuOpen(false)} />
+                    </aside>
+                </div>
+            )}
 
             {/* Main Content */}
             <main className="flex-1 flex flex-col h-screen overflow-hidden relative">
 
                 {/* Header Navbar */}
-                <header className="h-20 border-b border-white/5 bg-bg flex items-center justify-between px-8 shrink-0">
-                    <div className="flex items-center w-full max-w-xl">
-                        {/* Empty on left if we want, or a search bar */}
-                        {pathname === "/admin/disputes" && <div className="hidden lg:block"></div>}
+                <header className="h-20 border-b border-white/5 bg-bg flex items-center justify-between px-4 md:px-8 shrink-0">
+                    <div className="flex items-center gap-4">
+                        {/* Hamburger — mobile only */}
+                        <button
+                            onClick={() => setIsMobileMenuOpen(true)}
+                            className="lg:hidden w-10 h-10 flex items-center justify-center rounded-full bg-surface border border-white/5 text-text-main/60 hover:text-text-main transition-colors"
+                            aria-label="Open menu"
+                        >
+                            <Menu size={20} />
+                        </button>
+                        <div className="hidden lg:flex items-center w-full max-w-xl">
+                            {pathname === "/admin/disputes" && <div></div>}
+                        </div>
                     </div>
 
                     <div className="flex items-center gap-6">
@@ -284,7 +325,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                         </div>
 
                         <div className="flex items-center gap-3 border-l border-white/5 pl-6 cursor-pointer">
-                            <div className="text-right">
+                            <div className="text-right hidden sm:block">
                                 <div className="text-sm font-bold text-text-main">{user.firstName} {user.lastName}</div>
                                 <div className="text-[10px] text-text-main/60 uppercase tracking-widest font-bold">SUPER ADMIN</div>
                             </div>

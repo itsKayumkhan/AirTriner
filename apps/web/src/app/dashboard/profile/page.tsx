@@ -1,7 +1,7 @@
 "use client";
 
-import { AlertTriangle, CheckCircle, User, Edit2, ShieldAlert, MapPin, Clock, Eye } from "lucide-react";
-import { useEffect, useState } from "react";
+import { AlertTriangle, CheckCircle, User, ShieldAlert, MapPin, Clock, Eye, Save } from "lucide-react";
+import { useEffect, useState, useRef } from "react";
 import { getSession, setSession, clearSession, AuthUser } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
@@ -9,12 +9,14 @@ import { useRouter } from "next/navigation";
 export default function ProfilePage() {
     const router = useRouter();
     const [user, setUser] = useState<AuthUser | null>(null);
-    const [editing, setEditing] = useState(false);
     const [saving, setSaving] = useState(false);
     const [saved, setSaved] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [deleting, setDeleting] = useState(false);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+    const [isDirty, setIsDirty] = useState(false);
+    const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+    const initialFormRef = useRef<typeof form | null>(null);
     const [form, setForm] = useState({
         firstName: "",
         lastName: "",
@@ -52,28 +54,19 @@ export default function ProfilePage() {
 
     const loadProfile = async (u: AuthUser) => {
         const { data: userData } = await supabase.from("users").select("*").eq("id", u.id).single();
+        let loaded: typeof form;
 
         if (u.role === "trainer" && u.trainerProfile) {
             const { data: tp } = await supabase.from("trainer_profiles").select("*").eq("user_id", u.id).single();
-            
-            // Fetch performance metrics
             const { data: disputes } = await supabase
                 .from("disputes")
                 .select("id, booking:bookings!inner(trainer_id)")
                 .eq("booking.trainer_id", u.id);
-            
             const dc = (disputes || []).length;
             const ts = tp?.total_sessions || 0;
             const isPerfVerified = ts >= 3 && dc === 0 && Number(tp?.completion_rate) >= 95 && Number(tp?.reliability_score) >= 95;
-
-            setStatusData({
-                isPerformanceVerified: isPerfVerified,
-                isPro: ts > 0 && !isPerfVerified,
-                totalSessions: ts,
-                disputeCount: dc
-            });
-
-            setForm({
+            setStatusData({ isPerformanceVerified: isPerfVerified, isPro: ts > 0 && !isPerfVerified, totalSessions: ts, disputeCount: dc });
+            loaded = {
                 firstName: userData?.first_name || "",
                 lastName: userData?.last_name || "",
                 phone: userData?.phone || "",
@@ -84,17 +77,17 @@ export default function ProfilePage() {
                 hourlyRate: String(tp?.hourly_rate || 50),
                 yearsExperience: String(tp?.years_experience || 0),
                 sports: tp?.sports || [],
-                skillLevel: "beginner", // Trainers don't have a 'skill level' but form needs it
-                addressLine1: tp?.city || "", // Mapping city/state for trainers too if available
+                skillLevel: "beginner",
+                addressLine1: tp?.city || "",
                 city: tp?.city || "",
                 state: tp?.state || "",
                 zipCode: "",
                 travelRadius: String(tp?.travel_radius_miles || 25),
                 preferredTimes: (tp as any)?.preferredTrainingTimes || [],
-            });
+            };
         } else {
             const { data: ap } = await supabase.from("athlete_profiles").select("*").eq("user_id", u.id).single();
-            setForm({
+            loaded = {
                 firstName: userData?.first_name || "",
                 lastName: userData?.last_name || "",
                 phone: userData?.phone || "",
@@ -112,14 +105,85 @@ export default function ProfilePage() {
                 zipCode: ap?.zip_code || "",
                 travelRadius: String(ap?.travel_radius_miles || 25),
                 preferredTimes: (ap as any)?.preferredTrainingTimes || [],
+            };
+        }
+        setForm(loaded);
+        initialFormRef.current = loaded;
+        setIsDirty(false);
+    };
+
+    const updateForm = (patch: Partial<typeof form>) => {
+        const changedKeys = Object.keys(patch);
+        if (changedKeys.length > 0) {
+            setFieldErrors(prev => {
+                const next = { ...prev };
+                changedKeys.forEach(k => delete next[k]);
+                return next;
             });
         }
+        setForm(p => {
+            const next = { ...p, ...patch };
+            setIsDirty(JSON.stringify(next) !== JSON.stringify(initialFormRef.current));
+            return next;
+        });
+    };
+
+    const validate = (): boolean => {
+        const errors: Record<string, string> = {};
+
+        if (!form.firstName.trim()) errors.firstName = "First name is required";
+        else if (form.firstName.trim().length < 2) errors.firstName = "Must be at least 2 characters";
+
+        if (!form.lastName.trim()) errors.lastName = "Last name is required";
+        else if (form.lastName.trim().length < 2) errors.lastName = "Must be at least 2 characters";
+
+        if (form.phone && !/^\+?[\d\s\-()\/.]{7,15}$/.test(form.phone))
+            errors.phone = "Enter a valid phone number";
+
+        if (form.dateOfBirth) {
+            const dob = new Date(form.dateOfBirth);
+            const age = (Date.now() - dob.getTime()) / (1000 * 60 * 60 * 24 * 365.25);
+            if (isNaN(dob.getTime())) errors.dateOfBirth = "Invalid date";
+            else if (age < 5) errors.dateOfBirth = "Age must be at least 5 years";
+            else if (age > 120) errors.dateOfBirth = "Invalid date of birth";
+        }
+
+        if (user?.role === "trainer") {
+            if (!form.hourlyRate || isNaN(Number(form.hourlyRate)))
+                errors.hourlyRate = "Hourly rate is required";
+            else if (Number(form.hourlyRate) < 10)
+                errors.hourlyRate = "Minimum rate is $10/hr";
+            else if (Number(form.hourlyRate) > 1000)
+                errors.hourlyRate = "Maximum rate is $1000/hr";
+
+            if (form.yearsExperience === "" || isNaN(Number(form.yearsExperience)))
+                errors.yearsExperience = "Years of experience is required";
+            else if (Number(form.yearsExperience) < 0 || Number(form.yearsExperience) > 60)
+                errors.yearsExperience = "Must be between 0 and 60 years";
+
+            if (!form.headline.trim()) errors.headline = "Headline is required";
+            else if (form.headline.trim().length < 5) errors.headline = "Headline must be at least 5 characters";
+
+            if (form.sports.length === 0) errors.sports = "Select at least one sport";
+        }
+
+        if (user?.role === "athlete") {
+            if (form.sports.length === 0) errors.sports = "Select at least one sport";
+            if (form.zipCode && !/^\d{5}(-\d{4})?$/.test(form.zipCode))
+                errors.zipCode = "Enter a valid ZIP code (e.g. 12345)";
+        }
+
+        setFieldErrors(errors);
+        return Object.keys(errors).length === 0;
     };
 
     const handleSave = async () => {
         if (!user) return;
+        if (!validate()) {
+            window.scrollTo({ top: 0, behavior: "smooth" });
+            return;
+        }
         setSaving(true);
-
         try {
             setError(null);
             const { error: userError } = await supabase.from("users").update({
@@ -129,7 +193,6 @@ export default function ProfilePage() {
                 date_of_birth: form.dateOfBirth || null,
                 sex: form.sex || null,
             }).eq("id", user.id);
-
             if (userError) throw userError;
 
             if (user.role === "trainer") {
@@ -161,22 +224,23 @@ export default function ProfilePage() {
                 if (pError) throw pError;
             }
 
-            // Update session and local state
-            const updatedUser: AuthUser = { 
-                ...user, 
-                firstName: form.firstName, 
+            const updatedUser: AuthUser = {
+                ...user,
+                firstName: form.firstName,
                 lastName: form.lastName,
-                trainerProfile: user.role === "trainer" 
-                    ? { ...(user.trainerProfile || {}), sports: form.sports, preferredTrainingTimes: form.preferredTimes } as any 
+                trainerProfile: user.role === "trainer"
+                    ? { ...(user.trainerProfile || {}), sports: form.sports, preferredTrainingTimes: form.preferredTimes } as any
                     : user.trainerProfile,
-                athleteProfile: user.role === "athlete" 
-                    ? { ...(user.athleteProfile || {}), sports: form.sports, preferredTrainingTimes: form.preferredTimes, skill_level: form.skillLevel as any } as any 
+                athleteProfile: user.role === "athlete"
+                    ? { ...(user.athleteProfile || {}), sports: form.sports, preferredTrainingTimes: form.preferredTimes, skill_level: form.skillLevel as any } as any
                     : user.athleteProfile
             };
             setSession(updatedUser);
             setUser(updatedUser);
+            initialFormRef.current = form;
+            setIsDirty(false);
             setSaved(true);
-            setEditing(false);
+            window.scrollTo({ top: 0, behavior: "smooth" });
             setTimeout(() => setSaved(false), 3000);
         } catch (err: any) {
             console.error("Save failed:", err);
@@ -190,10 +254,7 @@ export default function ProfilePage() {
         if (!user) return;
         setDeleting(true);
         try {
-            // Soft delete - update deleted_at timestamp
             await supabase.from("users").update({ deleted_at: new Date().toISOString() }).eq("id", user.id);
-
-            // Clear session and redirect to login
             await clearSession();
             router.push("/auth/login");
         } catch (err) {
@@ -209,124 +270,106 @@ export default function ProfilePage() {
         "wrestling", "martial_arts", "gymnastics", "track_and_field", "volleyball",
     ];
 
+    const inputCls = (field?: string) =>
+        `w-full bg-white/[0.03] border rounded-xl px-4 py-3 text-white text-sm outline-none transition-colors ${
+            field && fieldErrors[field]
+                ? "border-red-500/50 focus:border-red-500/70"
+                : "border-white/[0.07] focus:border-white/[0.18]"
+        }`;
+
+    const FieldError = ({ field }: { field: string }) =>
+        fieldErrors[field] ? (
+            <p className="mt-1.5 text-[11px] text-red-400 font-semibold flex items-center gap-1">
+                <AlertTriangle size={11} /> {fieldErrors[field]}
+            </p>
+        ) : null;
+
     const isTrainer = user?.role === "trainer";
 
     return (
-        <div className="max-w-[1000px] w-full pb-12">
+        <div className="max-w-[900px] w-full pb-24">
+            {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
                 <div>
-                    <h1 className="text-[32px] font-black font-display italic tracking-wide text-white uppercase mb-1 leading-none drop-shadow-sm">My Profile</h1>
-                    <p className="text-text-main/60 font-medium text-[15px]">
+                    <h1 className="text-2xl font-black tracking-wide text-white mb-1">My Profile</h1>
+                    <p className="text-text-main/50 font-medium text-sm">
                         Manage your personal information and {isTrainer ? "training profile" : "preferences"}
                     </p>
                 </div>
-                <div className="flex items-center gap-4">
-                    {editing ? (
-                        <>
-                            <button
-                                onClick={() => setEditing(false)}
-                                className="px-6 py-2.5 rounded-full border border-white/10 text-white font-bold text-sm bg-transparent hover:bg-white/5 transition-colors"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                onClick={handleSave}
-                                disabled={saving}
-                                className="px-6 py-2.5 rounded-full bg-primary text-bg font-black text-sm hover:shadow-[0_0_15px_rgba(69,208,255,0.3)] transition-all flex items-center gap-2 disabled:bg-primary/50"
-                            >
-                                {saving ? "Saving..." : "Save Changes"}
-                            </button>
-                        </>
-                    ) : (
-                        <>
-                            {isTrainer && user?.id && (
-                                <a
-                                    href={`/dashboard/trainers/${user.id}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="flex items-center gap-2 px-5 py-2.5 rounded-full border border-white/15 text-text-main/70 font-bold text-sm bg-white/4 hover:bg-white/8 hover:text-white transition-all"
-                                    title="See your profile as athletes see it"
-                                >
-                                    <Eye size={15} strokeWidth={2} />
-                                    Preview Public Profile
-                                </a>
-                            )}
-                            <button
-                                onClick={() => setShowDeleteConfirm(true)}
-                                className="px-6 py-2.5 rounded-full border border-red-500/30 bg-red-500/10 text-red-500 font-bold text-sm hover:bg-red-500/20 transition-colors"
-                            >
-                                Delete Account
-                            </button>
-                            <button
-                                onClick={() => setEditing(true)}
-                                className="px-6 py-2.5 rounded-full bg-primary text-bg font-black text-sm hover:shadow-[0_0_15px_rgba(69,208,255,0.3)] transition-all flex items-center gap-2"
-                            >
-                                <Edit2 size={16} strokeWidth={3} />
-                                Edit Profile
-                            </button>
-                        </>
+                <div className="flex items-center gap-3 flex-wrap">
+                    {isTrainer && user?.id && (
+                        <a
+                            href={`/dashboard/trainers/${user.id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-2 px-4 py-2 rounded-xl border border-white/[0.08] text-text-main/60 font-bold text-sm hover:bg-white/[0.05] hover:text-text-main transition-all"
+                        >
+                            <Eye size={14} strokeWidth={2} />
+                            Preview Profile
+                        </a>
                     )}
+                    <button
+                        onClick={() => setShowDeleteConfirm(true)}
+                        className="px-4 py-2 rounded-xl border border-red-500/20 text-red-500/70 font-bold text-sm hover:bg-red-500/10 hover:text-red-400 transition-all"
+                    >
+                        Delete Account
+                    </button>
                 </div>
             </div>
 
             {saved && (
-                <div className="px-5 py-4 bg-primary/10 border border-primary/20 rounded-2xl text-primary text-sm font-bold mb-6 flex items-center shadow-[0_0_15px_rgba(69,208,255,0.05)] animate-in fade-in slide-in-from-top-4">
-                    <CheckCircle className="w-5 h-5 mr-3 shrink-0" /> Profile updated successfully!
+                <div className="px-5 py-3.5 bg-white/[0.04] border border-white/[0.08] rounded-xl text-text-main text-sm font-bold mb-6 flex items-center gap-3">
+                    <CheckCircle className="w-4 h-4 text-green-400 shrink-0" /> Profile updated successfully!
                 </div>
             )}
-
             {error && (
-                <div className="px-5 py-4 bg-red-500/10 border border-red-500/20 rounded-2xl text-red-500 text-sm font-bold mb-6 flex items-center animate-in fade-in slide-in-from-top-4">
-                    <AlertTriangle className="w-5 h-5 mr-3 shrink-0" /> {error}
+                <div className="px-5 py-3.5 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm font-bold mb-6 flex items-center gap-3">
+                    <AlertTriangle className="w-4 h-4 shrink-0" /> {error}
                 </div>
             )}
 
-            {/* Profile Header */}
-            <div className="bg-[#1A1C23] border border-white/5 rounded-[20px] p-6 lg:p-8 mb-6 shadow-md">
-                <div className="flex gap-6 items-center flex-wrap">
-                    <div className="w-24 h-24 rounded-full bg-primary text-bg flex items-center justify-center font-black text-[32px] font-display uppercase shadow-[0_0_20px_rgba(69,208,255,0.2)] shrink-0">
+            {/* Profile Header Card */}
+            <div className="bg-surface border border-white/[0.06] rounded-2xl p-6 mb-4">
+                <div className="flex gap-5 items-center flex-wrap">
+                    <div className="w-20 h-20 rounded-full bg-white/[0.08] border border-white/[0.10] flex items-center justify-center font-black text-2xl text-text-main uppercase shrink-0">
                         {form.firstName?.[0]}{form.lastName?.[0]}
                     </div>
-                    <div className="flex-1 min-w-[200px]">
-                        <h2 className="text-[28px] font-black font-display tracking-tight text-white mb-1">
+                    <div className="flex-1 min-w-[180px]">
+                        <h2 className="text-xl font-black text-white mb-0.5">
                             {form.firstName} {form.lastName}
                         </h2>
-                        <p className="text-text-main/50 text-[15px] font-medium mb-3">{user?.email}</p>
-                        <div className="flex flex-wrap items-center gap-4 mb-4">
-                            <div className="flex items-center gap-1.5 text-text-main/60 text-[13px] font-medium">
-                                <MapPin size={14} className="text-primary/70" />
-                                <span>
-                                    {form.city && form.state 
-                                        ? `${form.city}, ${form.state}` 
-                                        : form.addressLine1 || "Location not set"}
-                                </span>
+                        <p className="text-text-main/40 text-sm font-medium mb-3">{user?.email}</p>
+                        {(form.city || form.state) && (
+                            <div className="flex items-center gap-1.5 text-text-main/50 text-xs font-medium mb-3">
+                                <MapPin size={12} className="text-text-main/30" />
+                                <span>{form.city}{form.city && form.state ? ", " : ""}{form.state}</span>
                             </div>
-                        </div>
-                        <div className="flex gap-3 items-center">
-                            <span className="px-4 py-1.5 rounded-full bg-primary/10 text-primary text-xs font-black uppercase tracking-widest border border-primary/20 shadow-[0_0_10px_rgba(69,208,255,0.1)]">
+                        )}
+                        <div className="flex gap-2 items-center flex-wrap">
+                            <span className="px-3 py-1 rounded-lg bg-white/[0.06] border border-white/[0.08] text-text-main/60 text-[10px] font-black uppercase tracking-widest">
                                 {user?.role}
                             </span>
                             {isTrainer && (
-                                <div className="flex gap-2 items-center flex-wrap">
+                                <>
                                     {statusData.isPerformanceVerified ? (
-                                        <span className="px-4 py-1.5 rounded-full bg-primary/10 text-primary text-xs font-black uppercase tracking-widest border border-primary/20 flex items-center gap-1.5 shadow-[0_0_10px_rgba(69,208,255,0.1)]">
-                                            <CheckCircle size={14} strokeWidth={3} /> Performance Verified
+                                        <span className="px-3 py-1 rounded-lg bg-white/[0.06] border border-white/[0.08] text-text-main/60 text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5">
+                                            <CheckCircle size={11} strokeWidth={3} /> Performance Verified
                                         </span>
                                     ) : statusData.totalSessions > 0 ? (
-                                        <span className="px-4 py-1.5 rounded-full bg-blue-500/10 text-blue-400 text-xs font-black uppercase tracking-widest border border-blue-500/20">
+                                        <span className="px-3 py-1 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 text-[10px] font-black uppercase tracking-widest">
                                             Pro Coach
                                         </span>
                                     ) : (
-                                        <span className="px-4 py-1.5 rounded-full bg-emerald-500/10 text-emerald-500 text-xs font-black uppercase tracking-widest border border-emerald-500/20">
+                                        <span className="px-3 py-1 rounded-lg bg-white/[0.04] border border-white/[0.06] text-text-main/40 text-[10px] font-black uppercase tracking-widest">
                                             New Trainer
                                         </span>
                                     )}
                                     {user?.trainerProfile?.is_verified && !statusData.isPerformanceVerified && (
-                                        <span className="px-4 py-1.5 rounded-full bg-white/5 text-text-main/40 text-[10px] font-bold uppercase tracking-widest border border-white/5">
+                                        <span className="px-3 py-1 rounded-lg bg-white/[0.04] border border-white/[0.06] text-text-main/40 text-[10px] font-black uppercase tracking-widest">
                                             Admin Approved
                                         </span>
                                     )}
-                                </div>
+                                </>
                             )}
                         </div>
                     </div>
@@ -334,53 +377,39 @@ export default function ProfilePage() {
             </div>
 
             {/* Personal Info */}
-            <div className="bg-[#1A1C23] border border-white/5 rounded-[20px] p-6 lg:p-8 mb-6 shadow-md">
-                <div className="flex items-center gap-3 mb-6">
-                    <User size={20} className="text-primary" strokeWidth={2.5} />
-                    <h3 className="text-[15px] font-black text-white tracking-widest uppercase">Personal Information</h3>
+            <div className="bg-surface border border-white/[0.06] rounded-2xl p-6 mb-4">
+                <div className="flex items-center gap-2.5 mb-5">
+                    <User size={16} className="text-text-main/40" strokeWidth={2.5} />
+                    <h3 className="text-[11px] font-black text-text-main/50 tracking-[0.15em] uppercase">Personal Information</h3>
                 </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                        <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">First Name</label>
-                        <input
-                            value={form.firstName}
-                            onChange={(e) => setForm((p) => ({ ...p, firstName: e.target.value }))}
-                            disabled={!editing}
-                            className="w-full bg-[#12141A] border border-white/5 rounded-2xl px-5 py-3.5 text-white text-sm outline-none focus:border-primary/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        />
+                        <label className="block text-[10px] font-bold text-text-main/40 uppercase tracking-[0.12em] mb-2">First Name <span className="text-red-400">*</span></label>
+                        <input value={form.firstName} onChange={(e) => updateForm({ firstName: e.target.value })} className={inputCls("firstName")} />
+                        <FieldError field="firstName" />
                     </div>
                     <div>
-                        <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">Last Name</label>
-                        <input
-                            value={form.lastName}
-                            onChange={(e) => setForm((p) => ({ ...p, lastName: e.target.value }))}
-                            disabled={!editing}
-                            className="w-full bg-[#12141A] border border-white/5 rounded-2xl px-5 py-3.5 text-white text-sm outline-none focus:border-primary/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        />
+                        <label className="block text-[10px] font-bold text-text-main/40 uppercase tracking-[0.12em] mb-2">Last Name <span className="text-red-400">*</span></label>
+                        <input value={form.lastName} onChange={(e) => updateForm({ lastName: e.target.value })} className={inputCls("lastName")} />
+                        <FieldError field="lastName" />
                     </div>
                     <div>
-                        <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">Date of Birth</label>
-                        <input
-                            type="date"
-                            value={form.dateOfBirth}
-                            onChange={(e) => setForm((p) => ({ ...p, dateOfBirth: e.target.value }))}
-                            disabled={!editing}
-                            className="w-full bg-[#12141A] border border-white/5 rounded-2xl px-5 py-3.5 text-white text-sm outline-none focus:border-primary/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        />
-                        {form.dateOfBirth && (
-                            <p className="mt-2 text-[10px] text-text-main/40 font-bold uppercase tracking-widest">
+                        <label className="block text-[10px] font-bold text-text-main/40 uppercase tracking-[0.12em] mb-2">Date of Birth</label>
+                        <input type="date" value={form.dateOfBirth} onChange={(e) => updateForm({ dateOfBirth: e.target.value })} className={inputCls("dateOfBirth")} />
+                        <FieldError field="dateOfBirth" />
+                        {form.dateOfBirth && !fieldErrors.dateOfBirth && (
+                            <p className="mt-1.5 text-[10px] text-text-main/30 font-bold uppercase tracking-widest">
                                 Age: {new Date().getFullYear() - new Date(form.dateOfBirth).getFullYear()} years old
                             </p>
                         )}
                     </div>
                     <div>
-                        <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">Sex</label>
+                        <label className="block text-[10px] font-bold text-text-main/40 uppercase tracking-[0.12em] mb-2">Sex</label>
                         <select
                             value={form.sex}
-                            onChange={(e) => setForm((p) => ({ ...p, sex: e.target.value }))}
-                            disabled={!editing}
-                            className="w-full bg-[#12141A] border border-white/5 rounded-2xl px-5 py-3.5 text-white text-sm outline-none focus:border-primary/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed appearance-none"
+                            onChange={(e) => updateForm({ sex: e.target.value })}
+                            className={inputCls() + " appearance-none cursor-pointer"}
+                            style={{ backgroundColor: "#13151b", colorScheme: "dark" }}
                         >
                             <option value="">Select Sex</option>
                             <option value="male">Male</option>
@@ -389,82 +418,52 @@ export default function ProfilePage() {
                         </select>
                     </div>
                     <div className="md:col-span-2">
-                        <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">Phone</label>
-                        <input
-                            value={form.phone}
-                            onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))}
-                            disabled={!editing}
-                            placeholder="(555) 123-4567"
-                            className="w-full bg-[#12141A] border border-white/5 rounded-2xl px-5 py-3.5 text-white text-sm outline-none focus:border-primary/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:placeholder:text-text-main/30"
-                        />
+                        <label className="block text-[10px] font-bold text-text-main/40 uppercase tracking-[0.12em] mb-2">Phone</label>
+                        <input value={form.phone} onChange={(e) => updateForm({ phone: e.target.value })} placeholder="(555) 123-4567" className={inputCls("phone")} />
+                        <FieldError field="phone" />
                     </div>
                 </div>
             </div>
 
             {/* Location Info (Athlete Only) */}
             {!isTrainer && (
-                <div className="bg-[#1A1C23] border border-white/5 rounded-[20px] p-6 lg:p-8 mb-6 shadow-md">
-                    <div className="flex items-center gap-3 mb-6">
-                        <MapPin size={20} className="text-primary" strokeWidth={2.5} />
-                        <h3 className="text-[15px] font-black text-white tracking-widest uppercase">Location Details</h3>
+                <div className="bg-surface border border-white/[0.06] rounded-2xl p-6 mb-4">
+                    <div className="flex items-center gap-2.5 mb-5">
+                        <MapPin size={16} className="text-text-main/40" strokeWidth={2.5} />
+                        <h3 className="text-[11px] font-black text-text-main/50 tracking-[0.15em] uppercase">Location Details</h3>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="md:col-span-2">
-                            <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">Address</label>
-                            <input
-                                value={form.addressLine1}
-                                onChange={(e) => setForm((p) => ({ ...p, addressLine1: e.target.value }))}
-                                disabled={!editing}
-                                placeholder="123 Training Way"
-                                className="w-full bg-[#12141A] border border-white/5 rounded-2xl px-5 py-3.5 text-white text-sm outline-none focus:border-primary/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                            />
+                            <label className="block text-[10px] font-bold text-text-main/40 uppercase tracking-[0.12em] mb-2">Address</label>
+                            <input value={form.addressLine1} onChange={(e) => updateForm({ addressLine1: e.target.value })} placeholder="123 Training Way" className={inputCls()} />
                         </div>
                         <div>
-                            <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">City</label>
-                            <input
-                                value={form.city}
-                                onChange={(e) => setForm((p) => ({ ...p, city: e.target.value }))}
-                                disabled={!editing}
-                                className="w-full bg-[#12141A] border border-white/5 rounded-2xl px-5 py-3.5 text-white text-sm outline-none focus:border-primary/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                            />
+                            <label className="block text-[10px] font-bold text-text-main/40 uppercase tracking-[0.12em] mb-2">City</label>
+                            <input value={form.city} onChange={(e) => updateForm({ city: e.target.value })} className={inputCls()} />
                         </div>
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-2 gap-3">
                             <div>
-                                <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">State</label>
-                                <input
-                                    value={form.state}
-                                    onChange={(e) => setForm((p) => ({ ...p, state: e.target.value }))}
-                                    disabled={!editing}
-                                    className="w-full bg-[#12141A] border border-white/5 rounded-2xl px-5 py-3.5 text-white text-sm outline-none focus:border-primary/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                />
+                                <label className="block text-[10px] font-bold text-text-main/40 uppercase tracking-[0.12em] mb-2">State</label>
+                                <input value={form.state} onChange={(e) => updateForm({ state: e.target.value })} className={inputCls()} />
                             </div>
                             <div>
-                                <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">Zip Code</label>
-                                <input
-                                    value={form.zipCode}
-                                    onChange={(e) => setForm((p) => ({ ...p, zipCode: e.target.value }))}
-                                    disabled={!editing}
-                                    className="w-full bg-[#12141A] border border-white/5 rounded-2xl px-5 py-3.5 text-white text-sm outline-none focus:border-primary/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                />
+                                <label className="block text-[10px] font-bold text-text-main/40 uppercase tracking-[0.12em] mb-2">Zip Code</label>
+                                <input value={form.zipCode} onChange={(e) => updateForm({ zipCode: e.target.value })} className={inputCls("zipCode")} />
+                                <FieldError field="zipCode" />
                             </div>
                         </div>
                         <div className="md:col-span-2">
-                            <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">
-                                Travel Radius: <span className="text-primary">{form.travelRadius} miles</span>
+                            <label className="block text-[10px] font-bold text-text-main/40 uppercase tracking-[0.12em] mb-3">
+                                Travel Radius — <span className="text-text-main/70">{form.travelRadius} miles</span>
                             </label>
                             <input
-                                type="range"
-                                min="5"
-                                max="100"
-                                step="5"
+                                type="range" min="5" max="100" step="5"
                                 value={form.travelRadius}
-                                onChange={(e) => setForm((p) => ({ ...p, travelRadius: e.target.value }))}
-                                disabled={!editing}
-                                className="w-full h-2 bg-[#12141A] rounded-lg appearance-none cursor-pointer accent-primary"
+                                onChange={(e) => updateForm({ travelRadius: e.target.value })}
+                                className="w-full h-1.5 bg-white/[0.06] rounded-lg appearance-none cursor-pointer accent-primary"
                             />
-                            <div className="flex justify-between mt-2 text-[10px] font-bold text-text-main/30 tracking-widest">
-                                <span>5 MI</span>
-                                <span>100 MI</span>
+                            <div className="flex justify-between mt-1.5 text-[10px] font-bold text-text-main/25 tracking-widest">
+                                <span>5 MI</span><span>100 MI</span>
                             </div>
                         </div>
                     </div>
@@ -473,26 +472,25 @@ export default function ProfilePage() {
 
             {/* Training Preferences (Athlete Only) */}
             {!isTrainer && (
-                <div className="bg-[#1A1C23] border border-white/5 rounded-[20px] p-6 lg:p-8 mb-6 shadow-md">
-                    <div className="flex items-center gap-3 mb-6">
-                        <Clock size={20} className="text-primary" strokeWidth={2.5} />
-                        <h3 className="text-[15px] font-black text-white tracking-widest uppercase">Training Preferences</h3>
+                <div className="bg-surface border border-white/[0.06] rounded-2xl p-6 mb-4">
+                    <div className="flex items-center gap-2.5 mb-5">
+                        <Clock size={16} className="text-text-main/40" strokeWidth={2.5} />
+                        <h3 className="text-[11px] font-black text-text-main/50 tracking-[0.15em] uppercase">Training Preferences</h3>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
-                            <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">Skill Level</label>
-                            <div className="grid grid-cols-2 gap-3">
+                            <label className="block text-[10px] font-bold text-text-main/40 uppercase tracking-[0.12em] mb-3">Skill Level</label>
+                            <div className="grid grid-cols-2 gap-2">
                                 {["beginner", "intermediate", "advanced", "pro"].map((level) => (
                                     <button
                                         key={level}
                                         type="button"
-                                        disabled={!editing}
-                                        onClick={() => setForm(p => ({ ...p, skillLevel: level }))}
-                                        className={`px-4 py-3 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all border ${
-                                            form.skillLevel === level 
-                                                ? "bg-primary text-bg border-transparent shadow-[0_0_20px_rgba(69,208,255,0.3)]" 
-                                                : "bg-[#12141A] border-white/5 text-text-main/40 hover:border-white/20"
-                                        } disabled:cursor-not-allowed`}
+                                        onClick={() => updateForm({ skillLevel: level })}
+                                        className={`px-3 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all border ${
+                                            form.skillLevel === level
+                                                ? "bg-primary/10 border-primary/40 text-primary"
+                                                : "bg-white/[0.02] border-white/[0.06] text-text-main/40 hover:border-white/[0.14] hover:text-text-main/70"
+                                        }`}
                                     >
                                         {level}
                                     </button>
@@ -500,33 +498,27 @@ export default function ProfilePage() {
                             </div>
                         </div>
                         <div>
-                            <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">Preferred Times</label>
-                            <div className="flex flex-col gap-3">
+                            <label className="block text-[10px] font-bold text-text-main/40 uppercase tracking-[0.12em] mb-3">Preferred Times</label>
+                            <div className="flex flex-col gap-2">
                                 {["morning", "afternoon", "evening"].map((time) => {
                                     const selected = form.preferredTimes.includes(time);
                                     return (
                                         <button
                                             key={time}
                                             type="button"
-                                            disabled={!editing}
-                                            onClick={() => {
-                                                setForm(p => ({
-                                                    ...p,
-                                                    preferredTimes: selected 
-                                                        ? p.preferredTimes.filter(t => t !== time)
-                                                        : [...p.preferredTimes, time]
-                                                }));
-                                            }}
-                                            className={`flex items-center justify-between px-5 py-3 rounded-xl border transition-all ${
-                                                selected 
-                                                    ? "bg-primary text-bg border-transparent shadow-[0_0_20px_rgba(69,208,255,0.3)]" 
-                                                    : "bg-[#12141A] border-white/5 hover:border-white/20"
-                                            } disabled:cursor-not-allowed`}
+                                            onClick={() => updateForm({
+                                                preferredTimes: selected
+                                                    ? form.preferredTimes.filter(t => t !== time)
+                                                    : [...form.preferredTimes, time]
+                                            })}
+                                            className={`flex items-center justify-between px-4 py-2.5 rounded-xl border transition-all ${
+                                                selected
+                                                    ? "bg-primary/10 border-primary/40 text-primary"
+                                                    : "bg-white/[0.02] border-white/[0.06] text-text-main/40 hover:border-white/[0.12]"
+                                            }`}
                                         >
-                                            <span className={`text-[11px] font-black uppercase tracking-wider ${selected ? "text-bg" : "text-text-main/40"}`}>
-                                                {time}
-                                            </span>
-                                            {selected && <CheckCircle size={14} className="text-bg" strokeWidth={3} />}
+                                            <span className="text-[11px] font-black uppercase tracking-wider">{time}</span>
+                                            {selected && <CheckCircle size={13} className="text-primary/70" strokeWidth={2.5} />}
                                         </button>
                                     );
                                 })}
@@ -536,53 +528,35 @@ export default function ProfilePage() {
                 </div>
             )}
 
-            {/* Trainer-specific fields (only visible if logged in as trainer) */}
+            {/* Trainer-specific fields */}
             {isTrainer && (
-                <div className="bg-[#1A1C23] border border-white/5 rounded-[20px] p-6 lg:p-8 mb-6 shadow-md">
-                    <h3 className="text-[15px] font-black text-white tracking-widest uppercase mb-6">Training Profile</h3>
-                    <div className="grid gap-6">
+                <div className="bg-surface border border-white/[0.06] rounded-2xl p-6 mb-4">
+                    <h3 className="text-[11px] font-black text-text-main/50 tracking-[0.15em] uppercase mb-5">Training Profile</h3>
+                    <div className="grid gap-4">
                         <div>
-                            <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">Headline</label>
-                            <input
-                                value={form.headline}
-                                onChange={(e) => setForm((p) => ({ ...p, headline: e.target.value }))}
-                                disabled={!editing}
-                                placeholder="e.g. Former NCAA D1 Player"
-                                className="w-full bg-[#12141A] border border-white/5 rounded-2xl px-5 py-3.5 text-white text-sm outline-none focus:border-primary/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                            />
+                            <label className="block text-[10px] font-bold text-text-main/40 uppercase tracking-[0.12em] mb-2">Headline</label>
+                            <input value={form.headline} onChange={(e) => updateForm({ headline: e.target.value })} placeholder="e.g. Former NCAA D1 Player" className={inputCls("headline")} />
+                            <FieldError field="headline" />
                         </div>
                         <div>
-                            <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">Bio</label>
+                            <label className="block text-[10px] font-bold text-text-main/40 uppercase tracking-[0.12em] mb-2">Bio</label>
                             <textarea
                                 value={form.bio}
-                                onChange={(e) => setForm((p) => ({ ...p, bio: e.target.value }))}
-                                disabled={!editing}
+                                onChange={(e) => updateForm({ bio: e.target.value })}
                                 placeholder="Tell athletes about your experience..."
-                                className="w-full h-32 bg-[#12141A] border border-white/5 rounded-2xl p-5 text-white text-sm outline-none focus:border-primary/50 resize-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                className={inputCls() + " h-28 resize-none"}
                             />
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
-                                <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">Hourly Rate ($)</label>
-                                <input
-                                    type="number"
-                                    value={form.hourlyRate}
-                                    onChange={(e) => setForm((p) => ({ ...p, hourlyRate: e.target.value }))}
-                                    disabled={!editing}
-                                    min={10} max={500}
-                                    className="w-full bg-[#12141A] border border-white/5 rounded-2xl px-5 py-3.5 text-white text-sm outline-none focus:border-primary/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                />
+                                <label className="block text-[10px] font-bold text-text-main/40 uppercase tracking-[0.12em] mb-2">Hourly Rate ($) <span className="text-red-400">*</span></label>
+                                <input type="number" value={form.hourlyRate} onChange={(e) => updateForm({ hourlyRate: e.target.value })} min={10} max={1000} className={inputCls("hourlyRate")} />
+                                <FieldError field="hourlyRate" />
                             </div>
                             <div>
-                                <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">Years Experience</label>
-                                <input
-                                    type="number"
-                                    value={form.yearsExperience}
-                                    onChange={(e) => setForm((p) => ({ ...p, yearsExperience: e.target.value }))}
-                                    disabled={!editing}
-                                    min={0} max={50}
-                                    className="w-full bg-[#12141A] border border-white/5 rounded-2xl px-5 py-3.5 text-white text-sm outline-none focus:border-primary/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                />
+                                <label className="block text-[10px] font-bold text-text-main/40 uppercase tracking-[0.12em] mb-2">Years Experience <span className="text-red-400">*</span></label>
+                                <input type="number" value={form.yearsExperience} onChange={(e) => updateForm({ yearsExperience: e.target.value })} min={0} max={60} className={inputCls("yearsExperience")} />
+                                <FieldError field="yearsExperience" />
                             </div>
                         </div>
                     </div>
@@ -590,31 +564,24 @@ export default function ProfilePage() {
             )}
 
             {/* Sports */}
-            <div className="bg-[#1A1C23] border border-white/5 rounded-[20px] p-6 lg:p-8 shadow-md">
-                <h3 className="text-[15px] font-black text-white tracking-widest uppercase mb-6">Sports Interests</h3>
-                <div className="flex flex-wrap gap-2.5">
+            <div className={`bg-surface border rounded-2xl p-6 ${fieldErrors.sports ? "border-red-500/30" : "border-white/[0.06]"}`}>
+                <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-[11px] font-black text-text-main/50 tracking-[0.15em] uppercase">Sports Interests <span className="text-red-400">*</span></h3>
+                    {fieldErrors.sports && <p className="text-[11px] text-red-400 font-semibold flex items-center gap-1"><AlertTriangle size={11} /> {fieldErrors.sports}</p>}
+                </div>
+                <div className="flex flex-wrap gap-2">
                     {SPORTS.map((sport) => {
                         const selected = form.sports.includes(sport);
                         return (
                             <button
                                 key={sport}
                                 type="button"
-                                disabled={!editing}
-                                onClick={() => {
-                                    if (!editing) return;
-                                    setForm((p) => ({
-                                        ...p,
-                                        sports: selected ? p.sports.filter((s) => s !== sport) : [...p.sports, sport],
-                                    }));
-                                }}
-                                className={`
-                                    px-5 py-2.5 rounded-full text-xs font-black uppercase tracking-wider transition-all duration-200
-                                    ${selected
-                                        ? "bg-primary text-bg shadow-[0_4px_15px_rgba(69,208,255,0.25)] border-transparent"
-                                        : "bg-transparent border border-white/10 text-text-main/50"
-                                    }
-                                    ${editing ? (selected ? "hover:shadow-[0_4px_20px_rgba(69,208,255,0.4)] hover:-translate-y-0.5" : "hover:border-white/30 hover:text-white") : "cursor-default opacity-80"}
-                                `}
+                                onClick={() => updateForm({ sports: selected ? form.sports.filter(s => s !== sport) : [...form.sports, sport] })}
+                                className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all border ${
+                                    selected
+                                        ? "bg-primary/10 border-primary/40 text-primary"
+                                        : "bg-white/[0.02] border-white/[0.06] text-text-main/40 hover:border-white/[0.14] hover:text-text-main/70"
+                                }`}
                             >
                                 {sport.replace(/_/g, " ")}
                             </button>
@@ -623,35 +590,45 @@ export default function ProfilePage() {
                 </div>
             </div>
 
+            {/* Floating Save Button */}
+            {isDirty && (
+                <div className="fixed bottom-6 right-6 z-40">
+                    <button
+                        onClick={handleSave}
+                        disabled={saving}
+                        className="flex items-center gap-2.5 px-5 py-3 rounded-xl bg-primary text-bg font-black text-sm shadow-lg hover:opacity-90 transition-all disabled:opacity-60"
+                    >
+                        <Save size={15} strokeWidth={2.5} />
+                        {saving ? "Saving..." : "Save Changes"}
+                    </button>
+                </div>
+            )}
+
             {/* Delete Account Confirmation Modal */}
             {showDeleteConfirm && (
-                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-6">
-                    <div className="bg-[#1A1C23] border border-white/10 rounded-[24px] p-8 w-full max-w-[420px] text-center shadow-2xl">
-                        <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center mx-auto mb-6">
-                            <ShieldAlert className="text-red-500 w-8 h-8" strokeWidth={2.5} />
+                <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-6">
+                    <div className="bg-surface border border-white/[0.08] rounded-2xl p-8 w-full max-w-[400px] text-center">
+                        <div className="w-14 h-14 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center mx-auto mb-5">
+                            <ShieldAlert className="text-red-400 w-7 h-7" strokeWidth={2} />
                         </div>
-                        <h3 className="text-[22px] font-black text-white tracking-tight mb-2">
-                            Delete Account?
-                        </h3>
-                        <p className="text-text-main/60 text-sm mb-8 leading-relaxed px-2">
+                        <h3 className="text-xl font-black text-white mb-2">Delete Account?</h3>
+                        <p className="text-text-main/50 text-sm mb-7 leading-relaxed">
                             This action cannot be undone. Your account and all associated data will be permanently deleted.
                         </p>
-                        <div className="flex gap-4">
+                        <div className="flex gap-3">
                             <button
                                 onClick={() => setShowDeleteConfirm(false)}
                                 disabled={deleting}
-                                className="flex-1 px-6 py-3.5 rounded-xl border border-white/10 text-white font-bold text-sm bg-transparent hover:bg-white/5 transition-colors"
+                                className="flex-1 px-5 py-3 rounded-xl border border-white/[0.08] text-text-main/70 font-bold text-sm hover:bg-white/[0.04] transition-colors"
                             >
                                 Cancel
                             </button>
                             <button
                                 onClick={handleDeleteAccount}
                                 disabled={deleting}
-                                className="flex-1 px-6 py-3.5 rounded-xl bg-red-500 text-white font-black text-sm hover:shadow-[0_0_20px_rgba(239,68,68,0.4)] transition-all flex items-center justify-center"
+                                className="flex-1 px-5 py-3 rounded-xl bg-red-500 text-white font-black text-sm hover:bg-red-400 transition-colors flex items-center justify-center"
                             >
-                                {deleting ? (
-                                    <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin" />
-                                ) : "Delete"}
+                                {deleting ? <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" /> : "Delete"}
                             </button>
                         </div>
                     </div>

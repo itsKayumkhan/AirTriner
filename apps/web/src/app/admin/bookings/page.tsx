@@ -10,12 +10,13 @@ export default function AdminBookingsPage() {
     const [activeTab, setActiveTab] = useState("All");
     const [rawBookings, setRawBookings] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
-    
+
     // Dropdown states
     const [isDateOpen, setIsDateOpen] = useState(false);
     const [isSportOpen, setIsSportOpen] = useState(false);
     const [selectedDate, setSelectedDate] = useState("Any Date");
     const [selectedSport, setSelectedSport] = useState("All Sports");
+    const [sportsList, setSportsList] = useState<string[]>(["All Sports"]);
     
     const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -67,6 +68,7 @@ export default function AdminBookingsPage() {
                         time: dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                         category: b.sport || "General",
                         rawStatus: b.status,
+                        rawScheduledAt: b.scheduled_at,
                         status: styles.display,
                         sColor: styles.sColor,
                         sBg: styles.sBg,
@@ -74,6 +76,8 @@ export default function AdminBookingsPage() {
                         sIcon: styles.icon
                     };
                 }));
+                const { data: sportsData } = await supabase.from("sports").select("name").eq("is_active", true).order("name");
+                setSportsList(["All Sports", ...(sportsData || []).map((s: any) => s.name)]);
             } catch (err) {
                 console.error(err);
             } finally {
@@ -99,16 +103,32 @@ export default function AdminBookingsPage() {
     }, []);
 
     const bookings = rawBookings.filter(b => {
-        if (activeTab !== "All" && b.display !== activeTab && b.rawStatus !== activeTab.toLowerCase()) return false;
-        
+        if (activeTab === "Upcoming" && (b.rawStatus === "cancelled" || b.rawStatus === "completed" || new Date(b.rawScheduledAt) < new Date())) return false;
+        if (activeTab === "Completed" && b.rawStatus !== "completed") return false;
+        if (activeTab === "Cancelled" && b.rawStatus !== "cancelled") return false;
+
         if (selectedSport !== "All Sports" && b.category.toLowerCase() !== selectedSport.toLowerCase()) return false;
-        
-        // Simple date filtering (assuming today/this week just for visual interaction)
+
         if (selectedDate === "Today") {
             const today = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
             if (b.date !== today) return false;
         }
-        
+        if (selectedDate === "This Week") {
+            const startOfWeek = new Date();
+            startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
+            startOfWeek.setHours(0, 0, 0, 0);
+            const endOfWeek = new Date(startOfWeek);
+            endOfWeek.setDate(endOfWeek.getDate() + 6);
+            endOfWeek.setHours(23, 59, 59, 999);
+            const bookingDate = new Date(b.rawScheduledAt);
+            if (bookingDate < startOfWeek || bookingDate > endOfWeek) return false;
+        }
+        if (selectedDate === "This Month") {
+            const now = new Date();
+            const bookingDate = new Date(b.rawScheduledAt);
+            if (bookingDate.getMonth() !== now.getMonth() || bookingDate.getFullYear() !== now.getFullYear()) return false;
+        }
+
         const searchLower = searchQuery.toLowerCase();
         return !searchQuery || b.athlete.toLowerCase().includes(searchLower) || b.trainer.toLowerCase().includes(searchLower) || b.id.toLowerCase().includes(searchLower);
     });
@@ -165,6 +185,19 @@ export default function AdminBookingsPage() {
         }
     };
 
+    const handleExportCSV = () => {
+        const headers = ["Booking ID", "Athlete", "Trainer", "Date", "Time", "Sport", "Status"];
+        const rows = bookings.map(b => [b.id, b.athlete, b.trainer, b.date, b.time, b.category, b.status]);
+        const csv = [headers, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
+        const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = `bookings_${new Date().toISOString().split("T")[0]}.csv`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
     return (
         <div className="space-y-8 max-w-[1600px] w-full">
 
@@ -180,7 +213,7 @@ export default function AdminBookingsPage() {
                     </p>
                 </div>
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
-                    <button type="button" onClick={() => alert("Export functionality coming soon!")} className="flex items-center justify-center gap-2 px-5 py-3 rounded-2xl border border-white/[0.04] bg-surface/50 text-sm font-bold text-text-main/80 hover:text-text-main hover:bg-white/5 transition-colors">
+                    <button type="button" onClick={handleExportCSV} className="flex items-center justify-center gap-2 px-5 py-3 rounded-2xl border border-white/[0.04] bg-surface/50 text-sm font-bold text-text-main/80 hover:text-text-main hover:bg-white/5 transition-colors">
                         <Download size={18} /> Export List
                     </button>
                 </div>
@@ -257,7 +290,7 @@ export default function AdminBookingsPage() {
 
                         {isSportOpen && (
                             <div className="absolute top-full right-0 sm:left-0 sm:right-auto lg:right-0 lg:left-auto mt-2 w-48 bg-surface border border-white/[0.04] rounded-2xl shadow-2xl overflow-hidden py-2 backdrop-blur-xl">
-                                {["All Sports", "Tennis", "Fitness", "Soccer", "Yoga", "Basketball"].map(opt => (
+                                {sportsList.map(opt => (
                                     <button
                                         type="button"
                                         key={opt}
@@ -292,11 +325,11 @@ export default function AdminBookingsPage() {
             </div>
 
             {/* Table */}
-            <div className="bg-gradient-to-b from-surface to-surface/50 border border-white/5 rounded-[24px] overflow-hidden shadow-2xl">
+            <div className="bg-surface border border-white/[0.06] rounded-2xl overflow-hidden">
                 <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse whitespace-nowrap">
                         <thead>
-                            <tr className="border-b border-white/5 text-[10px] uppercase font-black tracking-widest text-text-main/40 bg-white/5">
+                            <tr className="border-b border-white/[0.05] text-[10px] uppercase font-bold tracking-widest text-text-main/30 bg-white/[0.03]">
                                 <th className="px-6 py-5 pl-8">Booking ref</th>
                                 <th className="px-6 py-5">Athlete</th>
                                 <th className="px-6 py-5">Trainer</th>
@@ -320,7 +353,7 @@ export default function AdminBookingsPage() {
                                     </td>
                                 </tr>
                             ) : paginatedBookings.map((b, i) => (
-                                <tr key={b.id} onClick={() => setDetailBooking(b)} className="border-b border-white/5/50 hover:bg-white/5 transition-colors group cursor-pointer">
+                                <tr key={b.id} onClick={() => setDetailBooking(b)} className="border-b border-white/[0.04] last:border-0 hover:bg-white/[0.025] transition-colors group cursor-pointer">
                                     <td className="px-6 py-5 pl-8">
                                         <div className="flex items-center gap-2 text-text-main/60 font-black text-xs tracking-wider uppercase">
                                             <span className="text-primary/50">#</span>{b.id}

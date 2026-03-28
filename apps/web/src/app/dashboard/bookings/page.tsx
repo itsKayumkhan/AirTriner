@@ -24,7 +24,7 @@ type RescheduleInfo = {
 type BookingWithUser = BookingRow & {
     other_user?: { first_name: string; last_name: string; email: string };
     reschedule_request?: RescheduleInfo | null;
-    review?: { rating: number; review_text: string | null } | null;
+    review?: { id: string; rating: number; review_text: string | null } | null;
 };
 
 const STATUS_CFG: Record<string, {
@@ -46,6 +46,7 @@ export default function BookingsPage() {
     const [bookings, setBookings] = useState<BookingWithUser[]>([]);
     const [filter, setFilter] = useState<string>("all");
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
     const [refreshing, setRefreshing] = useState(false);
     const [actionLoading, setActionLoading] = useState<string | null>(null);
     const { toasts, remove, success: toastSuccess, error: toastError } = useToast();
@@ -102,16 +103,22 @@ export default function BookingsPage() {
                 (rd || []).forEach((r: any) => reschedMap.set(r.booking_id, { id: r.id, proposed_time: r.proposed_time, reason: r.reason, initiated_by: r.initiated_by }));
             }
 
-            const { data: revData } = await supabase.from("reviews").select("booking_id, rating, review_text").in("booking_id", all.map((b) => b.id));
-            const revMap = new Map((revData || []).map((r) => [r.booking_id, r]));
+            // Fetch reviews by reviewer — map per trainer+sport (one review per trainer per sport)
+            const { data: revData } = await supabase.from("reviews").select("id, booking_id, reviewee_id, rating, review_text").eq("reviewer_id", u.id);
+            const bookingIdToSport = new Map(all.map((b) => [b.id, b.sport]));
+            const reviewByTrainerSport = new Map<string, { id: string; rating: number; review_text: string | null }>();
+            (revData || []).forEach((r: any) => {
+                const sport = bookingIdToSport.get(r.booking_id) || "";
+                reviewByTrainerSport.set(`${r.reviewee_id}:${sport}`, { id: r.id, rating: r.rating, review_text: r.review_text });
+            });
 
             setBookings(all.map((b) => ({
                 ...b,
                 other_user: usersMap.get(u.role === "trainer" ? b.athlete_id : b.trainer_id) as BookingWithUser["other_user"],
                 reschedule_request: reschedMap.get(b.id) || null,
-                review: revMap.get(b.id) || null,
+                review: reviewByTrainerSport.get(`${b.trainer_id}:${b.sport}`) || null,
             })));
-        } catch (err) { console.error(err); }
+        } catch (err) { console.error(err); setLoadError("Failed to load bookings. Please refresh."); }
         finally { setLoading(false); setRefreshing(false); }
     };
 
@@ -160,17 +167,62 @@ export default function BookingsPage() {
         if (!user || !reviewBooking) return;
         setSubmittingReview(true);
         try {
-            await supabase.from("reviews").insert({ booking_id: reviewBooking.id, reviewer_id: user.id, reviewee_id: reviewBooking.trainer_id, rating: reviewRating, review_text: reviewText || null, is_public: true });
-            await supabase.from("notifications").insert({ user_id: reviewBooking.trainer_id, type: "REVIEW_RECEIVED", title: "New Review", body: `You got a ${reviewRating}-star review for ${reviewBooking.sport}.`, data: { booking_id: reviewBooking.id }, read: false });
+            const existingId = reviewBooking.review?.id;
+            let error;
+
+            if (existingId) {
+                // UPDATE existing review
+                ({ error } = await supabase.from("reviews")
+                    .update({ rating: reviewRating, review_text: reviewText || null })
+                    .eq("id", existingId));
+            } else {
+                // INSERT new review
+                ({ error } = await supabase.from("reviews").insert({
+                    booking_id: reviewBooking.id,
+                    reviewer_id: user.id,
+                    reviewee_id: reviewBooking.trainer_id,
+                    rating: reviewRating,
+                    review_text: reviewText || null,
+                    is_public: true,
+                }));
+                if (!error) {
+                    await supabase.from("notifications").insert({
+                        user_id: reviewBooking.trainer_id,
+                        type: "REVIEW_RECEIVED",
+                        title: "New Review",
+                        body: `You got a ${reviewRating}-star review for ${reviewBooking.sport}.`,
+                        data: { booking_id: reviewBooking.id },
+                        read: false,
+                    });
+                }
+            }
+
+            if (error) throw error;
+
+            // Recalculate trainer's average_rating and total_reviews
+            const { data: allReviews } = await supabase.from("reviews").select("rating").eq("reviewee_id", reviewBooking.trainer_id);
+            if (allReviews && allReviews.length > 0) {
+                const avg = Math.round((allReviews.reduce((s: number, r: { rating: number }) => s + r.rating, 0) / allReviews.length) * 10) / 10;
+                await supabase.from("trainer_profiles").update({ average_rating: avg, total_reviews: allReviews.length }).eq("user_id", reviewBooking.trainer_id);
+            }
+
+            // Update local state — all bookings with same trainer+sport get the updated review
+            const newReview = { id: existingId || "", rating: reviewRating, review_text: reviewText || null };
+            setBookings(prev => prev.map(b =>
+                b.trainer_id === reviewBooking.trainer_id && b.sport === reviewBooking.sport
+                    ? { ...b, review: newReview }
+                    : b
+            ));
             setReviewModalOpen(false); setReviewBooking(null); setReviewRating(5); setReviewText("");
-        } catch (err) { console.error(err); }
+            toastSuccess(existingId ? "Review Updated!" : "Review Submitted!");
+        } catch (err: any) { console.error(err); toastError("Failed", err.message || "Could not submit review."); }
         finally { setSubmittingReview(false); }
     };
 
-    const openReview = (booking: BookingWithUser, readOnly = false) => {
-        setReviewBooking(booking); setIsReviewReadOnly(readOnly);
-        setReviewRating(readOnly && booking.review ? booking.review.rating : 5);
-        setReviewText(readOnly && booking.review ? (booking.review.review_text || "") : "");
+    const openReview = (booking: BookingWithUser) => {
+        setReviewBooking(booking); setIsReviewReadOnly(false);
+        setReviewRating(booking.review ? booking.review.rating : 5);
+        setReviewText(booking.review ? (booking.review.review_text || "") : "");
         setReviewModalOpen(true);
     };
 
@@ -196,10 +248,12 @@ export default function BookingsPage() {
         const futureA = da >= now, futureB = db >= now;
         const terminal = new Set(["cancelled", "rejected", "no_show", "disputed"]);
 
+        const createdDesc = new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+
         if (isTrainerView) {
             const order: Record<string, number> = { pending: 0, reschedule_requested: 1, confirmed: 2, completed: 3, cancelled: 4, rejected: 5, no_show: 5, disputed: 5 };
             const oa = order[a.status] ?? 9, ob = order[b.status] ?? 9;
-            return oa !== ob ? oa - ob : da.getTime() - db.getTime();
+            return oa !== ob ? oa - ob : createdDesc;
         }
         // Groups: 0=upcoming active, 1=past active(expired), 2=completed, 3=terminal(cancelled/rejected)
         const activeStatuses = !terminal.has(a.status) && a.status !== "completed";
@@ -211,9 +265,9 @@ export default function BookingsPage() {
             const pA = paidBookingIds.has(a.id), pB = paidBookingIds.has(b.id);
             const uA = a.status === "confirmed" && !pA ? 0 : a.status === "confirmed" ? 1 : 2;
             const uB = b.status === "confirmed" && !pB ? 0 : b.status === "confirmed" ? 1 : 2;
-            return uA !== uB ? uA - uB : da.getTime() - db.getTime();
+            return uA !== uB ? uA - uB : createdDesc;
         }
-        return db.getTime() - da.getTime();
+        return createdDesc;
     });
 
     const filteredBookings = filter === "all" ? sortedBookings : sortedBookings.filter((b) => b.status === filter);
@@ -224,6 +278,15 @@ export default function BookingsPage() {
             <div className="flex flex-col justify-center items-center min-h-[60vh] gap-4">
                 <div className="w-10 h-10 border-2 border-primary/20 border-t-primary rounded-full animate-spin" />
                 <p className="text-xs text-text-main/30 font-medium tracking-widest uppercase">Loading sessions...</p>
+            </div>
+        );
+    }
+
+    if (loadError) {
+        return (
+            <div className="flex flex-col justify-center items-center min-h-[60vh] gap-3">
+                <p className="text-text-main/50 font-semibold text-sm">{loadError}</p>
+                <button onClick={() => { setLoadError(null); setLoading(true); if (user) loadBookings(user); }} className="px-4 py-2 rounded-xl bg-white/[0.06] border border-white/[0.08] text-text-main/70 text-sm font-bold hover:bg-white/[0.10] transition-all">Retry</button>
             </div>
         );
     }
@@ -510,18 +573,18 @@ export default function BookingsPage() {
                                         )}
 
                                         {/* Review */}
-                                        {booking.status === "completed" && (
-                                            booking.review ? (
-                                                <button onClick={() => openReview(booking, true)}
-                                                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white/4 border border-white/8 text-text-main/50 text-[11px] font-bold hover:text-white hover:bg-white/8 transition-all">
-                                                    <FileText size={11} /> View Review
-                                                </button>
-                                            ) : !isTrainer ? (
-                                                <button onClick={() => openReview(booking, false)}
-                                                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-orange-500/10 border border-orange-500/20 text-orange-400 text-[11px] font-bold hover:bg-orange-500/20 transition-all">
-                                                    <Star size={11} className="fill-current" /> Leave Review
-                                                </button>
-                                            ) : null
+                                        {booking.status === "completed" && !isTrainer && (
+                                            <button onClick={() => openReview(booking)}
+                                                className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-[11px] font-bold transition-all ${
+                                                    booking.review
+                                                        ? "bg-white/[0.04] border border-white/[0.08] text-text-main/50 hover:text-white hover:bg-white/[0.08]"
+                                                        : "bg-orange-500/10 border border-orange-500/20 text-orange-400 hover:bg-orange-500/20"
+                                                }`}>
+                                                {booking.review
+                                                    ? <><FileText size={11} /> Edit Review</>
+                                                    : <><Star size={11} className="fill-current" /> Leave Review</>
+                                                }
+                                            </button>
                                         )}
 
                                         {/* Reschedule respond */}

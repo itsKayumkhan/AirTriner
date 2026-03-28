@@ -11,7 +11,6 @@ interface Athlete {
     email: string;
     date: string;
     status: "Active" | "Suspended";
-    plan: "Free" | "Pro" | "Elite";
     sessions: number;
     initials: string;
 }
@@ -19,11 +18,11 @@ interface Athlete {
 export default function AdminAthletesPage() {
     const [searchQuery, setSearchQuery] = useState("");
     const [statusFilter, setStatusFilter] = useState<"All" | "Active" | "Suspended">("All");
-    const [planFilter, setPlanFilter] = useState<"All" | "Free" | "Pro" | "Elite">("All");
     const [athletes, setAthletes] = useState<Athlete[]>([]);
     const [loading, setLoading] = useState(true);
     const [actionLoading, setActionLoading] = useState(false);
-    
+    const [totalBookingsCount, setTotalBookingsCount] = useState(0);
+
     // Custom Confirm Modal State
     const [confirmModal, setConfirmModal] = useState<{isOpen: boolean, id: string | null, action: "suspend" | "activate" | null, name: string}>({isOpen: false, id: null, action: null, name: ""});
 
@@ -34,21 +33,41 @@ export default function AdminAthletesPage() {
     useEffect(() => {
         const loadAthletes = async () => {
             try {
+                // Fetch athletes
                 const { data } = await supabase.from("users").select("*").eq("role", "athlete");
-                if (data) {
-                    setAthletes(data.map(u => {
-                        const plans: ("Free" | "Pro" | "Elite")[] = ["Free", "Pro", "Elite"];
-                        return {
-                            id: u.id,
-                            name: `${u.first_name || ""} ${u.last_name || ""}`.trim() || u.email.split('@')[0],
-                            email: u.email,
-                            date: new Date(u.created_at).toLocaleDateString(),
-                            status: Math.random() > 0.9 ? "Suspended" : "Active", 
-                            plan: plans[Math.floor(Math.random() * plans.length)],
-                            sessions: Math.floor(Math.random() * 20), 
-                            initials: `${u.first_name?.[0] || ""}${u.last_name?.[0] || ""}`.toUpperCase() || u.email[0].toUpperCase()
-                        };
-                    }));
+
+                // Fetch total bookings count
+                const { count: bookingsCount } = await supabase
+                    .from("bookings")
+                    .select("*", { count: "exact", head: true });
+
+                setTotalBookingsCount(bookingsCount ?? 0);
+
+                if (data && data.length > 0) {
+                    const userIds = data.map((u: any) => u.id);
+
+                    // Fetch booking counts per athlete
+                    const { data: bookingRows } = await supabase
+                        .from("bookings")
+                        .select("athlete_id")
+                        .in("athlete_id", userIds);
+
+                    const sessionCountMap: Record<string, number> = {};
+                    (bookingRows || []).forEach((b: any) => {
+                        sessionCountMap[b.athlete_id] = (sessionCountMap[b.athlete_id] || 0) + 1;
+                    });
+
+                    setAthletes(data.map((u: any) => ({
+                        id: u.id,
+                        name: `${u.first_name || ""} ${u.last_name || ""}`.trim() || u.email.split('@')[0],
+                        email: u.email,
+                        date: new Date(u.created_at).toLocaleDateString(),
+                        status: u.is_suspended ? "Suspended" : "Active",
+                        sessions: sessionCountMap[u.id] ?? 0,
+                        initials: `${u.first_name?.[0] || ""}${u.last_name?.[0] || ""}`.toUpperCase() || u.email[0].toUpperCase()
+                    })));
+                } else {
+                    setAthletes([]);
                 }
             } catch (err) {
                 console.error(err);
@@ -61,8 +80,7 @@ export default function AdminAthletesPage() {
 
     const filteredAthletes = athletes.filter(a => {
         if (statusFilter !== "All" && a.status !== statusFilter) return false;
-        if (planFilter !== "All" && a.plan !== planFilter) return false;
-        
+
         const searchLower = searchQuery.toLowerCase();
         return !searchQuery || a.name.toLowerCase().includes(searchLower) || a.email.toLowerCase().includes(searchLower);
     });
@@ -77,7 +95,6 @@ export default function AdminAthletesPage() {
     const clearFilters = () => {
         setSearchQuery("");
         setStatusFilter("All");
-        setPlanFilter("All");
         setCurrentPage(1);
     };
 
@@ -96,8 +113,8 @@ export default function AdminAthletesPage() {
 
         setActionLoading(true);
         try {
-            // Note: Replace with true DB interaction if column `status` exists in users table.
-            setAthletes(prev => prev.map(a => 
+            await supabase.from("users").update({ is_suspended: action === "suspend" }).eq("id", id);
+            setAthletes(prev => prev.map(a =>
                 a.id === id ? { ...a, status: action === "suspend" ? "Suspended" : "Active" } : a
             ));
             setConfirmModal({ isOpen: false, id: null, action: null, name: "" });
@@ -110,7 +127,6 @@ export default function AdminAthletesPage() {
 
     const totalAthletesCount = athletes.length;
     const activeAthletesCount = athletes.filter(a => a.status === "Active").length;
-    const totalSessionsPlaceholder = athletes.reduce((sum, a) => sum + a.sessions, 0);
 
     return (
         <div className="space-y-8 max-w-[1600px] w-full">
@@ -143,7 +159,7 @@ export default function AdminAthletesPage() {
                         <span className="text-[10px] sm:text-xs font-black uppercase tracking-widest text-text-main/40 leading-tight">Total Bookings</span>
                         <div className="p-2 rounded-xl bg-white/5 text-text-main/40 transition-colors"><Activity size={18} /></div>
                     </div>
-                    <div className="text-3xl sm:text-4xl font-black text-text-main tracking-tighter">{totalSessionsPlaceholder.toLocaleString()}</div>
+                    <div className="text-3xl sm:text-4xl font-black text-text-main tracking-tighter">{totalBookingsCount.toLocaleString()}</div>
                 </div>
 
                 <div className="bg-gradient-to-br from-surface to-[#12141A] border border-white/5 rounded-[20px] p-6 relative overflow-hidden group hover:border-white/[0.06] transition-all duration-300 hover:shadow-[0_0_30px_rgba(255,255,255,0.03)]">
@@ -173,7 +189,7 @@ export default function AdminAthletesPage() {
                         />
                     </div>
                     {searchQuery && (
-                        <button 
+                        <button
                             type="button"
                             onClick={clearFilters}
                             className="p-3 ml-2 bg-red-500/10 text-red-500 hover:bg-red-500/20 rounded-full transition-colors flex-shrink-0"
@@ -184,7 +200,7 @@ export default function AdminAthletesPage() {
                     )}
                 </div>
                 <div className="flex flex-wrap gap-2 bg-[#12141A] border border-white/5 rounded-2xl md:rounded-full p-1.5 overflow-x-auto scrollbar-none">
-                    <div className="flex gap-1 border-r border-white/[0.04] pr-2 mr-1">
+                    <div className="flex gap-1">
                         {["All", "Active", "Suspended"].map((status) => (
                             <button
                                 type="button"
@@ -194,31 +210,12 @@ export default function AdminAthletesPage() {
                                     setCurrentPage(1);
                                 }}
                                 className={`px-4 py-2 text-[10px] font-black uppercase tracking-widest rounded-full transition-all whitespace-nowrap ${
-                                    statusFilter === status 
-                                        ? "bg-primary text-bg shadow-[0_0_15px_rgba(69,208,255,0.3)]" 
+                                    statusFilter === status
+                                        ? "bg-primary text-bg shadow-[0_0_15px_rgba(69,208,255,0.3)]"
                                         : "text-text-main/50 hover:text-text-main hover:bg-white/5"
                                 }`}
                             >
                                 {status}
-                            </button>
-                        ))}
-                    </div>
-                    <div className="flex gap-1">
-                        {["All", "Free", "Pro", "Elite"].map((plan) => (
-                            <button
-                                type="button"
-                                key={plan}
-                                onClick={() => {
-                                    setPlanFilter(plan as "All" | "Free" | "Pro" | "Elite");
-                                    setCurrentPage(1);
-                                }}
-                                className={`px-4 py-2 text-[10px] font-black uppercase tracking-widest rounded-full transition-all whitespace-nowrap ${
-                                    planFilter === plan 
-                                        ? "bg-white text-bg shadow-[0_0_15px_rgba(255,255,255,0.1)]" 
-                                        : "text-text-main/50 hover:text-text-main hover:bg-white/5"
-                                }`}
-                            >
-                                {plan}
                             </button>
                         ))}
                     </div>
@@ -233,7 +230,6 @@ export default function AdminAthletesPage() {
                             <tr className="border-b border-white/5 text-[10px] uppercase font-black tracking-widest text-text-main/40 bg-white/5">
                                 <th className="px-6 py-5 pl-8">Athlete Name</th>
                                 <th className="px-6 py-5">Joined Date</th>
-                                <th className="px-6 py-5">Subscription</th>
                                 <th className="px-6 py-5">Status</th>
                                 <th className="px-6 py-5">Sessions</th>
                                 <th className="px-6 py-5 pr-8 text-right">Actions</th>
@@ -253,7 +249,7 @@ export default function AdminAthletesPage() {
                                     </td>
                                 </tr>
                             ) : paginatedAthletes.map((a) => (
-                                <tr key={a.id} className="border-b border-white/5/50 hover:bg-white/5 transition-colors group">
+                                <tr key={a.id} className="border-b border-white/[0.04] hover:bg-white/5 transition-colors group">
                                     <td className="px-6 py-5 pl-8">
                                         <div className="flex items-center gap-3">
                                             <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-black flex-shrink-0 border border-primary/20">
@@ -267,15 +263,6 @@ export default function AdminAthletesPage() {
                                     </td>
                                     <td className="px-6 py-5">
                                         <div className="text-text-main/80 font-bold text-xs tracking-wide">{a.date}</div>
-                                    </td>
-                                    <td className="px-6 py-5">
-                                        <div className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest inline-block border ${
-                                            a.plan === "Elite" ? "border-amber-500/20 text-amber-500 bg-amber-500/10" :
-                                            a.plan === "Pro" ? "border-primary/20 text-primary bg-primary/10" :
-                                            "border-white/[0.04] text-white/40 bg-white/5"
-                                        }`}>
-                                            {a.plan}
-                                        </div>
                                     </td>
                                     <td className="px-6 py-5">
                                         <div className={`flex justify-center px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest inline-flex border ${
@@ -312,12 +299,12 @@ export default function AdminAthletesPage() {
                 {!loading && filteredAthletes.length > 0 && (
                     <div className="px-8 py-5 flex items-center justify-between border-t border-white/5 bg-[#12141A]/50">
                         <div className="text-xs font-bold text-text-main/40 tracking-wide uppercase">
-                            Showing <span className="text-text-main mx-1">{(currentPage - 1) * itemsPerPage + 1}</span> 
-                            to <span className="text-text-main mx-1">{Math.min(currentPage * itemsPerPage, filteredAthletes.length)}</span> 
+                            Showing <span className="text-text-main mx-1">{(currentPage - 1) * itemsPerPage + 1}</span>
+                            to <span className="text-text-main mx-1">{Math.min(currentPage * itemsPerPage, filteredAthletes.length)}</span>
                             of <span className="text-text-main mx-1">{filteredAthletes.length}</span> results
                         </div>
                         <div className="flex items-center gap-2">
-                            <button 
+                            <button
                                 type="button"
                                 onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                                 disabled={currentPage === 1}
@@ -325,15 +312,15 @@ export default function AdminAthletesPage() {
                             >
                                 <ChevronLeft size={16} />
                             </button>
-                            
+
                             {Array.from({ length: totalPages }, (_, idx) => idx + 1).map(page => (
-                                <button 
+                                <button
                                     type="button"
                                     key={page}
                                     onClick={() => setCurrentPage(page)}
                                     className={`w-8 h-8 rounded-full text-xs font-black transition-all ${
-                                        currentPage === page 
-                                            ? "bg-primary text-bg shadow-[0_0_10px_rgba(69,208,255,0.3)]" 
+                                        currentPage === page
+                                            ? "bg-primary text-bg shadow-[0_0_10px_rgba(69,208,255,0.3)]"
                                             : "text-text-main/60 hover:text-white hover:bg-white/5"
                                     }`}
                                 >
@@ -341,7 +328,7 @@ export default function AdminAthletesPage() {
                                 </button>
                             ))}
 
-                            <button 
+                            <button
                                 type="button"
                                 onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                                 disabled={currentPage === totalPages}

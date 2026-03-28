@@ -81,10 +81,15 @@ export default function NotificationsPage() {
                 // 2. Create the booking with the CORRECT scheduled date
                 const proposed = offer.proposed_dates as any || {};
                 const scheduledAt = proposed.scheduledAt || new Date().toISOString();
-                
-                // Calculate fees (standard platform fee is 3% or whatever is in shared, here we'll use numeric for safety)
+
+                // Fetch real platform fee from DB
                 const price = Number(offer.price);
-                const platformFee = Math.round(price * 0.03 * 100) / 100;
+                const { data: settings } = await supabase
+                    .from("platform_settings")
+                    .select("platform_fee_percentage")
+                    .single();
+                const feePercent = (settings?.platform_fee_percentage ?? 3) / 100;
+                const platformFee = Math.round(price * feePercent * 100) / 100;
                 const totalPaid = price + platformFee;
 
                 const { error: bookingError } = await supabase
@@ -179,11 +184,11 @@ export default function NotificationsPage() {
                         {unreadCount > 0 ? `${unreadCount} unread` : "All caught up!"}
                     </p>
                 </div>
-                <div className="flex gap-3">
+                <div className="flex gap-2">
                     {unreadCount > 0 && (
                         <button
                             onClick={markAllRead}
-                            className="px-4 py-2.5 rounded-xl border border-white/5 bg-surface text-primary text-xs font-bold hover:bg-white/5 transition-colors"
+                            className="px-4 py-2 rounded-xl border border-white/[0.07] text-text-main/50 text-xs font-bold hover:text-text-main hover:border-white/[0.12] transition-all"
                         >
                             Mark all read
                         </button>
@@ -191,7 +196,7 @@ export default function NotificationsPage() {
                     {notifications.length > 0 && (
                         <button
                             onClick={clearAllNotifications}
-                            className="px-4 py-2.5 rounded-xl border border-red-500/20 bg-red-500/10 text-red-500 text-xs font-bold hover:bg-red-500/20 transition-colors"
+                            className="px-4 py-2 rounded-xl border border-white/[0.07] text-text-main/40 text-xs font-bold hover:text-red-400 hover:border-red-500/20 transition-all"
                         >
                             Clear all
                         </button>
@@ -200,31 +205,31 @@ export default function NotificationsPage() {
             </div>
 
             {notifications.length === 0 ? (
-                <div className="bg-surface rounded-2xl border border-white/5 p-16 text-center shadow-[0_0_30px_rgba(69,208,255,0.02)]">
+                <div className="bg-surface rounded-2xl border border-white/5 p-16 text-center ">
                     <Bell className="text-text-main/20 w-12 h-12 mb-4 mx-auto" strokeWidth={1} />
                     <p className="text-text-main/50 font-bold uppercase tracking-widest text-sm">No notifications yet.</p>
                 </div>
             ) : (
-                <div className="flex flex-col bg-surface rounded-2xl border border-white/5 overflow-hidden shadow-[0_0_30px_rgba(69,208,255,0.02)]">
+                <div className="flex flex-col bg-surface rounded-2xl border border-white/5 overflow-hidden ">
                     {notifications.map((n) => (
                         <div
                             key={n.id}
                             onClick={() => !n.read && markAsRead(n.id)}
-                            className={`px-6 py-5 flex items-start gap-5 border-b border-white/5 last:border-0 transition-all ${n.read
-                                ? "bg-transparent hover:bg-white/5 cursor-default"
-                                : "bg-primary/5 hover:bg-primary/10 cursor-pointer"
+                            className={`px-6 py-5 flex items-start gap-4 border-b border-white/[0.04] last:border-0 transition-all ${n.read
+                                ? "hover:bg-white/[0.02] cursor-default"
+                                : "bg-white/[0.025] hover:bg-white/[0.04] cursor-pointer"
                                 }`}
                         >
-                            <div className="mt-1 shrink-0 p-2.5 rounded-xl bg-[#272A35] border border-white/5 shadow-sm">
-                                {typeIcons[n.type] || <Bell className="text-text-main/60 w-5 h-5" />}
+                            <div className="mt-0.5 shrink-0 p-2 rounded-xl bg-white/[0.04] border border-white/[0.06]">
+                                {typeIcons[n.type] || <Bell className="text-text-main/40 w-4 h-4" />}
                             </div>
                             <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2 mb-1">
-                                    <span className={`text-sm ${n.read ? "font-bold text-text-main/80" : "font-black text-text-main"}`}>
+                                    <span className={`text-sm ${n.read ? "font-medium text-text-main/60" : "font-bold text-text-main"}`}>
                                         {n.title}
                                     </span>
                                     {!n.read && (
-                                        <span className="w-2 h-2 rounded-full bg-primary shrink-0 shadow-[0_0_8px_rgba(69,208,255,0.8)]" />
+                                        <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
                                     )}
                                 </div>
                                 <p className="text-sm text-text-main/60 font-medium leading-relaxed max-w-xl">
@@ -240,7 +245,7 @@ export default function NotificationsPage() {
                                                 setShowOfferModal(true);
                                                 if (!n.read) markAsRead(n.id);
                                             }}
-                                            className="px-5 py-2 rounded-xl bg-primary text-bg font-black text-xs uppercase tracking-wider hover:shadow-[0_0_15px_rgba(69,208,255,0.3)] transition-all"
+                                            className="px-4 py-2 rounded-xl bg-primary text-bg font-bold text-xs hover:opacity-90 transition-all"
                                         >
                                             View Offer
                                         </button>

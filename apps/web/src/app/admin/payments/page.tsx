@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Download, Wallet, Percent, TrendingUp, TrendingDown, Info, MoreHorizontal, ArrowUpRight, CheckCircle, Clock, AlertTriangle, Loader2 } from "lucide-react";
+import { Download, Wallet, Percent, TrendingUp, TrendingDown, Info, MoreHorizontal, ArrowUpRight, CheckCircle, Clock, AlertTriangle, Loader2, Zap, ShieldAlert, UserX, RefreshCw, Timer } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import PopupModal from "@/components/common/PopupModal";
 
@@ -15,6 +15,14 @@ export default function AdminPaymentsPage() {
     const [heldCount, setHeldCount] = useState(0);
     const [releasedCount, setReleasedCount] = useState(0);
     const [refundedCount, setRefundedCount] = useState(0);
+    const [readyCount, setReadyCount] = useState(0);
+    const [readyAmount, setReadyAmount] = useState(0);
+    const [blockedCount, setBlockedCount] = useState(0);
+    const [noStripeCount, setNoStripeCount] = useState(0);
+    const [bulkReleasing, setBulkReleasing] = useState(false);
+    const [volPct, setVolPct] = useState<number | null>(null);
+    const [commPct, setCommPct] = useState<number | null>(null);
+    const [monthlyChart, setMonthlyChart] = useState<{ month: string; amount: number }[]>([]);
 
     const [actionMenuOpen, setActionMenuOpen] = useState<string | null>(null);
     const actionMenuRef = useRef<HTMLDivElement>(null);
@@ -53,44 +61,43 @@ export default function AdminPaymentsPage() {
     const loadData = async () => {
         setLoading(true);
         try {
-            const { data: ptData, error: ptError } = await supabase
-                .from("payment_transactions")
-                .select(`
-                    id, booking_id, stripe_payment_intent_id, stripe_transfer_id,
-                    amount, platform_fee, trainer_payout, status, hold_until, released_at, created_at,
-                    bookings (id, athlete_id, trainer_id, sport, scheduled_at)
-                `)
-                .order("created_at", { ascending: false });
+            // Use admin API route (service role key) to bypass RLS on payment_transactions
+            const res = await fetch("/api/admin/payment-transactions");
+            const json = await res.json();
+            if (!res.ok) throw new Error(json.error || "Failed to fetch transactions");
 
-            if (ptError) throw ptError;
+            const { ptData, userMap, stripeMap: stripeObj, disputedBookingIds, volPct: vp, commPct: cp, monthlyChart: mc } = json;
+            if (vp !== undefined) setVolPct(vp);
+            if (cp !== undefined) setCommPct(cp);
+            if (mc) setMonthlyChart(mc);
 
             if (ptData && ptData.length > 0) {
-                const userIds = new Set<string>();
-                ptData.forEach((pt: any) => {
-                    if (pt.bookings) {
-                        userIds.add(pt.bookings.athlete_id);
-                        userIds.add(pt.bookings.trainer_id);
-                    }
-                });
-
-                const { data: usersData } = await supabase
-                    .from("users")
-                    .select("id, first_name, last_name")
-                    .in("id", Array.from(userIds));
-
-                const usersMap = new Map(
-                    (usersData || []).map((u: any) => [u.id, { name: `${u.first_name} ${u.last_name}`.trim(), initials: `${u.first_name?.[0] || ""}${u.last_name?.[0] || ""}`.toUpperCase() }])
-                );
+                const usersMap = new Map(Object.entries(userMap as Record<string, { name: string; initials: string }>));
+                const stripeMap = new Map(Object.entries(stripeObj as Record<string, string | null>));
+                const disputedSet = new Set(disputedBookingIds as string[]);
 
                 let vol = 0, comm = 0, pending = 0;
                 let held = 0, released = 0, refunded = 0;
+                let ready = 0, readyAmt = 0, blocked = 0, noStripe = 0;
+                const now = new Date();
 
                 ptData.forEach((pt: any) => {
                     const amt = Number(pt.amount || 0);
                     const fee = Number(pt.platform_fee || 0);
+                    const payout = Number(pt.trainer_payout || 0);
                     vol += amt;
                     comm += fee;
-                    if (pt.status === "held") { pending += Number(pt.trainer_payout || 0); held++; }
+                    if (pt.status === "held") {
+                        pending += payout;
+                        held++;
+                        const holdExpired = !pt.hold_until || new Date(pt.hold_until) <= now;
+                        const hasDispute = disputedSet.has(pt.booking_id);
+                        const trainerStripe = stripeMap.get(pt.bookings?.trainer_id);
+                        const bookingCompleted = pt.bookings?.status === "completed";
+                        if (hasDispute) blocked++;
+                        else if (!trainerStripe) noStripe++;
+                        else if (holdExpired && bookingCompleted) { ready++; readyAmt += payout; }
+                    }
                     if (pt.status === "released") released++;
                     if (pt.status === "refunded") refunded++;
                 });
@@ -101,10 +108,30 @@ export default function AdminPaymentsPage() {
                 setHeldCount(held);
                 setReleasedCount(released);
                 setRefundedCount(refunded);
+                setReadyCount(ready);
+                setReadyAmount(readyAmt);
+                setBlockedCount(blocked);
+                setNoStripeCount(noStripe);
 
                 const formatted = ptData.map((pt: any) => {
                     const athleteInfo = usersMap.get(pt.bookings?.athlete_id) || { name: "Unknown", initials: "?" };
                     const trainerInfo = usersMap.get(pt.bookings?.trainer_id) || { name: "Unknown", initials: "?" };
+                    const holdDate = pt.hold_until ? new Date(pt.hold_until) : null;
+                    const holdExpired = !holdDate || holdDate <= now;
+                    const hasDispute = disputedSet.has(pt.booking_id);
+                    const hasStripe = !!stripeMap.get(pt.bookings?.trainer_id);
+                    const bookingCompleted = pt.bookings?.status === "completed";
+                    const canRelease = pt.status === "held" && holdExpired && !hasDispute && hasStripe && bookingCompleted;
+
+                    // Hold countdown
+                    let holdLabel: string | null = null;
+                    if (pt.status === "held" && holdDate && holdDate > now) {
+                        const diffMs = holdDate.getTime() - now.getTime();
+                        const hrs = Math.floor(diffMs / 3600000);
+                        const mins = Math.floor((diffMs % 3600000) / 60000);
+                        holdLabel = hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
+                    }
+
                     return {
                         id: pt.id,
                         displayId: `#TRX-${pt.id.substring(0, 6).toUpperCase()}`,
@@ -118,7 +145,12 @@ export default function AdminPaymentsPage() {
                         platformFee: `$${Number(pt.platform_fee || 0).toFixed(2)}`,
                         status: pt.status,
                         bookingId: pt.booking_id,
-                        holdUntil: pt.hold_until ? new Date(pt.hold_until).toLocaleDateString() : null,
+                        holdUntil: holdDate ? holdDate.toLocaleDateString() : null,
+                        holdLabel,
+                        hasDispute,
+                        hasStripe,
+                        bookingCompleted,
+                        canRelease,
                     };
                 });
 
@@ -143,12 +175,13 @@ export default function AdminPaymentsPage() {
             async () => {
                 setProcessing(txId);
                 try {
-                    const { error } = await supabase
-                        .from("payment_transactions")
-                        .update({ status: "released", released_at: new Date().toISOString() })
-                        .eq("id", txId);
-
-                    if (error) throw error;
+                    const res = await fetch("/api/admin/release-single-payout", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ txId, bookingId }),
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.error || "Failed");
 
                     loadData();
                     showAlert("success", "Payout Released", "The funds have been successfully released to the trainer.");
@@ -157,6 +190,28 @@ export default function AdminPaymentsPage() {
                     showAlert("error", "Error", "Failed to release payout. Please try again later.");
                 } finally {
                     setProcessing(null);
+                }
+            }
+        );
+    };
+
+    const handleBulkRelease = async () => {
+        if (readyCount === 0) return;
+        showConfirm(
+            "Release All Ready Payouts",
+            `Release ${readyCount} payout${readyCount > 1 ? "s" : ""} totalling $${readyAmount.toFixed(2)} to trainers? Only payouts with expired holds, completed bookings, and connected Stripe accounts will be released.`,
+            async () => {
+                setBulkReleasing(true);
+                try {
+                    const res = await fetch("/api/admin/release-payouts", { method: "POST" });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.error || "Failed");
+                    await loadData();
+                    showAlert("success", "Payouts Released", `Successfully released ${data.released} payout${data.released !== 1 ? "s" : ""}${data.skipped > 0 ? `. ${data.skipped} skipped (dispute/no Stripe).` : "."}`);
+                } catch (err: any) {
+                    showAlert("error", "Release Failed", err.message || "Could not release payouts. Try again.");
+                } finally {
+                    setBulkReleasing(false);
                 }
             }
         );
@@ -182,8 +237,8 @@ export default function AdminPaymentsPage() {
     const refundedPct = Math.round((refundedCount / totalTx) * 100);
 
     const stats = [
-        { title: "Total Platform Volume", value: `$${totalVolume.toLocaleString("en-US", { minimumFractionDigits: 2 })}`, req: "+12.5%", desc: "vs last month", icon: <Wallet size={20} />, isNegative: false },
-        { title: "Commissions Earned", value: `$${totalCommissions.toLocaleString("en-US", { minimumFractionDigits: 2 })}`, req: "+8.2%", desc: "vs last month", icon: <Percent size={20} />, isNegative: false },
+        { title: "Total Platform Volume", value: `$${totalVolume.toLocaleString("en-US", { minimumFractionDigits: 2 })}`, req: volPct === null ? null : `${volPct >= 0 ? "+" : ""}${volPct}%`, desc: "vs last month", icon: <Wallet size={20} />, isNegative: volPct !== null && volPct < 0 },
+        { title: "Commissions Earned", value: `$${totalCommissions.toLocaleString("en-US", { minimumFractionDigits: 2 })}`, req: commPct === null ? null : `${commPct >= 0 ? "+" : ""}${commPct}%`, desc: "vs last month", icon: <Percent size={20} />, isNegative: commPct !== null && commPct < 0 },
         { title: "Pending Payouts", value: `$${pendingPayouts.toLocaleString("en-US", { minimumFractionDigits: 2 })}`, req: `${heldCount} held`, desc: "awaiting release", icon: <TrendingDown size={20} />, isNegative: true },
     ];
 
@@ -228,14 +283,73 @@ export default function AdminPaymentsPage() {
                         </div>
 
                         <div className="flex items-center gap-2">
-                            <span className={`px-2 py-1 rounded-md text-[10px] uppercase font-black tracking-widest flex items-center gap-1 ${stat.isNegative ? "text-red-500 bg-red-500/10 border border-red-500/20" : "text-green-500 bg-green-500/10 border border-green-500/20"}`}>
-                                {stat.isNegative ? <TrendingDown size={12} /> : <TrendingUp size={12} />}
-                                {stat.req}
-                            </span>
+                            {stat.req !== null && (
+                                <span className={`px-2 py-1 rounded-md text-[10px] uppercase font-black tracking-widest flex items-center gap-1 ${stat.isNegative ? "text-red-500 bg-red-500/10 border border-red-500/20" : "text-green-500 bg-green-500/10 border border-green-500/20"}`}>
+                                    {stat.isNegative ? <TrendingDown size={12} /> : <TrendingUp size={12} />}
+                                    {stat.req}
+                                </span>
+                            )}
                             <span className="text-text-main/40 text-xs font-medium">{stat.desc}</span>
                         </div>
                     </div>
                 ))}
+            </div>
+
+            {/* ── Payout Command Center ── */}
+            <div className="bg-gradient-to-r from-surface to-surface/60 border border-white/5 rounded-[24px] p-6">
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+                    {/* Left: info */}
+                    <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                            <Zap size={14} className="text-primary" />
+                            <h2 className="text-xs font-black uppercase tracking-widest text-text-main/60">Daily Payout Queue</h2>
+                        </div>
+                        <p className="text-text-main/40 text-xs font-medium mb-4">Athletes pay upfront → funds held in escrow → admin releases to trainers after hold period.</p>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                            <div className="bg-bg/60 border border-primary/20 rounded-xl p-3">
+                                <p className="text-[9px] font-black uppercase tracking-widest text-primary/50 mb-1">Ready Now</p>
+                                <p className="text-2xl font-black text-primary">{loading ? "…" : readyCount}</p>
+                                <p className="text-[9px] text-text-main/30 font-medium mt-0.5">${readyAmount.toFixed(2)} to release</p>
+                            </div>
+                            <div className="bg-bg/60 border border-yellow-500/20 rounded-xl p-3">
+                                <p className="text-[9px] font-black uppercase tracking-widest text-yellow-500/50 mb-1">Held (Escrow)</p>
+                                <p className="text-2xl font-black text-yellow-500">{loading ? "…" : heldCount}</p>
+                                <p className="text-[9px] text-text-main/30 font-medium mt-0.5">awaiting hold expiry</p>
+                            </div>
+                            <div className="bg-bg/60 border border-red-500/20 rounded-xl p-3">
+                                <p className="text-[9px] font-black uppercase tracking-widest text-red-400/50 mb-1">Dispute Blocked</p>
+                                <p className="text-2xl font-black text-red-400">{loading ? "…" : blockedCount}</p>
+                                <p className="text-[9px] text-text-main/30 font-medium mt-0.5">resolve dispute first</p>
+                            </div>
+                            <div className="bg-bg/60 border border-white/[0.05] rounded-xl p-3">
+                                <p className="text-[9px] font-black uppercase tracking-widest text-text-main/30 mb-1">No Stripe</p>
+                                <p className="text-2xl font-black text-text-main/50">{loading ? "…" : noStripeCount}</p>
+                                <p className="text-[9px] text-text-main/30 font-medium mt-0.5">trainer not connected</p>
+                            </div>
+                        </div>
+                    </div>
+                    {/* Right: action */}
+                    <div className="flex flex-col items-stretch lg:items-end gap-3 lg:min-w-[200px]">
+                        <button
+                            onClick={handleBulkRelease}
+                            disabled={bulkReleasing || readyCount === 0 || loading}
+                            className={`flex items-center justify-center gap-2 px-6 py-4 rounded-2xl font-black text-sm uppercase tracking-widest transition-all ${
+                                readyCount > 0
+                                    ? "bg-primary text-bg hover:opacity-90 hover:shadow-[0_0_24px_rgba(69,208,255,.35)]"
+                                    : "bg-white/5 text-text-main/30 cursor-not-allowed"
+                            } disabled:opacity-50 disabled:cursor-not-allowed`}
+                        >
+                            {bulkReleasing ? <Loader2 size={16} className="animate-spin" /> : <Zap size={16} strokeWidth={2.5} />}
+                            {bulkReleasing ? "Releasing…" : `Release All (${readyCount})`}
+                        </button>
+                        <button
+                            onClick={loadData}
+                            className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-white/[0.06] text-text-main/40 text-xs font-bold uppercase tracking-widest hover:bg-white/[0.04] hover:text-text-main/70 transition-all"
+                        >
+                            <RefreshCw size={12} /> Refresh Queue
+                        </button>
+                    </div>
+                </div>
             </div>
 
             {/* Charts & Distribution */}
@@ -254,26 +368,58 @@ export default function AdminPaymentsPage() {
                             <option>This Year</option>
                         </select>
                     </div>
-                    {/* Bar Chart Simulation */}
+                    {/* Bar Chart — Real Data */}
                     <div className="flex-1 min-h-[240px] flex items-end justify-between gap-3 mt-4 border-b border-white/5 pb-4">
-                        {["JAN", "FEB", "MAR", "APR", "MAY", "JUN"].map((month, i) => {
-                            const heights = [30, 50, 100, 45, 60, 75];
-                            const isHigh = i === 2; // MAR
-                            return (
-                                <div key={month} className="flex-1 flex flex-col items-center gap-4 group h-full relative cursor-pointer">
-                                    <div className="absolute inset-0 bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity rounded-xl pointer-events-none"></div>
-                                    <div className="w-full flex-1 flex items-end justify-center z-10">
+                        {loading ? (
+                            // Skeleton bars
+                            [40, 60, 75, 50, 65, 80].map((h, i) => (
+                                <div key={i} className="flex-1 flex flex-col items-center gap-4 h-full">
+                                    <div className="w-full flex-1 flex items-end justify-center">
                                         <div
-                                            style={{ height: `${heights[i]}%` }}
-                                            className={`w-full max-w-[64px] rounded-t-xl transition-all duration-500 ease-out
-                                                ${isHigh ? "bg-gradient-to-t from-primary/50 to-primary shadow-[0_0_20px_rgba(69,208,255,0.3)]" : "bg-gradient-to-t from-white/5 to-white/10 group-hover:from-white/10 group-hover:to-white/20"}
-                                            `}
-                                        ></div>
+                                            style={{ height: `${h}%` }}
+                                            className="w-full max-w-[64px] rounded-t-xl bg-white/[0.05] animate-pulse"
+                                        />
                                     </div>
-                                    <span className={`text-[10px] font-black tracking-widest transition-colors ${isHigh ? 'text-primary' : 'text-text-main/40 group-hover:text-text-main'}`}>{month}</span>
+                                    <div className="h-2 w-8 rounded bg-white/[0.05] animate-pulse" />
                                 </div>
-                            );
-                        })}
+                            ))
+                        ) : (() => {
+                            const now2 = new Date();
+                            const fallbackChart = monthlyChart.length > 0 ? monthlyChart : Array.from({ length: 6 }, (_, i) => {
+                                const d = new Date(now2.getFullYear(), now2.getMonth() - (5 - i), 1);
+                                return { month: d.toLocaleString("en-US", { month: "short" }).toUpperCase(), amount: 0 };
+                            });
+                            const maxAmt = Math.max(...fallbackChart.map(m => m.amount), 1);
+                            const currentMonth = now2.toLocaleString("en-US", { month: "short" }).toUpperCase();
+                            const hasAnyData = fallbackChart.some(m => m.amount > 0);
+                            return fallbackChart.map((m) => {
+                                const heightPct = hasAnyData
+                                    ? Math.max((m.amount / maxAmt) * 100, m.amount > 0 ? 8 : 20)
+                                    : 20;
+                                const isCurrent = m.month === currentMonth;
+                                return (
+                                    <div key={m.month} className="flex-1 flex flex-col items-center gap-4 group h-full relative cursor-pointer">
+                                        <div className="absolute inset-0 bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity rounded-xl pointer-events-none" />
+                                        <div className="w-full flex-1 flex items-end justify-center z-10">
+                                            <div
+                                                title={`$${m.amount.toFixed(2)}`}
+                                                style={{ height: `${heightPct}%` }}
+                                                className={`w-full max-w-[64px] rounded-t-xl transition-all duration-500 ease-out ${
+                                                    isCurrent && hasAnyData
+                                                        ? "bg-gradient-to-t from-primary/50 to-primary shadow-[0_0_20px_rgba(69,208,255,0.3)]"
+                                                        : isCurrent
+                                                        ? "bg-primary/20"
+                                                        : "bg-gradient-to-t from-white/5 to-white/10 group-hover:from-white/10 group-hover:to-white/20"
+                                                }`}
+                                            />
+                                        </div>
+                                        <span className={`text-[10px] font-black tracking-widest transition-colors ${isCurrent ? "text-primary" : "text-text-main/40 group-hover:text-text-main"}`}>
+                                            {m.month}
+                                        </span>
+                                    </div>
+                                );
+                            });
+                        })()}
                     </div>
                 </div>
 
@@ -365,7 +511,7 @@ export default function AdminPaymentsPage() {
                                 </tr>
                             ) : (
                                 transactions.map((t) => (
-                                    <tr key={t.id} className="border-b border-white/5/50 hover:bg-white/5 transition-colors group">
+                                    <tr key={t.id} className="border-b border-white/[0.04] hover:bg-white/5 transition-colors group">
                                         <td className="px-6 py-5 pl-8">
                                             <div className="flex items-center gap-2 text-text-main/60 font-black text-xs tracking-wider uppercase">
                                                 {t.displayId}
@@ -405,13 +551,35 @@ export default function AdminPaymentsPage() {
                                         </td>
                                         <td className="px-6 py-5 pr-8 text-right relative">
                                             {t.status === "held" ? (
-                                                <button
-                                                    onClick={() => handleReleasePayout(t.id, t.bookingId)}
-                                                    disabled={processing === t.id}
-                                                    className="px-4 py-2 rounded-full bg-primary/10 text-primary border border-primary/20 text-[10px] font-black uppercase tracking-widest hover:bg-primary hover:text-bg transition-all disabled:opacity-50"
-                                                >
-                                                    {processing === t.id ? <Loader2 size={14} className="inline animate-spin" /> : "Release"}
-                                                </button>
+                                                <div className="flex flex-col items-end gap-1.5">
+                                                    {/* Edge case badges */}
+                                                    {t.hasDispute && (
+                                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-500/10 border border-red-500/20 text-red-400 text-[8px] font-black uppercase tracking-widest">
+                                                            <ShieldAlert size={9} /> Dispute Active
+                                                        </span>
+                                                    )}
+                                                    {!t.hasStripe && !t.hasDispute && (
+                                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/5 border border-white/[0.06] text-text-main/40 text-[8px] font-black uppercase tracking-widest">
+                                                            <UserX size={9} /> No Stripe
+                                                        </span>
+                                                    )}
+                                                    {t.holdLabel && !t.hasDispute && t.hasStripe && (
+                                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-yellow-500/10 border border-yellow-500/20 text-yellow-500 text-[8px] font-black uppercase tracking-widest">
+                                                            <Timer size={9} /> {t.holdLabel}
+                                                        </span>
+                                                    )}
+                                                    <button
+                                                        onClick={() => handleReleasePayout(t.id, t.bookingId)}
+                                                        disabled={processing === t.id || !t.canRelease}
+                                                        className={`px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
+                                                            t.canRelease
+                                                                ? "bg-primary/10 text-primary border border-primary/20 hover:bg-primary hover:text-bg"
+                                                                : "bg-white/[0.03] text-text-main/20 border border-white/[0.04]"
+                                                        }`}
+                                                    >
+                                                        {processing === t.id ? <Loader2 size={14} className="inline animate-spin" /> : "Release"}
+                                                    </button>
+                                                </div>
                                             ) : (
                                                 <button
                                                     type="button"

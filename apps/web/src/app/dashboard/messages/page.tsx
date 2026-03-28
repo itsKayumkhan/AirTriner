@@ -4,6 +4,7 @@ import { MessageSquare, Send, Activity, ArrowLeft, CheckCheck } from "lucide-rea
 import { useEffect, useState, useRef } from "react";
 import { getSession, AuthUser } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
+import { useMessages } from "@/context/MessagesContext";
 
 interface Conversation {
     bookingId: string;
@@ -49,6 +50,7 @@ function isYesterday(d: Date) {
 }
 
 export default function MessagesPage() {
+    const { markConversationRead } = useMessages();
     const [user, setUser] = useState<AuthUser | null>(null);
     const [conversations, setConversations] = useState<Conversation[]>([]);
     const [messages, setMessages] = useState<Message[]>([]);
@@ -96,16 +98,7 @@ export default function MessagesPage() {
         return () => { subscription.unsubscribe(); };
     }, [selectedBookingId, user, conversations.length]);
 
-    const markAsReadApi = async (bookingId: string) => {
-        try {
-            const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
-            const { data: { session } } = await supabase.auth.getSession();
-            await fetch(`${API_URL}/messages/booking/${bookingId}/read`, {
-                method: 'PATCH',
-                headers: { 'Authorization': `Bearer ${session?.access_token}`, 'Content-Type': 'application/json' }
-            });
-        } catch (err) { console.error("Failed to mark as read:", err); }
-    };
+    const markAsReadApi = markConversationRead;
 
     const loadConversations = async (u: AuthUser) => {
         try {
@@ -123,7 +116,7 @@ export default function MessagesPage() {
                 const other = userMap.get(b[otherCol]) as any;
                 const bookingMessages = (allMessages || []).filter((m: Message) => m.booking_id === b.id);
                 const lastMsg = bookingMessages[0];
-                const unreadCount = bookingMessages.filter((m: any) => m.sender_id !== u.id && (!m.read_at || m.read === false)).length;
+                const unreadCount = bookingMessages.filter((m: any) => m.sender_id !== u.id && !m.read_at).length;
                 return {
                     bookingId: b.id, otherUserId: b[otherCol],
                     otherUserName: other ? `${other.first_name} ${other.last_name}` : "Unknown",
@@ -253,16 +246,16 @@ export default function MessagesPage() {
                                 <button
                                     key={c.bookingId}
                                     onClick={() => selectConversation(c.bookingId)}
-                                    className={`w-full text-left px-4 py-3.5 flex gap-3 items-start transition-all border-b border-white/4 relative ${
+                                    className={`w-full text-left px-4 py-3.5 flex gap-3 items-start transition-all border-b border-white/[0.04] relative ${
                                         isActive
-                                            ? "bg-primary/8 border-l-2 border-l-primary"
-                                            : "hover:bg-white/4 border-l-2 border-l-transparent"
+                                            ? "bg-white/[0.06] border-l-2 border-l-white/20"
+                                            : "hover:bg-white/[0.03] border-l-2 border-l-transparent"
                                     }`}
                                 >
                                     {/* Avatar */}
                                     <div className="relative shrink-0">
                                         <div className={`w-10 h-10 rounded-full flex items-center justify-center font-black text-sm ${
-                                            isActive ? "bg-primary/20 text-primary ring-2 ring-primary/30 ring-offset-1 ring-offset-[#0F1118]" : "bg-white/8 text-text-main/70"
+                                            isActive ? "bg-white/[0.10] text-text-main" : "bg-white/[0.06] text-text-main/70"
                                         }`}>
                                             {c.otherUserInitials}
                                         </div>
@@ -286,7 +279,7 @@ export default function MessagesPage() {
                                         <p className={`text-[12px] truncate ${c.unreadCount > 0 ? "text-text-main/70 font-semibold" : "text-text-main/35 font-medium"}`}>
                                             {c.lastMessage}
                                         </p>
-                                        <span className="inline-flex items-center gap-1 mt-1.5 text-[9px] font-black uppercase tracking-wider text-primary/50 bg-primary/6 px-2 py-0.5 rounded-full border border-primary/10">
+                                        <span className="inline-flex items-center gap-1 mt-1.5 text-[9px] font-black uppercase tracking-wider text-text-main/40 bg-white/[0.05] px-2 py-0.5 rounded-full border border-white/[0.06]">
                                             <Activity size={8} />
                                             {c.sport.replace(/_/g, " ")}
                                         </span>
@@ -311,7 +304,7 @@ export default function MessagesPage() {
                                 <ArrowLeft size={16} />
                             </button>
 
-                            <div className="w-9 h-9 rounded-full bg-primary/15 border border-primary/20 flex items-center justify-center font-black text-sm text-primary shrink-0">
+                            <div className="w-9 h-9 rounded-full bg-white/[0.08] border border-white/[0.10] flex items-center justify-center font-black text-sm text-text-main shrink-0">
                                 {selectedConvo.otherUserInitials}
                             </div>
                             <div className="flex-1 min-w-0">

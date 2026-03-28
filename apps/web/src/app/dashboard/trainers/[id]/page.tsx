@@ -4,7 +4,7 @@ import { useEffect, useState, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { getSession, AuthUser } from "@/lib/auth";
 import { supabase, TrainerProfileRow } from "@/lib/supabase";
-import { Star, MapPin, Award, GraduationCap, Clock, MessageSquare, BadgeCheck, ChevronLeft, ChevronRight } from "lucide-react";
+import { Star, MapPin, MessageSquare, BadgeCheck, ChevronLeft, ChevronRight } from "lucide-react";
 import { ReviewSection } from "@/components/trainers/ReviewSection";
 import { FoundingBadgeTooltip } from "@/components/ui/FoundingBadge";
 import { ToastContainer, useToast } from "@/components/ui/Toast";
@@ -81,12 +81,7 @@ const SPORT_LABELS: Record<string, string> = {
     strength_conditioning: "Strength & Conditioning"
 };
 
-const CERTIFICATIONS = [
-    { icon: <Award size={20} className="text-primary" />, title: "NASM Certified", desc: "Personal Training Specialist" },
-    { icon: <GraduationCap size={20} className="text-primary" />, title: "B.S. Kinesiology", desc: "Stanford University" },
-    { icon: <BadgeCheck size={20} className="text-primary" />, title: "Olympic Weightlifting", desc: "USAW Level 2 Coach" },
-    { icon: <Clock size={20} className="text-primary" />, title: "Pre/Post Natal", desc: "Specialized Certification" },
-];
+
 
 export default function BookTrainerPage() {
     const params = useParams();
@@ -98,6 +93,7 @@ export default function BookTrainerPage() {
     const [trainer, setTrainer] = useState<TrainerWithUser | null>(null);
     const [trainerProfileId, setTrainerProfileId] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
+    const [pageError, setPageError] = useState<string | null>(null);
     const [processing, setProcessing] = useState(false);
     const { toasts, remove, warning, error: toastError, success } = useToast();
 
@@ -349,6 +345,7 @@ export default function BookTrainerPage() {
             loadAvailability(selectedDate, profile.id);
         } catch (err) {
             console.error(err);
+            setPageError("Trainer not found or failed to load.");
         } finally {
             setLoading(false);
         }
@@ -463,6 +460,15 @@ export default function BookTrainerPage() {
         );
     }
 
+    if (pageError) {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
+                <p className="text-text-main/50 font-semibold">{pageError}</p>
+                <button onClick={() => router.back()} className="px-4 py-2 rounded-xl bg-white/[0.06] border border-white/[0.08] text-text-main/70 text-sm font-bold hover:bg-white/[0.10] transition-all">Go Back</button>
+            </div>
+        );
+    }
+
     if (!trainer) {
         return <div className="text-text-main text-center mt-20 text-xl font-bold">Trainer not found</div>;
     }
@@ -480,17 +486,18 @@ export default function BookTrainerPage() {
     };
 
     return (
+        <>
+        {/* Fixed Back Button */}
+        <button
+            onClick={() => router.back()}
+            className="fixed top-4 left-4 md:left-[276px] z-50 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-bg/80 backdrop-blur-sm border border-white/[0.08] text-text-main/70 hover:text-text-main hover:bg-white/[0.08] hover:border-white/[0.12] transition-all text-sm font-semibold group"
+        >
+            <ChevronLeft size={15} className="group-hover:-translate-x-0.5 transition-transform" />
+            Back to Search
+        </button>
+
         <div className="max-w-[1280px] mx-auto pb-20 px-4 md:px-8 mt-4">
             <ToastContainer toasts={toasts} onRemove={remove} />
-
-            {/* Back Button */}
-            <button
-                onClick={() => router.back()}
-                className="flex items-center gap-2 text-text-main/50 hover:text-primary transition-colors text-sm font-semibold mb-4 group"
-            >
-                <ChevronLeft size={18} className="group-hover:-translate-x-0.5 transition-transform" />
-                Back to Search
-            </button>
 
             {/* Cover Image */}
             <div className="w-full h-[320px] rounded-[32px] overflow-hidden relative mb-16 shadow-2xl">
@@ -594,19 +601,21 @@ export default function BookTrainerPage() {
                     {/* Experience & Certifications */}
                     <div>
                         <h2 className="text-xl font-black text-text-main mb-6">Experience & Certifications</h2>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {CERTIFICATIONS.map((cert, i) => (
-                                <div key={i} className="bg-surface border border-white/5 rounded-2xl p-5 flex items-center gap-4">
-                                    <div className="w-12 h-12 bg-gray-900 rounded-xl flex items-center justify-center flex-shrink-0">
-                                        {cert.icon}
-                                    </div>
-                                    <div>
-                                        <div className="text-text-main font-bold text-[15px] mb-0.5">{cert.title}</div>
-                                        <div className="text-text-main/40 text-xs font-medium">{cert.desc}</div>
-                                    </div>
+                        {(() => {
+                            const certs = Array.isArray(trainer.certifications) ? trainer.certifications as string[] : [];
+                            return certs.length > 0 ? (
+                                <div className="flex flex-wrap gap-2">
+                                    {certs.map((cert, i) => (
+                                        <span key={i} className="inline-flex items-center gap-2 px-4 py-2.5 bg-surface border border-white/[0.08] rounded-xl text-sm font-semibold text-text-main/80">
+                                            <BadgeCheck size={15} className="text-primary/70 shrink-0" />
+                                            {cert}
+                                        </span>
+                                    ))}
                                 </div>
-                            ))}
-                        </div>
+                            ) : (
+                                <p className="text-text-main/40 text-sm font-medium">No certifications listed.</p>
+                            );
+                        })()}
                     </div>
 
                     {/* Reviews */}
@@ -699,16 +708,17 @@ export default function BookTrainerPage() {
 
                         {/* Sport Selection */}
                         <div className="mb-10">
-                            <h4 className="text-[10px] text-text-main/40 font-bold uppercase tracking-[0.15em] mb-4">SELECT SPORT</h4>
-                            <div className="grid grid-cols-2 gap-3">
-                                {trainer.sports.map(sport => (
+                            <h4 className="text-[10px] text-text-main/40 font-bold uppercase tracking-[0.15em] mb-3">Select Sport</h4>
+                            <div className="flex flex-wrap gap-2">
+                                {[...new Set(trainer.sports)].map(sport => (
                                     <button
                                         key={sport}
                                         onClick={() => setSelectedSport(sport)}
-                                        className={`py-3 px-4 rounded-xl text-[11px] font-black transition-all border text-center uppercase tracking-wider
-                                            ${selectedSport === sport
-                                                ? "bg-transparent border-primary border-[2px] text-white shadow-[0_0_15px_rgba(69,208,255,0.15)]"
-                                                : "bg-[#272A35] border-transparent text-white/80 hover:bg-[#323644]"}`}
+                                        className={`inline-flex items-center px-4 py-2.5 rounded-xl text-[13px] font-bold transition-all border ${
+                                            selectedSport === sport
+                                                ? "bg-white/[0.10] border-white/[0.22] text-white"
+                                                : "bg-white/[0.03] border-white/[0.07] text-text-main/60 hover:bg-white/[0.07] hover:text-text-main hover:border-white/[0.12]"
+                                        }`}
                                     >
                                         {SPORT_LABELS[sport] || sport.replace(/_/g, " ")}
                                     </button>
@@ -782,5 +792,6 @@ export default function BookTrainerPage() {
 
             </div>
         </div>
+        </>
     );
 }

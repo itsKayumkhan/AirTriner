@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { getSession, AuthUser } from "@/lib/auth";
 import { supabase, TrainerProfileRow } from "@/lib/supabase";
 import { PrimaryButton } from "@/components/ui/Buttons";
-import { ArrowRight, Search as SearchIcon, MapPin, ChevronLeft, ChevronRight, Star, Download } from "lucide-react";
-import { FoundingBadgeTooltip } from "@/components/ui/FoundingBadge";
+import { ArrowRight, Search as SearchIcon, MapPin, ChevronLeft, ChevronRight, ChevronDown, Star, Download } from "lucide-react";
+import { FoundingBadge, FoundingBadgeTooltip } from "@/components/ui/FoundingBadge";
 
 type TrainerWithUser = TrainerProfileRow & {
     user: { first_name: string; last_name: string; avatar_url: string | null };
@@ -92,7 +93,58 @@ const calculateDistance = (lat1: number | null, lon1: number | null, lat2: numbe
     return R * c;
 };
 
+function FilterDropdown({ value, onChange, options, active }: {
+    value: string;
+    onChange: (v: string) => void;
+    options: { value: string; label: string }[];
+    active?: boolean;
+}) {
+    const [open, setOpen] = useState(false);
+    const ref = useRef<HTMLDivElement>(null);
+    const current = options.find(o => o.value === value)?.label || options[0].label;
+
+    useEffect(() => {
+        const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+        document.addEventListener("mousedown", handler);
+        return () => document.removeEventListener("mousedown", handler);
+    }, []);
+
+    return (
+        <div className="relative" ref={ref}>
+            <button
+                onClick={() => setOpen(o => !o)}
+                className={`inline-flex items-center gap-2 px-4 py-2 rounded-full border text-sm font-medium transition-all cursor-pointer ${
+                    active ? "border-primary/50 text-primary bg-primary/5" : "border-white/[0.08] text-text-main/60 hover:border-white/[0.14] hover:text-text-main"
+                }`}
+            >
+                {current}
+                <ChevronDown size={12} className={`transition-transform ${open ? "rotate-180" : ""}`} />
+            </button>
+            {open && (
+                <div className="absolute top-full left-0 mt-1.5 z-50 bg-[#13151b] border border-white/[0.10] rounded-2xl shadow-xl overflow-hidden min-w-[160px]">
+                    <div className="overflow-y-auto max-h-[220px] py-1">
+                        {options.map(o => (
+                            <button
+                                key={o.value}
+                                onClick={() => { onChange(o.value); setOpen(false); }}
+                                className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${
+                                    value === o.value
+                                        ? "text-white font-semibold bg-white/[0.06]"
+                                        : "text-text-main/60 hover:text-text-main hover:bg-white/[0.04] font-medium"
+                                }`}
+                            >
+                                {o.label}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
 export default function SearchTrainersPage() {
+    const router = useRouter();
     const [user, setUser] = useState<AuthUser | null>(null);
     const [trainers, setTrainers] = useState<TrainerWithUser[]>([]);
     const [loading, setLoading] = useState(true);
@@ -302,122 +354,143 @@ export default function SearchTrainersPage() {
         );
     }
 
+    const activeFiltersCount = [sportFilter !== "All Sports", locationFilter, skillFilter !== "any", timeFilter !== "any", minRating > 0, maxRate < 300].filter(Boolean).length
+
+    const clearAll = () => { setSportFilter("All Sports"); setLocationFilter(""); setSkillFilter("any"); setTimeFilter("any"); setMinRating(0); setMaxRate(300); setNameFilter(""); }
+
     return (
         <div className="max-w-[1400px] mx-auto pb-12">
 
-            {/* Filters Header */}
-            <div className="bg-surface border border-white/5 rounded-2xl p-5 mb-8 mt-2 shadow-[0_4px_24px_rgba(0,0,0,0.4)] space-y-4">
+            {/* ── Search header ── */}
+            <div className="mb-6 mt-1 space-y-4">
 
-                {/* Name Search */}
-                <div>
-                    <label className="block text-[10px] font-bold text-text-main/40 uppercase tracking-widest mb-2">Search by Name</label>
+                {/* Title row */}
+                <div className="flex items-center justify-between">
+                    <div>
+                        <h1 className="text-2xl font-black text-text-main tracking-tight">Find a Coach</h1>
+                        <p className="text-text-main/35 text-sm mt-0.5">
+                            {filteredTrainers.length} coach{filteredTrainers.length !== 1 ? "es" : ""} available
+                            {locationFilter ? ` · ${locationFilter}` : ""}
+                        </p>
+                    </div>
+                    {activeFiltersCount > 0 && (
+                        <button onClick={clearAll}
+                            className="flex items-center gap-2 text-xs font-bold text-text-main/40 hover:text-red-400 transition-colors">
+                            <span className="w-5 h-5 rounded-full bg-primary/20 text-primary text-[9px] flex items-center justify-center font-black">{activeFiltersCount}</span>
+                            Reset
+                        </button>
+                    )}
+                </div>
+
+                {/* Big search bar */}
+                <div className="relative">
+                    <SearchIcon size={18} className="absolute left-5 top-1/2 -translate-y-1/2 text-text-main/25 pointer-events-none" />
+                    <input
+                        type="text"
+                        value={nameFilter}
+                        onChange={(e) => setNameFilter(e.target.value)}
+                        placeholder="Search coaches by name…"
+                        className="w-full bg-surface border border-white/[0.08] text-text-main text-base rounded-2xl
+                                   pl-14 pr-12 py-4 placeholder-text-main/20 outline-none
+                                   focus:border-white/20 transition-colors"
+                    />
+                    {nameFilter && (
+                        <button onClick={() => setNameFilter("")}
+                            className="absolute right-4 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-white/[0.06]
+                                       text-text-main/40 hover:bg-white/[0.12] hover:text-text-main transition-all
+                                       flex items-center justify-center text-sm">
+                            ×
+                        </button>
+                    )}
+                </div>
+
+                {/* Filter pill row */}
+                <div className="flex items-center gap-2 flex-wrap">
+
+                    {/* Sport */}
+                    <FilterDropdown
+                        value={sportFilter}
+                        onChange={setSportFilter}
+                        active={sportFilter !== "All Sports"}
+                        options={[{ value: "All Sports", label: "All Sports" }, ...Object.entries(SPORT_LABELS).map(([v, l]) => ({ value: v, label: l }))]}
+                    />
+
+                    {/* Location */}
                     <div className="relative">
-                        <SearchIcon size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-main/40" />
-                        <input
-                            type="text"
-                            value={nameFilter}
-                            onChange={(e) => setNameFilter(e.target.value)}
-                            placeholder="Coach name..."
-                            className="w-full bg-[#272A35] text-text-main text-sm rounded-xl pl-9 pr-4 py-2.5 outline-none focus:ring-1 focus:ring-primary placeholder-gray-600 border-none"
+                        <MapPin size={13} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-main/30 pointer-events-none" />
+                        <input type="text" value={locationFilter} onChange={(e) => setLocationFilter(e.target.value)}
+                            placeholder="Location"
+                            className={`bg-surface border text-sm font-medium rounded-full pl-9 pr-4 py-2 outline-none transition-all w-36
+                                       placeholder-text-main/30
+                                       ${locationFilter ? "border-primary/50 text-primary bg-primary/5" : "border-white/[0.08] text-text-main/60 hover:border-white/[0.14] focus:border-white/20"}`} />
+                    </div>
+
+                    {/* Skill */}
+                    <FilterDropdown
+                        value={skillFilter}
+                        onChange={setSkillFilter}
+                        active={skillFilter !== "any"}
+                        options={[
+                            { value: "any", label: "Skill Level" },
+                            { value: "beginner", label: "Beginner" },
+                            { value: "intermediate", label: "Intermediate" },
+                            { value: "advanced", label: "Advanced" },
+                            { value: "pro", label: "Pro" },
+                        ]}
+                    />
+
+                    {/* Time */}
+                    <FilterDropdown
+                        value={timeFilter}
+                        onChange={setTimeFilter}
+                        active={timeFilter !== "any"}
+                        options={[
+                            { value: "any", label: "Any Time" },
+                            { value: "morning", label: "Morning" },
+                            { value: "afternoon", label: "Afternoon" },
+                            { value: "evening", label: "Evening" },
+                        ]}
+                    />
+
+                    {/* Price */}
+                    <FilterDropdown
+                        value={String(maxRate)}
+                        onChange={(v) => setMaxRate(Number(v))}
+                        active={maxRate < 300}
+                        options={[
+                            { value: "300", label: "Any Price" },
+                            { value: "50", label: "Under $50/hr" },
+                            { value: "100", label: "Under $100/hr" },
+                            { value: "150", label: "Under $150/hr" },
+                            { value: "200", label: "Under $200/hr" },
+                        ]}
+                    />
+
+                    {/* Rating pills */}
+                    <div className="flex items-center gap-1 bg-surface border border-white/[0.08] rounded-full p-1">
+                        {[{ val: 0, label: "Any" }, { val: 3.5, label: "3.5 ★" }, { val: 4.0, label: "4.0 ★" }, { val: 4.5, label: "4.5 ★" }].map(r => (
+                            <button key={r.val} onClick={() => setMinRating(r.val)}
+                                className={`px-3 py-1 text-xs font-bold rounded-full transition-all duration-150
+                                    ${minRating === r.val
+                                        ? "bg-white/[0.10] text-text-main"
+                                        : "text-text-main/35 hover:text-text-main/60"
+                                    }`}>
+                                {r.label}
+                            </button>
+                        ))}
+                    </div>
+
+                    {/* Divider */}
+                    <div className="h-5 w-px bg-white/[0.08] mx-1 hidden sm:block" />
+
+                    {/* Sort */}
+                    <div className="ml-auto">
+                        <FilterDropdown
+                            value={sortBy}
+                            onChange={setSortBy}
+                            options={SORT_OPTIONS}
                         />
                     </div>
-                </div>
-
-                {/* Divider */}
-                <div className="h-px bg-white/5" />
-
-                {/* Row 1: Sport | Location | Skill | Time */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div>
-                        <label className="block text-[10px] font-bold text-text-main/40 uppercase tracking-widest mb-2">Sport Discipline</label>
-                        <select value={sportFilter} onChange={(e) => setSportFilter(e.target.value)}
-                            className="w-full bg-[#272A35] text-text-main text-sm rounded-xl px-4 py-2.5 outline-none focus:ring-1 focus:ring-primary appearance-none cursor-pointer border-none"
-                            style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239CA3AF' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`, backgroundRepeat: "no-repeat", backgroundPosition: "right 1rem center" }}>
-                            <option value="All Sports">All Sports</option>
-                            {Object.entries(SPORT_LABELS).map(([val, label]) => <option key={val} value={val}>{label}</option>)}
-                        </select>
-                    </div>
-                    <div>
-                        <label className="block text-[10px] font-bold text-text-main/40 uppercase tracking-widest mb-2">Location</label>
-                        <div className="relative">
-                            <MapPin size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-main/40" />
-                            <input type="text" value={locationFilter} onChange={(e) => setLocationFilter(e.target.value)}
-                                placeholder="City or zip"
-                                className="w-full bg-[#272A35] text-text-main text-sm rounded-xl pl-9 pr-4 py-2.5 outline-none focus:ring-1 focus:ring-primary placeholder-gray-600 border-none" />
-                        </div>
-                    </div>
-                    <div>
-                        <label className="block text-[10px] font-bold text-text-main/40 uppercase tracking-widest mb-2">Skill Level</label>
-                        <select value={skillFilter} onChange={(e) => setSkillFilter(e.target.value)}
-                            className="w-full bg-[#272A35] text-text-main text-sm rounded-xl px-4 py-2.5 outline-none focus:ring-1 focus:ring-primary appearance-none cursor-pointer border-none">
-                            <option value="any">Any Level</option>
-                            <option value="beginner">Beginner</option>
-                            <option value="intermediate">Intermediate</option>
-                            <option value="advanced">Advanced</option>
-                            <option value="pro">Pro</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label className="block text-[10px] font-bold text-text-main/40 uppercase tracking-widest mb-2">Time</label>
-                        <select value={timeFilter} onChange={(e) => setTimeFilter(e.target.value)}
-                            className="w-full bg-[#272A35] text-text-main text-sm rounded-xl px-4 py-2.5 outline-none focus:ring-1 focus:ring-primary appearance-none cursor-pointer border-none">
-                            <option value="any">Any Time</option>
-                            <option value="morning">Morning</option>
-                            <option value="afternoon">Afternoon</option>
-                            <option value="evening">Evening</option>
-                        </select>
-                    </div>
-                </div>
-
-                {/* Divider */}
-                <div className="h-px bg-white/5" />
-
-                {/* Row 2: Price Range | Min Rating */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                        <div className="flex justify-between items-center mb-2">
-                            <label className="text-[10px] font-bold text-text-main/40 uppercase tracking-widest">Price Range</label>
-                            <span className="text-primary font-bold text-xs">$0 – ${maxRate}</span>
-                        </div>
-                        <input type="range" min={20} max={300} step={10} value={maxRate}
-                            onChange={(e) => setMaxRate(Number(e.target.value))}
-                            className="w-full h-1.5 bg-white/10 rounded-full appearance-none cursor-pointer accent-primary" />
-                    </div>
-                    <div>
-                        <label className="block text-[10px] font-bold text-text-main/40 uppercase tracking-widest mb-2">Min. Rating</label>
-                        <div className="flex gap-2">
-                            {[0, 3.5, 4.0, 4.5].map(r => (
-                                <button key={r} onClick={() => setMinRating(r)}
-                                    className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${minRating === r ? "bg-primary text-bg shadow-[0_0_10px_rgba(69,208,255,0.25)]" : "bg-[#272A35] text-text-main/50 hover:text-text-main"}`}>
-                                    {r === 0 ? "Any" : `${r}+`}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-
-            </div>
-
-            {/* Results Header */}
-            <div className="flex justify-between items-end mb-8">
-                <div>
-                    <h1 className="text-2xl font-black font-display tracking-wide mb-1 text-text-main">Top Rated Trainers</h1>
-                    <p className="text-sm text-text-main/60 font-medium">Showing {filteredTrainers.length} elite trainers {locationFilter ? `in ${locationFilter}` : "available"}</p>
-                </div>
-                <div className="flex items-center gap-2">
-                    <button
-                        onClick={() => alert('Exporting CSV data...')}
-                        className="flex items-center gap-2 px-4 py-2 bg-[#272A35] hover:bg-white/10 border border-white/5 rounded-xl text-sm font-bold text-white transition-colors"
-                    >
-                        <Download size={16} /> Export CSV
-                    </button>
-                    <select
-                        value={sortBy}
-                        onChange={(e) => setSortBy(e.target.value)}
-                        className="bg-[#272A35] text-text-main text-sm font-semibold rounded-xl px-4 py-2 border border-white/5 outline-none cursor-pointer hover:border-gray-600 transition-colors"
-                    >
-                        {SORT_OPTIONS.map(o => <option key={o.value} value={o.value}>Sort: {o.label}</option>)}
-                    </select>
                 </div>
             </div>
 
@@ -426,7 +499,7 @@ export default function SearchTrainersPage() {
                 {paginatedTrainers.map((trainer) => (
                     <div
                         key={trainer.id}
-                        onClick={() => window.location.href = `/dashboard/trainers/${trainer.id}`}
+                        onClick={() => router.push(`/dashboard/trainers/${trainer.id}`)}
                         className="bg-[#13151b] border border-white/[0.06] rounded-2xl overflow-hidden group hover:border-primary/30 hover:shadow-[0_4px_20px_rgba(69,208,255,0.06)] transition-all duration-300 cursor-pointer"
                     >
                         {/* Image area */}
@@ -465,7 +538,7 @@ export default function SearchTrainersPage() {
 
                             {trainer.is_founding_50 && (
                                 <div className="absolute bottom-2.5 right-3">
-                                    <FoundingBadgeTooltip size={26} />
+                                    <FoundingBadge size={26} />
                                 </div>
                             )}
                         </div>
@@ -473,10 +546,12 @@ export default function SearchTrainersPage() {
                         {/* Info area */}
                         <div className="p-4 flex flex-col gap-3">
                             {/* Name */}
-                            <h3 className="text-base font-bold text-white leading-tight truncate flex items-center gap-1.5">
-                                {trainer.user?.first_name} {trainer.user?.last_name}
-                                {trainer.is_founding_50 && <FoundingBadgeTooltip size={16} />}
-                            </h3>
+                            <div className="flex items-center gap-1.5 min-w-0">
+                                <h3 className="text-base font-bold text-white leading-tight truncate">
+                                    {trainer.user?.first_name} {trainer.user?.last_name}
+                                </h3>
+                                {trainer.is_founding_50 && <FoundingBadgeTooltip size={18} />}
+                            </div>
 
                             {/* Sport tags — min-height keeps button aligned */}
                             <div className="flex flex-wrap gap-1.5 min-h-[24px]">
@@ -489,7 +564,7 @@ export default function SearchTrainersPage() {
 
                             {/* Button */}
                             <button
-                                onClick={(e) => { e.stopPropagation(); window.location.href = `/dashboard/trainers/${trainer.id}`; }}
+                                onClick={(e) => { e.stopPropagation(); router.push(`/dashboard/trainers/${trainer.id}`); }}
                                 className="w-full bg-gradient-to-r from-primary to-[#0090d4] text-bg font-black text-sm px-4 py-3 rounded-2xl flex items-center justify-center gap-2 hover:opacity-90 transition-opacity shadow-[0_4px_15px_rgba(69,208,255,0.25)]"
                             >
                                 View Profile <ArrowRight size={14} strokeWidth={3} />

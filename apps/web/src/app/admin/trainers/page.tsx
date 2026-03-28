@@ -247,7 +247,7 @@ export default function AdminTrainersPage() {
                                     </td>
                                 </tr>
                             ) : paginatedTrainers.map((t, i) => (
-                                <tr key={t.id} className="border-b border-white/5/50 hover:bg-white/5 transition-colors group">
+                                <tr key={t.id} className="border-b border-white/[0.04] hover:bg-white/5 transition-colors group">
                                     <td className="px-6 py-5 pl-8">
                                         <div className="flex items-center gap-3">
                                             <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-black flex-shrink-0 border border-primary/20">

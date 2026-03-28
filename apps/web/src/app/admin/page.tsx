@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import { Users, Dumbbell, DollarSign, CalendarCheck, Search, Filter, Download } from "lucide-react";
+import { Users, Dumbbell, DollarSign, CalendarCheck, Search, Filter, Download, Check, ChevronDown } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
 export default function AdminDashboardPage() {
@@ -11,6 +11,20 @@ export default function AdminDashboardPage() {
     const [transactions, setTransactions] = useState<any[]>([]);
     const [activities, setActivities] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const [chartHeights, setChartHeights] = useState<number[]>(Array(12).fill(20));
+    const [txFilter, setTxFilter] = useState<"All" | "Completed" | "Pending">("All");
+    const [showFilterMenu, setShowFilterMenu] = useState(false);
+    const filterRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleClick = (e: MouseEvent) => {
+            if (filterRef.current && !filterRef.current.contains(e.target as Node)) {
+                setShowFilterMenu(false);
+            }
+        };
+        document.addEventListener("mousedown", handleClick);
+        return () => document.removeEventListener("mousedown", handleClick);
+    }, []);
 
     useEffect(() => {
         const loadData = async () => {
@@ -47,6 +61,21 @@ export default function AdminDashboardPage() {
                         dot: b.status === "completed" ? "bg-primary" : "bg-blue-500"
                     })));
                 }
+                const { data: monthlyData } = await supabase
+                    .from("bookings")
+                    .select("created_at")
+                    .gte("created_at", new Date(new Date().getFullYear(), 0, 1).toISOString());
+
+                const monthlyCounts = Array(12).fill(0);
+                (monthlyData || []).forEach((b: any) => {
+                    const month = new Date(b.created_at).getMonth();
+                    monthlyCounts[month]++;
+                });
+
+                const maxCount = Math.max(...monthlyCounts, 1);
+                const hasBookings = monthlyCounts.some(c => c > 0);
+                const heights = monthlyCounts.map(c => hasBookings ? Math.max(c > 0 ? 8 : 20, Math.round((c / maxCount) * 100)) : 20);
+                setChartHeights(heights);
             } catch (err) {
                 console.error(err);
             } finally {
@@ -58,8 +87,8 @@ export default function AdminDashboardPage() {
 
     const handleExportCSV = () => {
         const headers = ["Transaction ID", "Athlete", "Trainer", "Date", "Amount", "Status"];
-        
-        const exportData = transactions.map(t => [
+
+        const exportData = filteredTransactions.map(t => [
             t.id,
             t.athlete,
             t.trainer,
@@ -84,11 +113,16 @@ export default function AdminDashboardPage() {
         document.body.removeChild(link);
     };
 
+    const filteredTransactions = transactions.filter(t => {
+        if (txFilter === "All") return true;
+        return t.status === txFilter;
+    });
+
     const statCards = [
-        { title: "Total Athletes", value: stats.athletes.toLocaleString(), req: "+12.5%", icon: <Users size={20} className="text-blue-500" />, iconBg: "bg-blue-500/10" },
-        { title: "Total Trainers", value: stats.trainers.toLocaleString(), req: "+5.2%", icon: <Dumbbell size={20} className="text-purple-500" />, iconBg: "bg-purple-500/10" },
-        { title: "Total Revenue", value: `$${stats.revenue.toLocaleString()}`, req: "+18.1%", icon: <DollarSign size={20} className="text-primary" />, iconBg: "bg-primary/10" },
-        { title: "Active Bookings", value: stats.activeBookings.toLocaleString(), req: "-2.4%", icon: <CalendarCheck size={20} className="text-orange-500" />, iconBg: "bg-orange-500/10", isNegative: true },
+        { title: "Total Athletes", value: stats.athletes.toLocaleString(), icon: <Users size={20} className="text-blue-500" />, iconBg: "bg-blue-500/10" },
+        { title: "Total Trainers", value: stats.trainers.toLocaleString(), icon: <Dumbbell size={20} className="text-purple-500" />, iconBg: "bg-purple-500/10" },
+        { title: "Total Revenue", value: `$${stats.revenue.toLocaleString()}`, icon: <DollarSign size={20} className="text-primary" />, iconBg: "bg-primary/10" },
+        { title: "Active Bookings", value: stats.activeBookings.toLocaleString(), icon: <CalendarCheck size={20} className="text-orange-500" />, iconBg: "bg-orange-500/10" },
     ];
 
     if (loading) {
@@ -121,9 +155,6 @@ export default function AdminDashboardPage() {
                             <div className={`w-12 h-12 rounded-full ${stat.iconBg} flex items-center justify-center`}>
                                 {stat.icon}
                             </div>
-                            <span className={`text-[11px] font-black tracking-wider ${stat.isNegative ? "text-red-500" : "text-primary"}`}>
-                                {stat.req}
-                            </span>
                         </div>
                         <div className="text-text-main/60 text-sm font-bold mb-1">{stat.title}</div>
                         <div className="text-3xl font-black text-text-main">{stat.value}</div>
@@ -149,12 +180,11 @@ export default function AdminDashboardPage() {
                     <div className="flex flex-col gap-2 mt-4">
                         <div className="h-48 flex items-end justify-between gap-1.5 px-1">
                             {["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"].map((month, i) => {
-                                const heights = [30, 45, 35, 60, 100, 50, 45, 65, 40, 60, 45, 75];
                                 const isActive = i === new Date().getMonth();
                                 return (
                                     <div key={month} className="flex-1 flex justify-center group">
                                         <div
-                                            style={{ height: `${heights[i]}%` }}
+                                            style={{ height: `${chartHeights[i]}%` }}
                                             className={`w-full max-w-8 rounded-t-lg transition-all duration-500 ${isActive ? "bg-primary shadow-[0_0_12px_rgba(69,208,255,0.3)]" : "bg-white/10 group-hover:bg-primary/40"}`}
                                         />
                                     </div>
@@ -201,11 +231,30 @@ export default function AdminDashboardPage() {
             <div className="bg-surface border border-white/5 rounded-[24px] p-6">
                 <div className="flex justify-between items-center mb-6">
                     <h2 className="text-lg font-black text-text-main">Recent Transactions</h2>
-                    <div className="flex gap-3">
-                        <button className="flex items-center gap-2 px-4 py-2 rounded-full border border-gray-700 text-xs font-bold text-text-main/80 hover:text-text-main transition-colors">
-                            <Filter size={14} /> Filter
-                        </button>
-                        <button 
+                    <div className="flex gap-3 items-center">
+                        <div className="relative" ref={filterRef}>
+                            <button
+                                onClick={() => setShowFilterMenu(v => !v)}
+                                className={`flex items-center gap-2 px-4 py-2 rounded-full border text-xs font-bold transition-colors ${txFilter !== "All" ? "border-white/[0.14] text-text-main bg-white/[0.06]" : "border-white/[0.07] text-text-main/50 hover:text-text-main hover:border-white/[0.12]"}`}
+                            >
+                                <Filter size={14} /> {txFilter === "All" ? "Filter" : txFilter} <ChevronDown size={12} className={`transition-transform ${showFilterMenu ? "rotate-180" : ""}`} />
+                            </button>
+                            {showFilterMenu && (
+                                <div className="absolute right-0 top-full mt-2 w-40 bg-surface border border-white/[0.06] rounded-xl shadow-2xl overflow-hidden z-50 py-1">
+                                    {(["All", "Completed", "Pending"] as const).map(opt => (
+                                        <button
+                                            key={opt}
+                                            onClick={() => { setTxFilter(opt); setShowFilterMenu(false); }}
+                                            className={`w-full flex items-center justify-between px-4 py-2.5 text-xs font-bold transition-colors hover:bg-white/5 ${txFilter === opt ? "text-primary" : "text-text-main/70"}`}
+                                        >
+                                            {opt}
+                                            {txFilter === opt && <Check size={12} />}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                        <button
                             onClick={handleExportCSV}
                             className="flex items-center gap-2 px-4 py-2 rounded-full border border-gray-700 text-xs font-bold text-text-main/80 hover:text-text-main transition-colors"
                         >
@@ -217,7 +266,7 @@ export default function AdminDashboardPage() {
                 <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse">
                         <thead>
-                            <tr className="border-b border-white/5 text-[10px] uppercase font-black tracking-widest text-text-main/40">
+                            <tr className="border-b border-white/[0.05] text-[10px] uppercase font-bold tracking-widest text-text-main/30 bg-white/[0.03]">
                                 <th className="pb-4 pl-2 font-black">Transaction ID</th>
                                 <th className="pb-4 font-black">Athlete</th>
                                 <th className="pb-4 font-black">Trainer</th>
@@ -227,8 +276,14 @@ export default function AdminDashboardPage() {
                             </tr>
                         </thead>
                         <tbody className="text-sm">
-                            {transactions.map((t, i) => (
-                                <tr key={i} className="border-b border-white/5/50 hover:bg-white/5 transition-colors">
+                            {filteredTransactions.length === 0 ? (
+                                <tr>
+                                    <td colSpan={6} className="py-10 text-center text-text-main/40 font-bold text-sm">
+                                        No transactions match the current filter.
+                                    </td>
+                                </tr>
+                            ) : filteredTransactions.map((t, i) => (
+                                <tr key={i} className="border-b border-white/[0.04] last:border-0 hover:bg-white/[0.025] transition-colors">
                                     <td className="py-4 pl-2 font-medium text-text-main/60">{t.id}</td>
                                     <td className="py-4">
                                         <div className="flex items-center gap-3">
