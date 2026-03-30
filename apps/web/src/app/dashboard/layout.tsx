@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { getSession, clearSession, verifySessionStatus, AuthUser } from "@/lib/auth";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
+
 import {
     LayoutDashboard,
     Search,
@@ -34,22 +35,22 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const [user, setUser] = useState<AuthUser | null>(null);
     const [loading, setLoading] = useState(true);
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+    const [suspendedError, setSuspendedError] = useState(false);
     const router = useRouter();
     const pathname = usePathname();
 
     useEffect(() => {
         const checkAuth = async () => {
-            const session = await getSession();
+            const session = getSession();
             if (!session) {
-                router.push("/auth/login");
+                router.push("/auth/login?returnTo=" + encodeURIComponent(pathname));
                 return;
             }
 
             const isValid = await verifySessionStatus(session.id);
             if (!isValid) {
                 await clearSession();
-                alert("Your account has been suspended. You will be logged out.");
-                router.push("/auth/login");
+                setSuspendedError(true);
                 return;
             }
 
@@ -69,6 +70,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         await clearSession();
         router.push("/auth/login");
     };
+
+    if (suspendedError) {
+        return (
+            <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
+                <div className="bg-zinc-900 border border-red-800 rounded-xl p-8 max-w-sm mx-4 text-center">
+                    <div className="text-red-400 text-4xl mb-4">&#9888;</div>
+                    <h2 className="text-white text-xl font-bold mb-2">Account Suspended</h2>
+                    <p className="text-zinc-400 text-sm mb-6">Your account has been suspended. Please contact support.</p>
+                    <button onClick={() => router.push('/auth/login')} className="bg-white text-black font-bold px-6 py-2 rounded-lg">
+                        Go to Login
+                    </button>
+                </div>
+            </div>
+        );
+    }
 
     if (loading) {
         return (
@@ -272,7 +288,7 @@ function DashboardLayoutContent({ user, mobileMenuOpen, setMobileMenuOpen, navIt
                         </Link>
                     </div>
                     <Link
-                        href={user.role === 'trainer' ? '/dashboard/coach/setup' : '/dashboard/profile'}
+                        href={user.role === 'trainer' ? '/dashboard/trainer/setup' : '/dashboard/profile'}
                         className="w-9 h-9 rounded-full bg-gray-800 border-2 border-transparent focus:border-primary flex items-center justify-center font-bold text-sm text-text-main"
                     >
                         {user.firstName.charAt(0)}{user.lastName.charAt(0)}
@@ -280,9 +296,11 @@ function DashboardLayoutContent({ user, mobileMenuOpen, setMobileMenuOpen, navIt
                 </header>
 
                 {/* Page Content */}
-                <main className="flex-1 overflow-x-hidden overflow-y-auto w-full relative custom-scrollbar">
+                <main className="flex-1 overflow-y-auto w-full relative custom-scrollbar">
                     <div className="w-full max-w-[1200px] mx-auto p-4 sm:p-6 lg:p-8">
-                        {children}
+                        <div className="overflow-x-auto">
+                            {children}
+                        </div>
                     </div>
                 </main>
             </div>

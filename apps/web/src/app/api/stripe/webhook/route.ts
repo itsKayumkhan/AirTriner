@@ -7,14 +7,19 @@ import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
 
 export async function POST(req: NextRequest) {
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+    if (!serviceKey) {
+        console.error('[webhook] SUPABASE_SERVICE_ROLE_KEY is not set')
+        return new Response('Server configuration error', { status: 500 })
+    }
     const supabaseAdmin = createClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+        serviceKey
     );
     if (!process.env.STRIPE_SECRET_KEY) {
         return NextResponse.json({ error: 'Stripe not configured' }, { status: 500 });
     }
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2023-10-16' });
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2026-02-25.clover' });
 
     const body = await req.text(); // Raw body needed for Stripe signature verification
     const sig = req.headers.get('stripe-signature');
@@ -71,21 +76,19 @@ export async function POST(req: NextRequest) {
                     }
 
                     // Determine hold period (72h standard, 24h for established trainers)
-                    const { data: trainerBookings } = await supabaseAdmin
+                    const { count: completedCount } = await supabaseAdmin
                         .from('bookings')
-                        .select('id', { count: 'exact', head: true })
+                        .select('*', { count: 'exact', head: true })
                         .eq('trainer_id', trainerId)
                         .eq('status', 'completed');
-
-                    const completedCount = (trainerBookings as any)?.length || 0;
-                    const holdHours = completedCount >= 10 ? 24 : 72;
+                    const holdHours = (completedCount ?? 0) >= 10 ? 24 : 72;
                     const holdUntil = new Date(Date.now() + holdHours * 60 * 60 * 1000);
 
                     const { error: txError } = await supabaseAdmin
                         .from('payment_transactions')
                         .insert({
                             booking_id: bookingId,
-                            stripe_payment_intent_id: session.payment_intent as string || null,
+                            stripe_payment_intent_id: session.payment_intent ? String(session.payment_intent) : null,
                             amount: Number(amount),
                             platform_fee: Number(platformFee),
                             trainer_payout: Number(trainerPayout),
@@ -153,9 +156,9 @@ export async function POST(req: NextRequest) {
                 // Only handle subscription renewals (not first payment — that's checkout.session.completed)
                 if (invoice.billing_reason !== 'subscription_cycle') break;
 
-                const subscription = await stripe.subscriptions.retrieve(
-                    invoice.subscription as string
-                );
+                const subscriptionId = (invoice as unknown as { subscription?: string }).subscription;
+                if (!subscriptionId) break;
+                const subscription = await stripe.subscriptions.retrieve(subscriptionId);
                 const userId = subscription.metadata?.userId;
                 const plan = subscription.metadata?.plan;
 
@@ -185,9 +188,9 @@ export async function POST(req: NextRequest) {
             // ----------------------------------------
             case 'invoice.payment_failed': {
                 const invoice = event.data.object as Stripe.Invoice;
-                const subscription = await stripe.subscriptions.retrieve(
-                    invoice.subscription as string
-                );
+                const subscriptionId2 = (invoice as unknown as { subscription?: string }).subscription;
+                if (!subscriptionId2) break;
+                const subscription = await stripe.subscriptions.retrieve(subscriptionId2);
                 const userId = subscription.metadata?.userId;
 
                 if (!userId) break;
@@ -234,7 +237,7 @@ export async function POST(req: NextRequest) {
                 if (!userId) break;
 
                 if (subscription.status === 'active') {
-                    const currentPeriodEnd = new Date(subscription.current_period_end * 1000);
+                    const currentPeriodEnd = new Date(((subscription as unknown as { current_period_end?: number }).current_period_end ?? 0) * 1000);
                     await supabaseAdmin
                         .from('trainer_profiles')
                         .update({

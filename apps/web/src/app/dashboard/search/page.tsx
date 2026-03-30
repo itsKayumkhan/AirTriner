@@ -163,6 +163,9 @@ export default function SearchTrainersPage() {
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 8;
 
+    // Mobile filter visibility
+    const [showFilters, setShowFilters] = useState(false);
+
     useEffect(() => {
         if (typeof window !== 'undefined') {
             const params = new URLSearchParams(window.location.search);
@@ -274,8 +277,8 @@ export default function SearchTrainersPage() {
                     }
 
                     // Availability Match (Optional check if athlete has preferred times)
-                    if (athleteProfile.preferredTrainingTimes && p.preferredTrainingTimes) {
-                        const timeOverlap = athleteProfile.preferredTrainingTimes.some(t => p.preferredTrainingTimes?.includes(t));
+                    if (athleteProfile.preferred_training_times && p.preferred_training_times) {
+                        const timeOverlap = athleteProfile.preferred_training_times.some((t: string) => p.preferred_training_times?.includes(t as any));
                         if (timeOverlap) matchScore += 10;
                     }
                 }
@@ -304,19 +307,21 @@ export default function SearchTrainersPage() {
         }
     };
 
+    const normalizeSport = (s: string) => s.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z_]/g, '');
+
     const filteredTrainers = useMemo(() => {
         const result = trainers.filter((t) => {
             if (nameFilter) {
                 const fullName = `${t.user?.first_name || ""} ${t.user?.last_name || ""}`.toLowerCase();
                 if (!fullName.includes(nameFilter.toLowerCase())) return false;
             }
-            if (sportFilter !== "All Sports" && !(t.sports || []).some((s: string) => s.toLowerCase() === sportFilter.toLowerCase())) return false;
+            if (sportFilter !== "All Sports" && !(t.sports || []).some((s: string) => normalizeSport(s) === normalizeSport(sportFilter))) return false;
             if (Number(t.hourly_rate) > maxRate) return false;
             if (minRating > 0 && t.avg_rating < minRating) return false;
-            
+
             // Exact Filters
             if (skillFilter !== "any" && !t.target_skill_levels?.includes(skillFilter as any)) return false;
-            if (timeFilter !== "any" && !t.preferredTrainingTimes?.includes(timeFilter as any)) return false;
+            if (timeFilter !== "any" && !t.preferred_training_times?.includes(timeFilter as any)) return false;
 
             if (locationFilter) {
                 const loc = `${t.city || ""} ${t.state || ""}`.toLowerCase();
@@ -382,30 +387,43 @@ export default function SearchTrainersPage() {
                     )}
                 </div>
 
-                {/* Big search bar */}
-                <div className="relative">
-                    <SearchIcon size={18} className="absolute left-5 top-1/2 -translate-y-1/2 text-text-main/25 pointer-events-none" />
-                    <input
-                        type="text"
-                        value={nameFilter}
-                        onChange={(e) => setNameFilter(e.target.value)}
-                        placeholder="Search coaches by name…"
-                        className="w-full bg-surface border border-white/[0.08] text-text-main text-base rounded-2xl
-                                   pl-14 pr-12 py-4 placeholder-text-main/20 outline-none
-                                   focus:border-white/20 transition-colors"
-                    />
-                    {nameFilter && (
-                        <button onClick={() => setNameFilter("")}
-                            className="absolute right-4 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-white/[0.06]
-                                       text-text-main/40 hover:bg-white/[0.12] hover:text-text-main transition-all
-                                       flex items-center justify-center text-sm">
-                            ×
-                        </button>
-                    )}
+                {/* Big search bar + mobile filter toggle */}
+                <div className="flex gap-2 items-center">
+                    <div className="relative flex-1">
+                        <SearchIcon size={18} className="absolute left-5 top-1/2 -translate-y-1/2 text-text-main/25 pointer-events-none" />
+                        <input
+                            type="text"
+                            value={nameFilter}
+                            onChange={(e) => setNameFilter(e.target.value)}
+                            placeholder="Search coaches by name…"
+                            className="w-full bg-surface border border-white/[0.08] text-text-main text-base rounded-2xl
+                                       pl-14 pr-12 py-4 placeholder-text-main/20 outline-none
+                                       focus:border-white/20 transition-colors"
+                        />
+                        {nameFilter && (
+                            <button onClick={() => setNameFilter("")}
+                                className="absolute right-4 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-white/[0.06]
+                                           text-text-main/40 hover:bg-white/[0.12] hover:text-text-main transition-all
+                                           flex items-center justify-center text-sm">
+                                ×
+                            </button>
+                        )}
+                    </div>
+                    {/* Mobile-only filters toggle */}
+                    <button
+                        onClick={() => setShowFilters(f => !f)}
+                        className={`sm:hidden inline-flex items-center gap-1.5 px-4 py-4 rounded-2xl border text-sm font-bold transition-all ${
+                            showFilters || activeFiltersCount > 0
+                                ? "border-primary/50 text-primary bg-primary/5"
+                                : "border-white/[0.08] text-text-main/60 bg-surface"
+                        }`}
+                    >
+                        Filters{activeFiltersCount > 0 ? ` (${activeFiltersCount})` : ""}
+                    </button>
                 </div>
 
-                {/* Filter pill row */}
-                <div className="flex items-center gap-2 flex-wrap">
+                {/* Filter pill row — always visible on sm+, collapsible on mobile */}
+                <div className={`flex items-center gap-2 flex-wrap ${showFilters ? "flex" : "hidden sm:flex"}`}>
 
                     {/* Sport */}
                     <FilterDropdown
@@ -575,22 +593,22 @@ export default function SearchTrainersPage() {
             </div>
 
             {totalPages > 1 && (
-                <div className="mt-12 flex justify-center items-center gap-2">
-                    <button 
+                <div className="mt-12 flex justify-center items-center gap-2 flex-wrap">
+                    <button
                         onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                         disabled={currentPage === 1}
-                        className="w-10 h-10 rounded-full border border-white/5 flex items-center justify-center text-text-main/60 hover:text-text-main hover:border-gray-600 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                        className="w-11 h-11 sm:w-10 sm:h-10 rounded-full border border-white/5 flex items-center justify-center text-text-main/60 hover:text-text-main hover:border-gray-600 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                     >
                         <ChevronLeft size={16} />
                     </button>
-                    
+
                     {Array.from({ length: totalPages }).map((_, i) => (
-                        <button 
+                        <button
                             key={i}
                             onClick={() => setCurrentPage(i + 1)}
-                            className={`w-10 h-10 rounded-full font-bold text-sm transition-colors flex items-center justify-center ${
-                                currentPage === i + 1 
-                                ? "bg-primary text-bg shadow-[0_0_10px_rgba(69,208,255,0.2)]" 
+                            className={`w-11 h-11 sm:w-10 sm:h-10 rounded-full font-bold text-sm transition-colors flex items-center justify-center ${
+                                currentPage === i + 1
+                                ? "bg-primary text-bg shadow-[0_0_10px_rgba(69,208,255,0.2)]"
                                 : "text-text-main/60 hover:text-text-main border border-transparent hover:border-white/5"
                             }`}
                         >
@@ -598,10 +616,10 @@ export default function SearchTrainersPage() {
                         </button>
                     ))}
 
-                    <button 
+                    <button
                         onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                         disabled={currentPage === totalPages}
-                        className="w-10 h-10 rounded-full border border-white/5 flex items-center justify-center text-text-main/60 hover:text-text-main hover:border-gray-600 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                        className="w-11 h-11 sm:w-10 sm:h-10 rounded-full border border-white/5 flex items-center justify-center text-text-main/60 hover:text-text-main hover:border-gray-600 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                     >
                         <ChevronRight size={16} />
                     </button>

@@ -330,13 +330,13 @@ export default function Home() {
                     <h1 style={{
                         fontWeight: 900, fontFamily: "var(--font-display)",
                         lineHeight: 1.05, textTransform: "uppercase", marginBottom: "28px",
-                        letterSpacing: "-1px", whiteSpace: "nowrap"
+                        letterSpacing: "-1px"
                     }}>
-                        <span style={{ display: "block", fontSize: "clamp(28px, 5.5vw, 72px)", color: "#ffffff" }}>
+                        <span style={{ display: "block", fontSize: "clamp(32px, 7vw, 72px)", color: "#ffffff" }}>
                             ATHLETES GROW,
                         </span>
                         <span style={{
-                            display: "block", fontSize: "clamp(28px, 5.5vw, 72px)",
+                            display: "block", fontSize: "clamp(32px, 7vw, 72px)",
                             color: "var(--primary)", fontStyle: "italic",
                             textShadow: "0 0 40px rgba(69,208,255,0.6), 0 0 80px rgba(69,208,255,0.25)"
                         }}>
@@ -353,7 +353,7 @@ export default function Home() {
                     </p>
 
                     {/* Buttons */}
-                    <div style={{ display: "flex", gap: "14px", justifyContent: "center", flexWrap: "wrap", marginBottom: "52px" }}>
+                    <div className="hero-btns" style={{ display: "flex", gap: "14px", justifyContent: "center", flexWrap: "wrap", marginBottom: "52px" }}>
                         <a href="/dashboard/search" style={{
                             padding: "16px 36px", background: "var(--primary)", color: "#0A0D14",
                             borderRadius: "var(--radius-full)", fontWeight: 800, fontSize: "14px", textDecoration: "none",
@@ -404,7 +404,7 @@ export default function Home() {
 
             {/* STATS STRIP */}
             <section style={{ background: "var(--primary)", padding: "40px 24px" }}>
-                <div style={{ maxWidth: "1400px", margin: "0 auto", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "32px" }}>
+                <div className="stats-grid" style={{ maxWidth: "1400px", margin: "0 auto", display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "32px" }}>
                     {[
                         { num: "850+", label: "EXPERT COACHES" },
                         { num: "98%", label: "SUCCESS RATE" },
@@ -470,7 +470,7 @@ export default function Home() {
                                     <h3 style={{ fontSize: "24px", fontWeight: 900, fontFamily: "var(--font-display)", textTransform: "uppercase", margin: 0 }}>{coach.name}</h3>
                                     <p style={{ fontSize: "14px", color: "var(--gray-300)", marginBottom: "16px" }}>{coach.desc}</p>
 
-                                    <a href={`/dashboard/trainers/${coach.id || 'default'}`} style={{
+                                    <a href={coach.id ? `/dashboard/trainers/${coach.id}` : "/dashboard/search"} style={{
                                         display: "block", textAlign: "center", textDecoration: "none",
                                         width: "100%", padding: "12px", background: "rgba(255,255,255,0.1)", backdropFilter: "blur(10px)",
                                         border: "1px solid rgba(255,255,255,0.2)", color: "white", borderRadius: "var(--radius-md)",
@@ -819,26 +819,10 @@ export default function Home() {
                     .reviews-card {
                         padding: 32px 24px !important;
                     }
-                    
+
                     .footer-grid {
-                        grid-template-columns: 1fr !important;
-                        gap: 48px !important;
-                        text-align: center;
-                    }
-                    .footer-col {
-                        display: flex;
-                        flex-direction: column;
-                        align-items: center;
-                    }
-                    .footer-brand p {
-                        margin-left: auto !important;
-                        margin-right: auto !important;
-                    }
-                    .footer-social {
-                        justify-content: center !important;
-                    }
-                    .footer-col h4 {
-                        margin-bottom: 16px !important;
+                        grid-template-columns: 1fr 1fr !important;
+                        gap: 40px !important;
                     }
                     .footer-bottom {
                         flex-direction: column !important;
@@ -846,10 +830,37 @@ export default function Home() {
                         gap: 12px !important;
                     }
                 }
-                
+
                 @media (max-width: 640px) {
+                    .stats-grid {
+                        grid-template-columns: repeat(2, 1fr) !important;
+                        gap: 24px !important;
+                    }
                     .reviews-card p {
                         font-size: 16px !important;
+                        min-height: unset !important;
+                        height: auto !important;
+                    }
+                    .footer-grid {
+                        grid-template-columns: 1fr !important;
+                        gap: 40px !important;
+                        text-align: center !important;
+                    }
+                    .footer-col {
+                        display: flex !important;
+                        flex-direction: column !important;
+                        align-items: center !important;
+                    }
+                    .footer-brand p {
+                        margin-left: auto !important;
+                        margin-right: auto !important;
+                    }
+                    .hero-btns a {
+                        width: 100% !important;
+                        text-align: center !important;
+                    }
+                    .hero-btns {
+                        flex-direction: column !important;
                     }
                 }
             `}</style>

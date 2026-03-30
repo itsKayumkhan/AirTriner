@@ -176,6 +176,20 @@ export default function BookingsPage() {
                     .update({ rating: reviewRating, review_text: reviewText || null })
                     .eq("id", existingId));
             } else {
+                // Check for duplicate review before inserting
+                const { data: existingReview } = await supabase
+                    .from('reviews')
+                    .select('id')
+                    .eq('booking_id', reviewBooking.id)
+                    .eq('reviewer_id', user.id)
+                    .single();
+
+                if (existingReview) {
+                    toastError('Already Reviewed', 'You have already submitted a review for this booking');
+                    setSubmittingReview(false);
+                    return;
+                }
+
                 // INSERT new review
                 ({ error } = await supabase.from("reviews").insert({
                     booking_id: reviewBooking.id,
@@ -296,12 +310,12 @@ export default function BookingsPage() {
             <ToastContainer toasts={toasts} onRemove={remove} />
 
             {/* ── Page Header ── */}
-            <div className="flex items-end justify-between gap-4 mb-10">
+            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-8 sm:mb-10">
                 <div>
                     <p className="text-[11px] font-bold tracking-[0.2em] text-primary/60 uppercase mb-2">
                         {isTrainerView ? "Coach Portal" : "Athlete Portal"}
                     </p>
-                    <h1 className="text-[38px] font-black uppercase tracking-tight text-white leading-none">
+                    <h1 className="text-[28px] sm:text-[38px] font-black uppercase tracking-tight text-white leading-none">
                         {isTrainerView ? "Sessions" : "My Bookings"}
                     </h1>
                     <p className="text-text-main/40 text-sm mt-1.5 font-medium">
@@ -330,7 +344,8 @@ export default function BookingsPage() {
             </div>
 
             {/* ── Filter Tabs ── */}
-            <div className="flex gap-1.5 mb-8 bg-[#0D0F17] border border-white/6 rounded-2xl p-1.5 w-fit flex-wrap">
+            <div className="overflow-x-auto mb-8">
+            <div className="flex gap-1.5 bg-[#0D0F17] border border-white/6 rounded-2xl p-1.5 w-fit flex-nowrap min-w-max">
                 {filters.map((f) => {
                     const count = f === "all" ? bookings.length : bookings.filter((b) => b.status === f).length;
                     const active = filter === f;
@@ -356,6 +371,7 @@ export default function BookingsPage() {
                         </button>
                     );
                 })}
+            </div>
             </div>
 
             {/* ── Empty State ── */}
@@ -498,6 +514,13 @@ export default function BookingsPage() {
                                                 )}
                                             </div>
 
+                                            {/* Pending payment guidance */}
+                                            {booking.status === 'pending' && !isTrainer && (
+                                                <div className="text-xs text-yellow-500 bg-yellow-900/20 border border-yellow-800/50 rounded px-2 py-1 mt-1">
+                                                    Waiting for trainer confirmation before payment
+                                                </div>
+                                            )}
+
                                             {/* Address */}
                                             {booking.address && (
                                                 <div className="flex items-center gap-1.5 mt-2 text-[11px] text-text-main/35 font-medium">
@@ -558,7 +581,7 @@ export default function BookingsPage() {
                                         {/* Athlete: Cancel pending */}
                                         {booking.status === "pending" && !isTrainer && !isPast && (
                                             <button onClick={() => setCancelBooking(booking)}
-                                                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-transparent border border-red-500/18 text-red-400/70 text-[11px] font-bold hover:bg-red-500/8 hover:text-red-400 transition-all">
+                                                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-transparent border border-red-500/18 text-red-400/70 text-[11px] font-bold hover:bg-red-500/8 hover:text-red-400 transition-all w-full sm:w-auto justify-center sm:justify-start">
                                                 <X size={11} /> Cancel Request
                                             </button>
                                         )}

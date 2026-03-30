@@ -592,11 +592,11 @@ export default function ProfilePage() {
 
             {/* Floating Save Button */}
             {isDirty && (
-                <div className="fixed bottom-6 right-6 z-40">
+                <div className="fixed bottom-4 left-4 right-4 sm:left-auto sm:bottom-6 sm:right-6 z-40">
                     <button
                         onClick={handleSave}
                         disabled={saving}
-                        className="flex items-center gap-2.5 px-5 py-3 rounded-xl bg-primary text-bg font-black text-sm shadow-lg hover:opacity-90 transition-all disabled:opacity-60"
+                        className="flex items-center justify-center gap-2.5 w-full sm:w-auto px-5 py-3 rounded-xl bg-primary text-bg font-black text-sm shadow-lg hover:opacity-90 transition-all disabled:opacity-60"
                     >
                         <Save size={15} strokeWidth={2.5} />
                         {saving ? "Saving..." : "Save Changes"}

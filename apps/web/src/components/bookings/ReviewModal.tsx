@@ -35,7 +35,7 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({
 }) => {
     if (!isOpen || !booking) return null;
 
-    const isEditing = !!booking.review;
+    const isEditing = !!(booking as unknown as { review?: unknown }).review;
 
     return (
         <div

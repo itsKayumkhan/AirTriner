@@ -68,7 +68,7 @@ export default function EarningsPage() {
                             ...b,
                             payment_transaction: txMap.get(b.id) || null,
                             athlete_name: athleteMap.get(b.athlete_id) as string || "Unknown",
-                        }))
+                        })).sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime())
                     );
                 }
             } else {
@@ -105,7 +105,7 @@ export default function EarningsPage() {
                             ...b,
                             payment_transaction: confirmedTxMap.get(b.id) || null,
                             trainer_name: trainerMap.get(b.trainer_id) || "Unknown",
-                        }))
+                        })).sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime())
                     );
                 }
             }
@@ -174,7 +174,7 @@ export default function EarningsPage() {
 
             {/* Summary Cards */}
             {isTrainer ? (
-                <div className="grid gap-5 mb-8 grid-cols-2 lg:grid-cols-4">
+                <div className="grid gap-5 mb-8 grid-cols-2 md:grid-cols-4">
                     <div className="bg-surface rounded-2xl p-7 border border-white/5">
                         <div className="text-xs text-text-main/50 mb-2 uppercase tracking-wider font-bold">Total Earned</div>
                         <div className="text-3xl font-black font-display text-green-500">${totalEarnings.toFixed(2)}</div>
@@ -196,7 +196,7 @@ export default function EarningsPage() {
                     </div>
                 </div>
             ) : (
-                <div className="grid gap-5 mb-8 grid-cols-2 lg:grid-cols-4">
+                <div className="grid gap-5 mb-8 grid-cols-2 md:grid-cols-4">
                     <div className="bg-surface rounded-2xl p-7 border border-white/5">
                         <div className="text-xs text-text-main/50 mb-2 uppercase tracking-wider font-bold">Total Paid</div>
                         <div className="text-3xl font-black font-display text-green-500">${athleteTotalPaid.toFixed(2)}</div>

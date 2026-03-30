@@ -1,9 +1,9 @@
 "use client";
 
 import { Leaf, Dumbbell, TrendingUp, Trophy, Star, Users, Eye, EyeOff } from "lucide-react";
-import { useState } from "react";
+import { useState, Suspense } from "react";
 import { registerUser } from "@/lib/auth";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 const SPORTS = [
     "Hockey", "Baseball", "Basketball", "Football", "Soccer",
@@ -18,15 +18,19 @@ const SKILL_LEVELS = [
     { value: "pro", label: "Pro / Elite", desc: "Professional level", icon: <Star className="w-5 h-5 text-primary" /> },
 ];
 
-export default function RegisterPage() {
+function RegisterForm() {
     const router = useRouter();
+    const searchParams = useSearchParams();
     const [step, setStep] = useState(1);
-    const [role, setRole] = useState<"athlete" | "trainer" | "">("athlete");
+    const [role, setRole] = useState<"athlete" | "trainer" | "">(
+        searchParams.get("role") === "trainer" ? "trainer" : "athlete"
+    );
 
     // Step 1
     const [fullName, setFullName] = useState("");
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
+    const [confirmPassword, setConfirmPassword] = useState("");
     const [showPassword, setShowPassword] = useState(false);
 
     // Step 2
@@ -50,8 +54,24 @@ export default function RegisterPage() {
             setError("Please enter both first and last name");
             return;
         }
-        if (password.length < 8) {
-            setError("Password must be at least 8 characters");
+
+        // Fix D: client-side email validation
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+            setError("Please enter a valid email address");
+            return;
+        }
+
+        // Fix C: match backend password requirements (12+ chars, complexity)
+        const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#^()\-_=+])[A-Za-z\d@$!%*?&#^()\-_=+]{12,}$/;
+        if (!passwordRegex.test(password)) {
+            setError("Password must be at least 12 characters with uppercase, lowercase, number, and special character");
+            return;
+        }
+
+        // Fix B: confirm password check
+        if (password !== confirmPassword) {
+            setError("Passwords do not match");
             return;
         }
 
@@ -74,6 +94,18 @@ export default function RegisterPage() {
             setError("Please select at least one sport");
             setLoading(false);
             return;
+        }
+
+        // Fix F: client-side age validation
+        if (dateOfBirth) {
+            const dob = new Date(dateOfBirth);
+            const today = new Date();
+            const eighteenYearsAgo = new Date(today.getFullYear() - 18, today.getMonth(), today.getDate());
+            if (dob > eighteenYearsAgo) {
+                setError("You must be at least 18 years old to register");
+                setLoading(false);
+                return;
+            }
         }
 
         const [firstName, ...lastNames] = fullName.split(" ");
@@ -109,7 +141,9 @@ export default function RegisterPage() {
         <div style={{ minHeight: "100vh", background: "var(--color-bg)", color: "white", fontFamily: "var(--font-sans)", display: "flex", flexDirection: "column" }}>
 
             {/* Header */}
-            <header style={{ padding: "32px 48px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <header style={{ padding: "24px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}
+                className="sm:px-12 md:px-12"
+            >
                 <a href="/" style={{ display: "inline-flex", alignItems: "center", gap: "12px", textDecoration: "none" }}>
                     <div style={{ width: "36px", height: "36px", borderRadius: "8px", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--zinc-900)", border: "1px solid rgba(255,255,255,0.1)" }}>
                         <img src="/logo.jpeg" alt="Logo" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
@@ -118,21 +152,24 @@ export default function RegisterPage() {
                 </a>
 
                 <div style={{ fontSize: "14px", color: "var(--gray-400)", display: "flex", alignItems: "center", gap: "16px" }}>
-                    <span>Ready to start?</span>
+                    <span className="hidden sm:inline">Ready to start?</span>
                     <a href="/auth/login" style={{ padding: "8px 20px", border: "1px solid var(--gray-700)", borderRadius: "var(--radius-full)", color: "white", textDecoration: "none", fontWeight: 600, transition: "background 0.2s" }} onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.05)"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>Log In</a>
                 </div>
             </header>
 
             {/* Main Content */}
-            <main style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "24px" }}>
+            <main style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}
+                className="sm:px-8"
+            >
                 <div style={{ width: "100%", maxWidth: step === 1 ? "480px" : "600px", transition: "max-width 0.3s" }}>
 
+                    {/* Step indicator */}
                     <div style={{ marginBottom: "32px" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", color: "var(--primary)", fontSize: "12px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "1px", marginBottom: "8px" }}>
                             <span>STEP {step} OF 2</span>
                             <span style={{ color: "var(--gray-500)" }}>{step === 1 ? "50%" : "100%"} Complete</span>
                         </div>
-                        <h1 style={{ fontSize: "32px", fontWeight: 900, fontFamily: "var(--font-display)", marginBottom: "16px" }}>
+                        <h1 style={{ fontSize: "clamp(24px, 6vw, 32px)", fontWeight: 900, fontFamily: "var(--font-display)", marginBottom: "16px" }}>
                             {step === 1 ? "Create Your Account" : "Personalize Your Profile"}
                         </h1>
                         <div style={{ height: "4px", background: "var(--gray-800)", borderRadius: "2px", overflow: "hidden" }}>
@@ -148,9 +185,10 @@ export default function RegisterPage() {
 
                     {step === 1 ? (
                         <form onSubmit={handleStep1Submit}>
+                            {/* Fix G: Role cards — stack on mobile, side by side on sm+ */}
                             <div style={{ marginBottom: "24px" }}>
                                 <label style={{ display: "block", fontSize: "14px", fontWeight: 700, marginBottom: "12px" }}>I am signing up as...</label>
-                                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                     {[
                                         { id: "athlete", icon: <Dumbbell className="w-8 h-8 text-primary" />, title: "Athlete", desc: "Access personalized programs, track metrics, and compete." },
                                         { id: "trainer", icon: <Users className="w-8 h-8 text-primary" />, title: "Trainer", desc: "Manage clients, build routines, and scale your business." }
@@ -170,40 +208,60 @@ export default function RegisterPage() {
                                 </div>
                             </div>
 
+                            {/* Fix E: autoComplete="name" */}
                             <div style={{ marginBottom: "20px" }}>
                                 <label style={{ display: "block", fontSize: "12px", fontWeight: 700, color: "white", marginBottom: "8px" }}>Full Name</label>
                                 <div style={{ position: "relative" }}>
-                                    <input type="text" value={fullName} onChange={e => setFullName(e.target.value)} placeholder="Enter your full name" required style={{ ...inputStyle, paddingLeft: "40px" }} />
+                                    <input
+                                        type="text"
+                                        autoComplete="name"
+                                        value={fullName}
+                                        onChange={e => setFullName(e.target.value)}
+                                        placeholder="Enter your full name"
+                                        required
+                                        style={{ ...inputStyle, paddingLeft: "40px" }}
+                                    />
                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--gray-500)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ position: "absolute", left: "12px", top: "16px" }}><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
                                 </div>
                             </div>
 
+                            {/* Fix E: autoComplete="email" */}
                             <div style={{ marginBottom: "20px" }}>
                                 <label style={{ display: "block", fontSize: "12px", fontWeight: 700, color: "white", marginBottom: "8px" }}>Email Address</label>
                                 <div style={{ position: "relative" }}>
-                                    <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="name@example.com" required style={{ ...inputStyle, paddingLeft: "40px" }} />
+                                    <input
+                                        type="email"
+                                        autoComplete="email"
+                                        value={email}
+                                        onChange={e => setEmail(e.target.value)}
+                                        placeholder="name@example.com"
+                                        required
+                                        style={{ ...inputStyle, paddingLeft: "40px" }}
+                                    />
                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--gray-500)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ position: "absolute", left: "12px", top: "16px" }}><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" /><polyline points="22,6 12,13 2,6" /></svg>
                                 </div>
                             </div>
 
-                            <div style={{ marginBottom: "32px" }}>
+                            {/* Fix C & E: updated password hint + autoComplete="new-password" */}
+                            <div style={{ marginBottom: "20px" }}>
                                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
                                     <label style={{ fontSize: "12px", fontWeight: 700, color: "white" }}>Password</label>
-                                    <span style={{ fontSize: "11px", color: "var(--gray-500)" }}>Min. 8 characters</span>
+                                    <span style={{ fontSize: "11px", color: "var(--gray-500)" }}>Min. 12 chars • Uppercase • Lowercase • Number • Special char</span>
                                 </div>
                                 <div style={{ position: "relative" }}>
-                                    <input 
-                                        type={showPassword ? "text" : "password"} 
-                                        value={password} 
-                                        onChange={e => setPassword(e.target.value)} 
-                                        placeholder="••••••••" 
-                                        required 
-                                        minLength={8} 
-                                        style={{ ...inputStyle, paddingLeft: "40px" }} 
+                                    <input
+                                        type={showPassword ? "text" : "password"}
+                                        autoComplete="new-password"
+                                        value={password}
+                                        onChange={e => setPassword(e.target.value)}
+                                        placeholder="••••••••"
+                                        required
+                                        minLength={12}
+                                        style={{ ...inputStyle, paddingLeft: "40px" }}
                                     />
                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--gray-500)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ position: "absolute", left: "12px", top: "16px" }}><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
-                                    <button 
-                                        type="button" 
+                                    <button
+                                        type="button"
                                         onClick={() => setShowPassword(!showPassword)}
                                         style={{ position: "absolute", right: "16px", top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: "var(--gray-500)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
                                     >
@@ -212,6 +270,24 @@ export default function RegisterPage() {
                                 </div>
                             </div>
 
+                            {/* Fix B: Confirm Password field */}
+                            <div style={{ marginBottom: "32px" }}>
+                                <label style={{ display: "block", fontSize: "12px", fontWeight: 700, color: "white", marginBottom: "8px" }}>Confirm Password</label>
+                                <div style={{ position: "relative" }}>
+                                    <input
+                                        type="password"
+                                        autoComplete="new-password"
+                                        value={confirmPassword}
+                                        onChange={e => setConfirmPassword(e.target.value)}
+                                        placeholder="••••••••"
+                                        required
+                                        style={{ ...inputStyle, paddingLeft: "40px" }}
+                                    />
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--gray-500)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ position: "absolute", left: "12px", top: "16px" }}><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
+                                </div>
+                            </div>
+
+                            {/* Fix G: w-full button */}
                             <button type="submit" style={{ width: "100%", padding: "16px", borderRadius: "12px", background: "var(--primary)", color: "var(--color-bg)", border: "none", fontWeight: 800, fontSize: "15px", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", cursor: "pointer", transition: "all 0.2s" }}>
                                 Continue to Personalization
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="square" strokeLinejoin="miter"><path d="m9 18 6-6-6-6" /></svg>
@@ -241,7 +317,8 @@ export default function RegisterPage() {
                             {role === "athlete" && (
                                 <div style={{ marginBottom: "24px" }}>
                                     <label style={{ display: "block", fontSize: "14px", fontWeight: 700, marginBottom: "12px" }}>Skill Level</label>
-                                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                                    {/* Fix G: skill level grid — 1 col on mobile, 2 cols on sm+ */}
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                         {SKILL_LEVELS.map(sl => (
                                             <div key={sl.value} onClick={() => setSkillLevel(sl.value)} style={{
                                                 padding: "16px", borderRadius: "12px", cursor: "pointer", transition: "all 0.2s",
@@ -257,7 +334,8 @@ export default function RegisterPage() {
                                 </div>
                             )}
 
-                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "32px" }}>
+                            {/* Fix G: city/dob — stack on mobile, side by side on sm+ */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4" style={{ marginBottom: "32px" }}>
                                 <div>
                                     <label style={{ display: "block", fontSize: "12px", fontWeight: 700, color: "var(--gray-300)", marginBottom: "8px" }}>City</label>
                                     <input type="text" value={city} onChange={e => setCity(e.target.value)} placeholder="Toronto" style={inputStyle} />
@@ -268,7 +346,8 @@ export default function RegisterPage() {
                                 </div>
                             </div>
 
-                            <div style={{ display: "flex", gap: "12px" }}>
+                            {/* Fix G: buttons — stack on mobile */}
+                            <div className="flex flex-col sm:flex-row gap-3">
                                 <button type="button" onClick={() => setStep(1)} style={{ padding: "16px 24px", borderRadius: "12px", background: "rgba(255,255,255,0.05)", color: "white", border: "1px solid var(--gray-800)", fontWeight: 700, fontSize: "15px", cursor: "pointer" }}>
                                     Back
                                 </button>
@@ -284,16 +363,24 @@ export default function RegisterPage() {
             </main>
 
             {/* Footer */}
-            <footer style={{ padding: "32px", textAlign: "center", fontSize: "12px", color: "var(--gray-500)", display: "flex", flexDirection: "column", gap: "16px", alignItems: "center" }}>
+            <footer style={{ padding: "32px 16px", textAlign: "center", fontSize: "12px", color: "var(--gray-500)", display: "flex", flexDirection: "column", gap: "16px", alignItems: "center" }}>
                 <div>
                     Already have an account? <a href="/auth/login" style={{ color: "var(--primary)", textDecoration: "none", fontWeight: 700 }}>Log In</a>
                 </div>
-                <div style={{ display: "flex", gap: "24px" }}>
+                <div className="flex flex-wrap justify-center gap-4 sm:gap-6">
                     <a href="#" style={{ color: "var(--gray-500)", textDecoration: "none" }}>Terms of Service</a>
                     <a href="#" style={{ color: "var(--gray-500)", textDecoration: "none" }}>Privacy Policy</a>
                     <a href="#" style={{ color: "var(--gray-500)", textDecoration: "none" }}>Contact Support</a>
                 </div>
             </footer>
         </div>
+    );
+}
+
+export default function RegisterPage() {
+    return (
+        <Suspense fallback={<div style={{ minHeight: "100vh", background: "var(--color-bg)" }} />}>
+            <RegisterForm />
+        </Suspense>
     );
 }

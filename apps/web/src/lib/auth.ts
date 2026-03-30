@@ -20,6 +20,10 @@ const TOKEN_KEY = 'airtrainr_session';
 export function setSession(user: AuthUser) {
     if (typeof window !== 'undefined') {
         localStorage.setItem(TOKEN_KEY, JSON.stringify(user));
+        // Set cookie for middleware
+        if (typeof document !== 'undefined') {
+            document.cookie = `airtrainr_token=1; path=/; max-age=604800; SameSite=Lax`
+        }
     }
 }
 
@@ -37,6 +41,9 @@ export function getSession(): AuthUser | null {
 export async function clearSession() {
     if (typeof window !== 'undefined') {
         localStorage.removeItem(TOKEN_KEY);
+        if (typeof document !== 'undefined') {
+            document.cookie = `airtrainr_token=; path=/; max-age=0`
+        }
     }
     await supabase.auth.signOut();
 }
@@ -45,14 +52,19 @@ export async function clearSession() {
  * Verifies if the user session is still valid (account not suspended)
  */
 export async function verifySessionStatus(userId: string): Promise<boolean> {
+  try {
     const { data, error } = await supabase
-        .from('users')
-        .select('deleted_at')
-        .eq('id', userId)
-        .single();
-    
-    if (error || !data) return false;
-    return data.deleted_at === null;
+      .from('users')
+      .select('deleted_at, is_suspended')
+      .eq('id', userId)
+      .single()
+    if (error) return true // Network error — preserve session
+    if (!data) return false // User not found
+    if (data.is_suspended) return false // Actually suspended
+    return data.deleted_at === null
+  } catch {
+    return true // Any unexpected error — preserve session
+  }
 }
 
 // Login: check email+password using real Supabase Auth
@@ -158,12 +170,11 @@ export async function registerUser(data: {
     const cleanEmail = data.email.toLowerCase().trim();
 
     // Age check (must be 18+)
-    const dob = new Date(data.dateOfBirth);
-    const today = new Date();
-    const age = today.getFullYear() - dob.getFullYear();
-    const monthDiff = today.getMonth() - dob.getMonth();
-    if (age < 18 || (age === 18 && monthDiff < 0)) {
-        throw new Error('You must be at least 18 years old to register');
+    const dob = new Date(data.dateOfBirth)
+    const today = new Date()
+    const eighteenYearsAgo = new Date(today.getFullYear() - 18, today.getMonth(), today.getDate())
+    if (dob > eighteenYearsAgo) {
+        throw new Error('You must be at least 18 years old to register')
     }
 
     // 1. Sign up with Supabase Auth
@@ -226,7 +237,7 @@ export async function registerUser(data: {
         
         const autoApprove = settings?.auto_approve_trainers || false;
 
-        const { data: tp } = await supabase
+        const { data: tp, error: tpError } = await supabase
             .from('trainer_profiles')
             .insert({
                 user_id: u.id,
@@ -237,6 +248,11 @@ export async function registerUser(data: {
             })
             .select()
             .single();
+        if (tpError || !tp) {
+            // Clean up the user row before throwing
+            await supabase.from('users').delete().eq('id', u.id)
+            throw new Error('Failed to create trainer profile. Please try again.')
+        }
         trainerProfile = tp as TrainerProfileRow | null;
     } else {
         const { data: ap } = await supabase

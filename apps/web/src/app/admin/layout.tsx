@@ -38,9 +38,9 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
     useEffect(() => {
         const checkAuth = async () => {
-            const session = await getSession();
+            const session = getSession();
             if (!session) {
-                router.push("/auth/login");
+                router.push("/auth/login?returnTo=" + encodeURIComponent(pathname));
                 return;
             }
             if (session.role !== "admin") {
@@ -344,7 +344,9 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
                 {/* Scrollable Content Area */}
                 <div className="flex-1 overflow-y-auto px-4 md:px-8 py-8 custom-scrollbar">
-                    {children}
+                    <div className="overflow-x-auto">
+                        {children}
+                    </div>
                 </div>
 
             </main>

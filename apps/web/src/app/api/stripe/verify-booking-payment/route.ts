@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
         if (!process.env.STRIPE_SECRET_KEY) {
             return NextResponse.json({ error: 'Stripe not configured' }, { status: 500 });
         }
-        const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2023-10-16' });
+        const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2026-02-25.clover' });
 
         const { sessionId, bookingId } = await req.json();
         if (!sessionId || !bookingId) {

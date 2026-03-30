@@ -154,6 +154,7 @@ export default function BookTrainerPage() {
     const [selectedSport, setSelectedSport] = useState<string>("");
     const [slots, setSlots] = useState<string[]>([]);
     const [slotsLoading, setSlotsLoading] = useState(false);
+    const durationMinutes = 60;
 
     useEffect(() => {
         const session = getSession();
@@ -393,7 +394,6 @@ export default function BookTrainerPage() {
             if (modifier === "AM" && hrs === 12) hrs = 0;
 
             const scheduledAt = new Date(`${selectedDate}T${hrs.toString().padStart(2, "0")}:${minutes}:00`);
-            const durationMinutes = 60;
 
             // === Double Booking Prevention ===
             // Check for overlapping bookings for this trainer
@@ -428,6 +428,7 @@ export default function BookTrainerPage() {
             }
             // === End Double Booking Prevention ===
 
+            const sessionPrice = (trainer.hourly_rate || 0) * (durationMinutes / 60);
             const insertData = {
                 athlete_id: user.id,
                 trainer_id: trainer.user_id,
@@ -435,9 +436,9 @@ export default function BookTrainerPage() {
                 scheduled_at: scheduledAt.toISOString(),
                 duration_minutes: durationMinutes,
                 status: 'pending',
-                price: trainer.hourly_rate || 0,
-                platform_fee: (trainer.hourly_rate || 0) * 0.1, // 10% fee example
-                total_paid: trainer.hourly_rate || 0
+                price: sessionPrice,
+                platform_fee: sessionPrice * 0.1, // 10% fee example
+                total_paid: sessionPrice
             };
 
             const { error } = await supabase.from("bookings").insert(insertData);
@@ -500,7 +501,7 @@ export default function BookTrainerPage() {
             <ToastContainer toasts={toasts} onRemove={remove} />
 
             {/* Cover Image */}
-            <div className="w-full h-[320px] rounded-[32px] overflow-hidden relative mb-16 shadow-2xl">
+            <div className="w-full h-[200px] sm:h-[320px] rounded-2xl sm:rounded-[32px] overflow-hidden relative mb-16 shadow-2xl">
                 <div
                     className="absolute inset-0 bg-cover bg-center"
                     style={{ backgroundImage: `url(${trainer.cover_image})` }}
@@ -509,10 +510,10 @@ export default function BookTrainerPage() {
             </div>
 
             {/* Profile Header Overlapping */}
-            <div className="flex flex-col md:flex-row items-start md:items-end gap-6 px-4 md:px-12 -mt-36 relative z-10 mb-8">
+            <div className="flex flex-col md:flex-row items-start md:items-end gap-6 px-4 md:px-12 -mt-20 sm:-mt-36 relative z-10 mb-8">
                 {/* Avatar */}
                 <div className="relative">
-                    <div className="w-40 h-40 rounded-[24px] border-[6px] border-[#0F1115] overflow-hidden bg-gray-800 shadow-xl">
+                    <div className="w-24 h-24 sm:w-40 sm:h-40 rounded-[18px] sm:rounded-[24px] border-[4px] sm:border-[6px] border-[#0F1115] overflow-hidden bg-gray-800 shadow-xl">
                         {trainer.user?.avatar_url ? (
                             <img src={trainer.user.avatar_url} alt="Profile" className="w-full h-full object-cover" />
                         ) : (
@@ -531,11 +532,11 @@ export default function BookTrainerPage() {
 
                 {/* Name & Titles */}
                 <div className="pb-2">
-                    <h1 className="text-5xl font-black text-text-main tracking-tight mb-2 flex items-center gap-3">
+                    <h1 className="text-3xl sm:text-5xl font-black text-text-main tracking-tight mb-2 flex items-center gap-3 flex-wrap">
                         {trainer.user?.first_name} {trainer.user?.last_name}
                         {trainer.is_founding_50 && <FoundingBadgeTooltip size={36} />}
                     </h1>
-                    <div className="flex items-center gap-4 text-sm font-bold">
+                    <div className="flex items-center gap-4 text-sm font-bold flex-wrap">
                         {trainer.is_performance_verified ? (
                             <span className="text-primary tracking-widest uppercase">Verified Performance</span>
                         ) : trainer.sessions_count > 0 ? (
@@ -568,7 +569,7 @@ export default function BookTrainerPage() {
                 <div className="flex flex-col gap-12">
 
                     {/* Stats Row */}
-                    <div className="flex gap-12 border-b border-white/5 pb-10">
+                    <div className="grid grid-cols-3 sm:flex sm:gap-12 gap-6 border-b border-white/5 pb-10">
                         <div>
                             <div className="text-3xl font-black text-text-main mb-2">{trainer.avg_rating}</div>
                             <div className="flex gap-1 text-primary mb-2">
@@ -633,8 +634,12 @@ export default function BookTrainerPage() {
                         {/* Price & Rating */}
                         <div className="flex justify-between items-start mb-8 pb-8 border-b border-white/5">
                             <div className="flex items-baseline gap-1.5">
-                                <span className="text-[42px] font-black text-white leading-none">${trainer.hourly_rate}</span>
-                                <span className="text-text-main/40 text-[11px] font-bold uppercase tracking-[0.15em] ml-1">/ hr</span>
+                                <span className="text-[42px] font-black text-white leading-none">
+                                    ${((trainer.hourly_rate || 0) * (durationMinutes / 60)).toFixed(0)}
+                                </span>
+                                <span className="text-text-main/40 text-[11px] font-bold uppercase tracking-[0.15em] ml-1">
+                                    / {durationMinutes < 60 ? `${durationMinutes}min` : `${durationMinutes / 60}hr`}
+                                </span>
                             </div>
                             <div className="flex items-center gap-1.5 text-primary text-[15px] font-black mt-2">
                                 <Star size={16} className="fill-current" /> {trainer.avg_rating}
@@ -777,7 +782,10 @@ export default function BookTrainerPage() {
                             )}
 
                             {user?.id !== trainer?.user_id && (
-                                <button className="w-full flex items-center justify-center gap-2 text-text-main/80 font-bold text-xs py-2 hover:text-text-main transition-colors">
+                                <button
+                                    onClick={() => router.push(`/dashboard/messages?trainerId=${trainer?.id}`)}
+                                    className="w-full flex items-center justify-center gap-2 text-text-main/80 font-bold text-xs py-2 hover:text-text-main transition-colors"
+                                >
                                     <MessageSquare size={14} /> Message Trainer
                                 </button>
                             )}

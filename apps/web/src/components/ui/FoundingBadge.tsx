@@ -6,7 +6,7 @@ export function FoundingBadge({ size = 28 }: { size?: number }) {
             viewBox="0 0 56 56"
             fill="none"
             xmlns="http://www.w3.org/2000/svg"
-            title="Founding 50 Coach"
+            aria-label="Founding 50 Coach"
         >
             <defs>
                 <linearGradient id="f50-gold" x1="0" y1="0" x2="56" y2="56" gradientUnits="userSpaceOnUse">

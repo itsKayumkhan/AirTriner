@@ -85,7 +85,7 @@ export default function MessagesPage() {
                     if (!bookingId || !bookingIds.includes(bookingId)) return;
                     if (bookingId === selectedBookingId) {
                         setMessages((prev) => prev.some((m) => m.id === msg.id) ? prev : [...prev, msg as Message]);
-                        if (msg.sender_id !== user.id) markAsReadApi(bookingId);
+                        if (msg.sender_id !== user.id) markAsReadApi(bookingId).catch(err => console.error('Failed to mark as read:', err));
                     }
                     setConversations((prev) => {
                         const existing = prev.find(c => c.bookingId === bookingId);
@@ -230,7 +230,7 @@ export default function MessagesPage() {
             <div className="flex-1 flex min-h-0 rounded-2xl overflow-hidden border border-white/7 bg-[#0F1118]">
 
                 {/* ── Sidebar ── */}
-                <div className={`w-[300px] shrink-0 flex flex-col border-r border-white/6 ${showSidebar ? "flex" : "hidden md:flex"}`}>
+                <div className={`w-full md:w-[300px] shrink-0 flex-col border-r border-white/6 ${showSidebar ? "flex" : "hidden md:flex"}`}>
                     {/* Sidebar header */}
                     <div className="px-4 py-4 border-b border-white/6 shrink-0">
                         <p className="text-[10px] font-black text-text-main/30 uppercase tracking-[0.2em]">
@@ -291,7 +291,7 @@ export default function MessagesPage() {
                 </div>
 
                 {/* ── Chat Area ── */}
-                <div className={`flex-1 flex flex-col min-w-0 ${!showSidebar ? "flex" : "hidden md:flex"}`}>
+                <div className={`w-full md:flex-1 flex-col min-w-0 ${!showSidebar ? "flex" : "hidden md:flex"}`}>
 
                     {/* Chat header */}
                     {selectedConvo ? (

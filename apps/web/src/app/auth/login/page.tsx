@@ -1,15 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useState, Suspense } from "react";
 import { loginUser } from "@/lib/auth";
 import { Eye, EyeOff } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
 
-export default function LoginPage() {
+function LoginForm() {
+    const router = useRouter();
+    const searchParams = useSearchParams();
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [showPassword, setShowPassword] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
+    // Fix A: functional rememberMe state
+    const [rememberMe, setRememberMe] = useState(false);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -17,8 +22,16 @@ export default function LoginPage() {
         setError("");
 
         try {
-            await loginUser(email, password);
-            window.location.href = "/dashboard";
+            const user = await loginUser(email, password);
+
+            // Fix A: set long-lived cookie when rememberMe is checked
+            if (rememberMe && typeof document !== "undefined") {
+                document.cookie = `airtrainr_token=1; path=/; max-age=${30 * 24 * 60 * 60}; SameSite=Lax`;
+            }
+
+            // Fix C: honour ?returnTo redirect after login
+            const returnTo = searchParams.get("returnTo");
+            router.push(returnTo || (user.role === "admin" ? "/admin" : "/dashboard"));
         } catch (err: unknown) {
             setError(err instanceof Error ? err.message : "Login failed");
         } finally {
@@ -27,13 +40,11 @@ export default function LoginPage() {
     };
 
     return (
-        <div style={{ display: "flex", minHeight: "100vh", background: "var(--color-bg)", color: "white", fontFamily: "var(--font-sans)" }}>
+        // Fix D: full-width flex on mobile, two-column grid on md+
+        <div className="flex flex-col md:grid md:grid-cols-2" style={{ minHeight: "100vh", background: "var(--color-bg)", color: "white", fontFamily: "var(--font-sans)" }}>
 
-            {/* Left Panel - Image Area */}
-            <div style={{
-                flex: "1 1 50%",
-                position: "relative",
-            }} className="hidden lg:block left-panel">
+            {/* Left Panel — hidden on mobile, visible md+ */}
+            <div className="hidden md:flex left-panel" style={{ position: "relative" }}>
                 <div style={{
                     position: "absolute", inset: 0,
                     backgroundImage: "linear-gradient(to right, rgba(9,9,11,0.2), rgba(9,9,11,0.9)), url('https://images.unsplash.com/photo-1461896836934-ffe607ba8211?q=80&w=1470&auto=format&fit=crop')",
@@ -66,12 +77,14 @@ export default function LoginPage() {
                 </div>
             </div>
 
-            {/* Right Panel - Login Form */}
-            <div style={{ flex: "1 1 50%", display: "flex", alignItems: "center", justifyContent: "center", padding: "24px" }}>
+            {/* Right Panel — Login Form */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "24px" }}
+                className="w-full px-4 sm:px-8 md:px-12"
+            >
                 <div style={{ width: "100%", maxWidth: "440px" }}>
 
-                    {/* Mobile Logo */}
-                    <div className="mobile-only" style={{ display: "none", marginBottom: "40px" }}>
+                    {/* Mobile Logo — visible only below md */}
+                    <div className="md:hidden" style={{ marginBottom: "40px" }}>
                         <a href="/" style={{ display: "inline-flex", alignItems: "center", gap: "12px", textDecoration: "none" }}>
                             <div style={{ width: "36px", height: "36px", borderRadius: "8px", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--zinc-900)", border: "1px solid rgba(255,255,255,0.1)" }}>
                                 <img src="/logo.jpeg" alt="Logo" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
@@ -81,7 +94,7 @@ export default function LoginPage() {
                     </div>
 
                     <div style={{ marginBottom: "40px" }}>
-                        <h2 style={{ fontSize: "32px", fontWeight: 900, fontFamily: "var(--font-display)", marginBottom: "8px" }}>Welcome Back</h2>
+                        <h2 style={{ fontSize: "clamp(24px, 6vw, 32px)", fontWeight: 900, fontFamily: "var(--font-display)", marginBottom: "8px" }}>Welcome Back</h2>
                         <p style={{ color: "var(--gray-400)", fontSize: "14px" }}>Enter your credentials to access your dashboard</p>
                     </div>
 
@@ -92,10 +105,12 @@ export default function LoginPage() {
                     )}
 
                     <form onSubmit={handleSubmit}>
+                        {/* Fix B: autoComplete="email" */}
                         <div style={{ marginBottom: "24px" }}>
                             <label style={{ display: "block", fontSize: "11px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "1px", marginBottom: "8px", color: "var(--gray-300)" }}>Email Address</label>
                             <input
                                 type="email"
+                                autoComplete="email"
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
                                 placeholder="name@domain.com"
@@ -109,6 +124,7 @@ export default function LoginPage() {
                             />
                         </div>
 
+                        {/* Fix B: autoComplete="current-password" */}
                         <div style={{ marginBottom: "24px" }}>
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
                                 <label style={{ fontSize: "11px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "1px", color: "var(--gray-300)" }}>Password</label>
@@ -117,6 +133,7 @@ export default function LoginPage() {
                             <div style={{ position: "relative" }}>
                                 <input
                                     type={showPassword ? "text" : "password"}
+                                    autoComplete="current-password"
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
                                     placeholder="••••••••"
@@ -128,8 +145,8 @@ export default function LoginPage() {
                                     onFocus={(e) => { e.currentTarget.style.borderColor = "var(--primary)"; e.currentTarget.style.background = "rgba(69,208,255,0.02)"; }}
                                     onBlur={(e) => { e.currentTarget.style.borderColor = "var(--gray-800)"; e.currentTarget.style.background = "rgba(255,255,255,0.03)"; }}
                                 />
-                                <button 
-                                    type="button" 
+                                <button
+                                    type="button"
                                     onClick={() => setShowPassword(!showPassword)}
                                     style={{ position: "absolute", right: "16px", top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: "var(--gray-500)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
                                 >
@@ -138,8 +155,15 @@ export default function LoginPage() {
                             </div>
                         </div>
 
+                        {/* Fix A: connected rememberMe checkbox */}
                         <div style={{ marginBottom: "32px", display: "flex", alignItems: "center", gap: "10px" }}>
-                            <input type="checkbox" id="remember" style={{ width: "16px", height: "16px", accentColor: "var(--primary)", background: "var(--gray-900)", border: "1px solid var(--gray-700)", borderRadius: "4px" }} />
+                            <input
+                                type="checkbox"
+                                id="remember"
+                                checked={rememberMe}
+                                onChange={e => setRememberMe(e.target.checked)}
+                                style={{ width: "16px", height: "16px", accentColor: "var(--primary)", background: "var(--gray-900)", border: "1px solid var(--gray-700)", borderRadius: "4px" }}
+                            />
                             <label htmlFor="remember" style={{ fontSize: "13px", color: "var(--gray-400)", cursor: "pointer" }}>Remember this device for 30 days</label>
                         </div>
 
@@ -175,22 +199,19 @@ export default function LoginPage() {
                     </div>
 
                     <p style={{ textAlign: "center", marginTop: "32px", fontSize: "13px", color: "var(--gray-400)" }}>
-                        Don't have an account?{" "}
+                        Don&apos;t have an account?{" "}
                         <a href="/auth/register" style={{ color: "var(--primary)", textDecoration: "none", fontWeight: 700 }}>Sign up</a>
                     </p>
                 </div>
             </div>
-
-            <style>{`
-                @media (min-width: 1024px) {
-                    .left-panel { display: block !important; }
-                    .mobile-only { display: none !important; }
-                }
-                @media (max-width: 1023px) {
-                    .left-panel { display: none !important; }
-                    .mobile-only { display: block !important; }
-                }
-            `}</style>
         </div>
+    );
+}
+
+export default function LoginPage() {
+    return (
+        <Suspense fallback={<div style={{ minHeight: "100vh", background: "var(--color-bg)" }} />}>
+            <LoginForm />
+        </Suspense>
     );
 }

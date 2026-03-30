@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
         if (!process.env.STRIPE_SECRET_KEY) {
             return NextResponse.json({ error: 'Stripe not configured. Add STRIPE_SECRET_KEY to .env' }, { status: 500 });
         }
-        const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2023-10-16' });
+        const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2026-02-25.clover' });
 
         const body = await req.json();
         const { plan, userId, email, trainerProfileId } = body;
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
                                   description: 'Full access: bookings, messaging, payments & analytics',
                               },
                               recurring: { interval: 'month' },
-                              unit_amount: 2500, // ₹25.00 (2500 paise)
+                              unit_amount: 2500, // $25.00 (2500 USD cents)
                           },
                           quantity: 1,
                       }

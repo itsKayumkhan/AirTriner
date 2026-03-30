@@ -552,7 +552,7 @@ export default function AdminSubscriptionsPage() {
                                                 {processing === selectedSub.id ? <Loader2 size={14} className="animate-spin" /> : <><Trophy size={13} /> Approve Founding 50</>}
                                             </button>
                                         )}
-                                        {(selectedSub.status === "trial" || selectedSub.status === "expired" || selectedSub.status === "cancelled") && !(selectedSub.isFounding50 && selectedSub.status !== "active") && (
+                                        {(selectedSub.status === "trial" || selectedSub.status === "expired" || selectedSub.status === "cancelled") && !(selectedSub.isFounding50 && (selectedSub.status as string) !== "active") && (
                                             <button onClick={() => handleStatusChange(selectedSub.id, "active", selectedSub.userId)} disabled={processing === selectedSub.id}
                                                 className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-primary text-bg text-[10px] font-black uppercase tracking-widest hover:opacity-90 transition-all disabled:opacity-50">
                                                 {processing === selectedSub.id ? <Loader2 size={14} className="animate-spin" /> : <><CheckCircle size={13} /> Activate (30 days)</>}
