@@ -121,7 +121,8 @@ export default function AdminPaymentsPage() {
                     const hasDispute = disputedSet.has(pt.booking_id);
                     const hasStripe = !!stripeMap.get(pt.bookings?.trainer_id);
                     const bookingCompleted = pt.bookings?.status === "completed";
-                    const canRelease = pt.status === "held" && holdExpired && !hasDispute && hasStripe && bookingCompleted;
+                    // Stripe Connect not yet live — admin manually marks as released (no transfer)
+                    const canRelease = pt.status === "held" && !hasDispute && bookingCompleted;
 
                     // Hold countdown
                     let holdLabel: string | null = null;

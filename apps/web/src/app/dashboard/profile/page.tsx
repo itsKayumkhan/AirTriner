@@ -6,10 +6,30 @@ import { getSession, setSession, clearSession, AuthUser } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 
+const FALLBACK_SPORTS: { id: string; name: string; slug: string }[] = [
+    { id: "hockey", name: "Hockey", slug: "hockey" },
+    { id: "baseball", name: "Baseball", slug: "baseball" },
+    { id: "basketball", name: "Basketball", slug: "basketball" },
+    { id: "football", name: "Football", slug: "football" },
+    { id: "soccer", name: "Soccer", slug: "soccer" },
+    { id: "tennis", name: "Tennis", slug: "tennis" },
+    { id: "golf", name: "Golf", slug: "golf" },
+    { id: "swimming", name: "Swimming", slug: "swimming" },
+    { id: "boxing", name: "Boxing", slug: "boxing" },
+    { id: "lacrosse", name: "Lacrosse", slug: "lacrosse" },
+    { id: "wrestling", name: "Wrestling", slug: "wrestling" },
+    { id: "martial_arts", name: "Martial Arts", slug: "martial_arts" },
+    { id: "gymnastics", name: "Gymnastics", slug: "gymnastics" },
+    { id: "track_and_field", name: "Track and Field", slug: "track_and_field" },
+    { id: "volleyball", name: "Volleyball", slug: "volleyball" },
+];
+
 export default function ProfilePage() {
     const router = useRouter();
     const [user, setUser] = useState<AuthUser | null>(null);
     const [saving, setSaving] = useState(false);
+    const [sportsList, setSportsList] = useState<{ id: string; name: string; slug: string }[]>([]);
+    const [sportsLoading, setSportsLoading] = useState(true);
     const [saved, setSaved] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [deleting, setDeleting] = useState(false);
@@ -38,6 +58,23 @@ export default function ProfilePage() {
     });
 
     useEffect(() => {
+        const fetchSports = async () => {
+            setSportsLoading(true);
+            const { data, error } = await supabase
+                .from("sports")
+                .select("id, name, slug")
+                .eq("is_active", true)
+                .order("name");
+            if (error || !data || data.length === 0) {
+                setSportsList(FALLBACK_SPORTS);
+            } else {
+                setSportsList(data as { id: string; name: string; slug: string }[]);
+            }
+            setSportsLoading(false);
+        };
+
+        fetchSports();
+
         const session = getSession();
         if (session) {
             setUser(session);
@@ -263,12 +300,6 @@ export default function ProfilePage() {
             setShowDeleteConfirm(false);
         }
     };
-
-    const SPORTS = [
-        "hockey", "baseball", "basketball", "football", "soccer",
-        "tennis", "golf", "swimming", "boxing", "lacrosse",
-        "wrestling", "martial_arts", "gymnastics", "track_and_field", "volleyball",
-    ];
 
     const inputCls = (field?: string) =>
         `w-full bg-white/[0.03] border rounded-xl px-4 py-3 text-white text-sm outline-none transition-colors ${
@@ -570,23 +601,35 @@ export default function ProfilePage() {
                     {fieldErrors.sports && <p className="text-[11px] text-red-400 font-semibold flex items-center gap-1"><AlertTriangle size={11} /> {fieldErrors.sports}</p>}
                 </div>
                 <div className="flex flex-wrap gap-2">
-                    {SPORTS.map((sport) => {
-                        const selected = form.sports.includes(sport);
-                        return (
-                            <button
-                                key={sport}
-                                type="button"
-                                onClick={() => updateForm({ sports: selected ? form.sports.filter(s => s !== sport) : [...form.sports, sport] })}
-                                className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all border ${
-                                    selected
-                                        ? "bg-primary/10 border-primary/40 text-primary"
-                                        : "bg-white/[0.02] border-white/[0.06] text-text-main/40 hover:border-white/[0.14] hover:text-text-main/70"
-                                }`}
-                            >
-                                {sport.replace(/_/g, " ")}
-                            </button>
-                        );
-                    })}
+                    {sportsLoading
+                        ? Array.from({ length: 10 }).map((_, i) => (
+                            <div
+                                key={i}
+                                className="px-4 py-2 rounded-xl bg-white/10 animate-pulse w-20 h-8"
+                            />
+                        ))
+                        : sportsList.map((sport) => {
+                            const selected = form.sports.includes(sport.slug);
+                            return (
+                                <button
+                                    key={sport.id}
+                                    type="button"
+                                    onClick={() => updateForm({
+                                        sports: selected
+                                            ? form.sports.filter(s => s !== sport.slug)
+                                            : [...form.sports, sport.slug]
+                                    })}
+                                    className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all border ${
+                                        selected
+                                            ? "bg-primary/10 border-primary/40 text-primary"
+                                            : "bg-white/[0.02] border-white/[0.06] text-text-main/40 hover:border-white/[0.14] hover:text-text-main/70"
+                                    }`}
+                                >
+                                    {sport.name}
+                                </button>
+                            );
+                        })
+                    }
                 </div>
             </div>
 

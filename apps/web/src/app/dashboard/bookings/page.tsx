@@ -398,6 +398,15 @@ export default function BookingsPage() {
                         const isTrainer = user?.role === "trainer";
                         const isPaid = paidBookingIds.has(booking.id);
                         const needsPayment = !isTrainer && booking.status === "confirmed" && !isPaid && !isPast;
+
+                        // Acceptance deadline: 2 hours before session OR 48h after booking created (whichever is sooner)
+                        const acceptanceDeadline = Math.min(
+                            date.getTime() - 2 * 60 * 60 * 1000,
+                            new Date(booking.created_at).getTime() + 48 * 60 * 60 * 1000
+                        );
+                        const acceptanceExpired = Date.now() > acceptanceDeadline;
+                        const minutesLeft = Math.max(0, Math.round((acceptanceDeadline - Date.now()) / 60000));
+                        const hoursLeft = Math.floor(minutesLeft / 60);
                         const otherName = booking.other_user ? `${booking.other_user.first_name} ${booking.other_user.last_name}` : "Unknown";
                         const initials = booking.other_user ? `${booking.other_user.first_name[0]}${booking.other_user.last_name[0]}`.toUpperCase() : "?";
 
@@ -515,11 +524,6 @@ export default function BookingsPage() {
                                             </div>
 
                                             {/* Pending payment guidance */}
-                                            {booking.status === 'pending' && !isTrainer && (
-                                                <div className="text-xs text-yellow-500 bg-yellow-900/20 border border-yellow-800/50 rounded px-2 py-1 mt-1">
-                                                    Waiting for trainer confirmation before payment
-                                                </div>
-                                            )}
 
                                             {/* Address */}
                                             {booking.address && (
@@ -549,9 +553,14 @@ export default function BookingsPage() {
                                             </button>
                                         )}
 
-                                        {/* Trainer: Confirm / Reject */}
-                                        {booking.status === "pending" && isTrainer && (
+                                        {/* Trainer: Confirm / Reject — only if acceptance window still open */}
+                                        {booking.status === "pending" && isTrainer && !acceptanceExpired && (
                                             <>
+                                                {minutesLeft > 0 && minutesLeft < 120 && (
+                                                    <span className="text-[10px] text-amber-400/70 font-semibold mr-auto flex items-center gap-1">
+                                                        <Clock size={10} /> {hoursLeft > 0 ? `${hoursLeft}h ` : ""}{minutesLeft % 60}m to accept
+                                                    </span>
+                                                )}
                                                 <button onClick={() => updateStatus(booking.id, "confirmed")} disabled={actionLoading === booking.id}
                                                     className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[11px] font-bold hover:bg-emerald-500 hover:text-white hover:border-emerald-500 transition-all disabled:opacity-50">
                                                     {actionLoading === booking.id ? <Loader2 size={11} className="animate-spin" /> : <Check size={13} strokeWidth={2.5} />}
@@ -562,6 +571,12 @@ export default function BookingsPage() {
                                                     <X size={13} strokeWidth={2.5} /> Reject
                                                 </button>
                                             </>
+                                        )}
+                                        {/* Acceptance expired — show info */}
+                                        {booking.status === "pending" && isTrainer && acceptanceExpired && (
+                                            <span className="text-[10px] text-red-400/60 font-semibold flex items-center gap-1 mr-auto">
+                                                <AlertCircle size={10} /> Acceptance window closed
+                                            </span>
                                         )}
 
                                         {/* Reschedule + Cancel for confirmed future */}
@@ -586,13 +601,19 @@ export default function BookingsPage() {
                                             </button>
                                         )}
 
-                                        {/* Mark Complete */}
-                                        {booking.status === "confirmed" && isTrainer && isPast && (
+                                        {/* Mark Complete — only if paid */}
+                                        {booking.status === "confirmed" && isTrainer && isPast && isPaid && (
                                             <button onClick={() => updateStatus(booking.id, "completed")} disabled={actionLoading === booking.id}
                                                 className="flex items-center gap-1.5 px-5 py-2 rounded-xl bg-primary text-bg text-[11px] font-black uppercase tracking-wider hover:shadow-[0_0_14px_rgba(69,208,255,0.35)] transition-all disabled:opacity-50">
                                                 {actionLoading === booking.id ? <Loader2 size={11} className="animate-spin" /> : <Check size={12} strokeWidth={2.5} />}
                                                 Mark Complete
                                             </button>
+                                        )}
+                                        {/* Mark Complete blocked — not paid */}
+                                        {booking.status === "confirmed" && isTrainer && isPast && !isPaid && (
+                                            <span className="text-[10px] text-amber-400/60 font-semibold flex items-center gap-1">
+                                                <AlertCircle size={10} /> Cannot complete — payment not received
+                                            </span>
                                         )}
 
                                         {/* Review */}
@@ -687,7 +708,7 @@ export default function BookingsPage() {
             <ReviewModal isOpen={reviewModalOpen} onClose={() => setReviewModalOpen(false)} booking={reviewBooking} rating={reviewRating} setRating={setReviewRating} text={reviewText} setText={setReviewText} onSubmit={submitReview} isSubmitting={submittingReview} readOnly={isReviewReadOnly} />
 
             {rescheduleBooking && (
-                <RescheduleDialog bookingId={rescheduleBooking.id} currentTime={rescheduleBooking.scheduled_at} sport={rescheduleBooking.sport} isOpen={true} onClose={() => setRescheduleBooking(null)} onSuccess={() => { setRescheduleBooking(null); if (user) loadBookings(user); }} />
+                <RescheduleDialog bookingId={rescheduleBooking.id} currentTime={rescheduleBooking.scheduled_at} sport={rescheduleBooking.sport} trainerId={rescheduleBooking.trainer_id} durationMinutes={rescheduleBooking.duration_minutes || 60} isOpen={true} onClose={() => setRescheduleBooking(null)} onSuccess={() => { setRescheduleBooking(null); if (user) loadBookings(user); }} />
             )}
 
             {cancelBooking && (

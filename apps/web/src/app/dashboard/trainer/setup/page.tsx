@@ -21,16 +21,30 @@ import {
     Eye
 } from "lucide-react";
 
-const SPORTS_LIST = [
-    "hockey", "baseball", "basketball", "football", "soccer",
-    "tennis", "golf", "swimming", "boxing", "lacrosse",
-    "wrestling", "martial_arts", "gymnastics", "track_and_field", "volleyball",
+const FALLBACK_SPORTS: { id: string; name: string; slug: string }[] = [
+    { id: "hockey", name: "Hockey", slug: "hockey" },
+    { id: "baseball", name: "Baseball", slug: "baseball" },
+    { id: "basketball", name: "Basketball", slug: "basketball" },
+    { id: "football", name: "Football", slug: "football" },
+    { id: "soccer", name: "Soccer", slug: "soccer" },
+    { id: "tennis", name: "Tennis", slug: "tennis" },
+    { id: "golf", name: "Golf", slug: "golf" },
+    { id: "swimming", name: "Swimming", slug: "swimming" },
+    { id: "boxing", name: "Boxing", slug: "boxing" },
+    { id: "lacrosse", name: "Lacrosse", slug: "lacrosse" },
+    { id: "wrestling", name: "Wrestling", slug: "wrestling" },
+    { id: "martial_arts", name: "Martial Arts", slug: "martial_arts" },
+    { id: "gymnastics", name: "Gymnastics", slug: "gymnastics" },
+    { id: "track_and_field", name: "Track and Field", slug: "track_and_field" },
+    { id: "volleyball", name: "Volleyball", slug: "volleyball" },
 ];
 
 export default function TrainerEditProfilePage() {
     const router = useRouter();
     const [user, setUser] = useState<AuthUser | null>(null);
     const [loading, setLoading] = useState(true);
+    const [sportsList, setSportsList] = useState<{ id: string; name: string; slug: string }[]>([]);
+    const [sportsLoading, setSportsLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [uploading, setUploading] = useState(false);
     const [popup, setPopup] = useState<{ type: "success" | "error"; message: string } | null>(null);
@@ -64,6 +78,23 @@ export default function TrainerEditProfilePage() {
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
+        const fetchSports = async () => {
+            setSportsLoading(true);
+            const { data, error } = await supabase
+                .from("sports")
+                .select("id, name, slug")
+                .eq("is_active", true)
+                .order("name");
+            if (error || !data || data.length === 0) {
+                setSportsList(FALLBACK_SPORTS);
+            } else {
+                setSportsList(data as { id: string; name: string; slug: string }[]);
+            }
+            setSportsLoading(false);
+        };
+
+        fetchSports();
+
         const session = getSession();
         if (!session) {
             router.push("/auth/login");
@@ -398,30 +429,40 @@ export default function TrainerEditProfilePage() {
                         <div className="flex-1">
                             <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">CORE DISCIPLINES</label>
                             <div className="flex flex-wrap gap-2.5">
-                                {SPORTS_LIST.map((sport) => {
-                                    const selected = formData.sports.includes(sport);
-                                    return (
-                                        <button
-                                            key={sport}
-                                            type="button"
-                                            onClick={() => {
-                                                setFormData((p) => ({
-                                                    ...p,
-                                                    sports: selected ? p.sports.filter((s) => s !== sport) : [...p.sports, sport],
-                                                }));
-                                            }}
-                                            className={`
-                                                px-5 py-2.5 rounded-full text-[11px] font-black uppercase tracking-wider transition-all duration-200
-                                                ${selected
-                                                    ? "bg-primary text-bg shadow-[0_4px_15px_rgba(69,208,255,0.25)] border-transparent"
-                                                    : "bg-transparent border border-white/10 text-text-main/50 hover:border-white/30 hover:text-white"
-                                                }
-                                            `}
-                                        >
-                                            {sport.replace(/_/g, " ")}
-                                        </button>
-                                    );
-                                })}
+                                {sportsLoading
+                                    ? Array.from({ length: 10 }).map((_, i) => (
+                                        <div
+                                            key={i}
+                                            className="px-5 py-2.5 rounded-full bg-white/10 animate-pulse w-20 h-8"
+                                        />
+                                    ))
+                                    : sportsList.map((sport) => {
+                                        const selected = formData.sports.includes(sport.slug);
+                                        return (
+                                            <button
+                                                key={sport.id}
+                                                type="button"
+                                                onClick={() => {
+                                                    setFormData((p) => ({
+                                                        ...p,
+                                                        sports: selected
+                                                            ? p.sports.filter((s) => s !== sport.slug)
+                                                            : [...p.sports, sport.slug],
+                                                    }));
+                                                }}
+                                                className={`
+                                                    px-5 py-2.5 rounded-full text-[11px] font-black uppercase tracking-wider transition-all duration-200
+                                                    ${selected
+                                                        ? "bg-primary text-bg shadow-[0_4px_15px_rgba(69,208,255,0.25)] border-transparent"
+                                                        : "bg-transparent border border-white/10 text-text-main/50 hover:border-white/30 hover:text-white"
+                                                    }
+                                                `}
+                                            >
+                                                {sport.name}
+                                            </button>
+                                        );
+                                    })
+                                }
                             </div>
                         </div>
                     </div>

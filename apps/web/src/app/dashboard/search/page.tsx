@@ -63,7 +63,7 @@ const getSportImage = (sports: string[]) => {
     return arr[Math.floor(Math.random() * arr.length)];
 };
 
-const SPORT_LABELS: Record<string, string> = {
+const FALLBACK_SPORT_LABELS: Record<string, string> = {
     hockey: "Hockey", baseball: "Baseball", basketball: "Basketball",
     football: "Football", soccer: "Soccer", tennis: "Tennis",
     golf: "Golf", swimming: "Swimming", track_and_field: "Track & Field",
@@ -148,6 +148,10 @@ export default function SearchTrainersPage() {
     const [user, setUser] = useState<AuthUser | null>(null);
     const [trainers, setTrainers] = useState<TrainerWithUser[]>([]);
     const [loading, setLoading] = useState(true);
+    const [sportLabels, setSportLabels] = useState<Record<string, string>>(FALLBACK_SPORT_LABELS);
+    const [sportsOptions, setSportsOptions] = useState<{ value: string; label: string }[]>(
+        Object.entries(FALLBACK_SPORT_LABELS).map(([v, l]) => ({ value: v, label: l }))
+    );
 
     // Filters
     const [sportFilter, setSportFilter] = useState<string>("All Sports");
@@ -168,15 +172,39 @@ export default function SearchTrainersPage() {
     const [showFilters, setShowFilters] = useState(false);
 
     useEffect(() => {
+        const fetchSports = async () => {
+            const { data, error } = await supabase
+                .from("sports")
+                .select("id, name, slug")
+                .eq("is_active", true)
+                .order("name");
+            if (!error && data && data.length > 0) {
+                const labels: Record<string, string> = {};
+                const options: { value: string; label: string }[] = [];
+                (data as { id: string; name: string; slug: string }[]).forEach((s) => {
+                    labels[s.slug] = s.name;
+                    options.push({ value: s.slug, label: s.name });
+                });
+                setSportLabels(labels);
+                setSportsOptions(options);
+            }
+        };
+
+        fetchSports();
+
         if (typeof window !== 'undefined') {
             const params = new URLSearchParams(window.location.search);
             const sportParam = params.get("sport");
             if (sportParam) {
-                const matchingKey = Object.keys(SPORT_LABELS).find(
-                    k => SPORT_LABELS[k].toLowerCase() === sportParam.toLowerCase() || k === sportParam.toLowerCase()
+                // Will be re-evaluated once sportLabels state settles; attempt immediate match too
+                const matchingKey = Object.keys(FALLBACK_SPORT_LABELS).find(
+                    k => FALLBACK_SPORT_LABELS[k].toLowerCase() === sportParam.toLowerCase() || k === sportParam.toLowerCase()
                 );
                 if (matchingKey) {
                     setSportFilter(matchingKey);
+                } else {
+                    // Try matching by slug directly
+                    setSportFilter(sportParam.toLowerCase());
                 }
             }
         }
@@ -432,7 +460,7 @@ export default function SearchTrainersPage() {
                         value={sportFilter}
                         onChange={setSportFilter}
                         active={sportFilter !== "All Sports"}
-                        options={[{ value: "All Sports", label: "All Sports" }, ...Object.entries(SPORT_LABELS).map(([v, l]) => ({ value: v, label: l }))]}
+                        options={[{ value: "All Sports", label: "All Sports" }, ...sportsOptions]}
                     />
 
                     {/* Location */}
@@ -595,7 +623,7 @@ export default function SearchTrainersPage() {
                             <div className="flex flex-wrap gap-1.5 min-h-[24px]">
                                 {trainer.sports.slice(0, 3).map(sport => (
                                     <span key={sport} className="bg-white/8 border border-white/10 text-white/60 text-[10px] font-semibold px-2.5 py-0.5 rounded-full">
-                                        {SPORT_LABELS[sport] || sport.replace(/_/g, " ")}
+                                        {sportLabels[sport] || sport.replace(/_/g, " ")}
                                     </span>
                                 ))}
                             </div>
