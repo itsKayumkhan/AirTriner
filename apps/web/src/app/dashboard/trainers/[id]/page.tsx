@@ -154,7 +154,8 @@ export default function BookTrainerPage() {
     const [selectedSport, setSelectedSport] = useState<string>("");
     const [slots, setSlots] = useState<string[]>([]);
     const [slotsLoading, setSlotsLoading] = useState(false);
-    const durationMinutes = 60;
+    const [durationMinutes, setDurationMinutes] = useState(60);
+    const [selectedLocation, setSelectedLocation] = useState('');
 
     useEffect(() => {
         const session = getSession();
@@ -167,12 +168,13 @@ export default function BookTrainerPage() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [trainerId, router]);
 
-    // Fetch availability slots when date or trainerProfileId changes
+    // Fetch availability slots when date, trainerProfileId, or durationMinutes changes
     useEffect(() => {
         if (trainerProfileId && selectedDate) {
-            loadAvailability(selectedDate);
+            loadAvailability(selectedDate, undefined, durationMinutes);
         }
-    }, [trainerProfileId, selectedDate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [trainerProfileId, selectedDate, durationMinutes]);
 
     const formatTimeTo12h = (time24: string) => {
         const [hours, minutes] = time24.split(':');
@@ -183,7 +185,7 @@ export default function BookTrainerPage() {
         return `${h.toString().padStart(2, '0')}:${minutes} ${ampm}`;
     };
 
-    const loadAvailability = async (dateStr: string, profileId?: string) => {
+    const loadAvailability = async (dateStr: string, profileId?: string, duration?: number) => {
         setSlotsLoading(true);
         try {
             // availability_slots stores trainer_id as trainer_profiles.id (not users.id)
@@ -241,10 +243,18 @@ export default function BookTrainerPage() {
                 });
             }
 
-            // Filter out booked slots
+            // Filter out booked slots and slots too short for selected duration
+            const activeDuration = duration ?? durationMinutes;
             const availableSlots = (data || []).filter(s => {
+                // Check not booked
                 const slotHH = s.start_time.slice(0, 5); // "09:00"
-                return !bookedStartTimes.has(slotHH);
+                if (bookedStartTimes.has(slotHH)) return false;
+
+                // Check slot has enough duration for selected session length
+                const [sh, sm] = s.start_time.split(':').map(Number);
+                const [eh, em] = s.end_time.split(':').map(Number);
+                const slotDuration = (eh * 60 + em) - (sh * 60 + sm);
+                return slotDuration >= activeDuration;
             });
 
             const formattedSlots = availableSlots.map(s => formatTimeTo12h(s.start_time));
@@ -342,8 +352,19 @@ export default function BookTrainerPage() {
                 is_performance_verified: isPerformanceVerified
             });
 
+            // Set default duration and location from trainer profile
+            let defaultDuration = 60;
+            if (profile.session_lengths?.length) {
+                const sorted = [...profile.session_lengths].sort((a: number, b: number) => a - b);
+                defaultDuration = sorted[0];
+                setDurationMinutes(sorted[0]);
+            }
+            if (profile.training_locations?.length) {
+                setSelectedLocation(profile.training_locations[0]);
+            }
+
             // Load availability now that we have profile.id
-            loadAvailability(selectedDate, profile.id);
+            loadAvailability(selectedDate, profile.id, defaultDuration);
         } catch (err) {
             console.error(err);
             setPageError("Trainer not found or failed to load.");
@@ -363,6 +384,10 @@ export default function BookTrainerPage() {
 
         if (!selectedSport) {
             warning("Select a Sport", "Please choose a sport before booking.");
+            return;
+        }
+        if (trainer?.training_locations?.length > 0 && !selectedLocation) {
+            warning("Select Location", "Please select a training location.");
             return;
         }
         if (!selectedTime) {
@@ -435,6 +460,7 @@ export default function BookTrainerPage() {
                 sport: selectedSport,
                 scheduled_at: scheduledAt.toISOString(),
                 duration_minutes: durationMinutes,
+                training_location: selectedLocation || null,
                 status: 'pending',
                 price: sessionPrice,
                 platform_fee: sessionPrice * 0.1, // 10% fee example
@@ -637,8 +663,8 @@ export default function BookTrainerPage() {
                                 <span className="text-[42px] font-black text-white leading-none">
                                     ${((trainer.hourly_rate || 0) * (durationMinutes / 60)).toFixed(0)}
                                 </span>
-                                <span className="text-text-main/40 text-[11px] font-bold uppercase tracking-[0.15em] ml-1">
-                                    / {durationMinutes < 60 ? `${durationMinutes}min` : `${durationMinutes / 60}hr`}
+                                <span className="text-zinc-400 text-xs ml-1">
+                                    / {durationMinutes < 60 ? `${durationMinutes}min` : durationMinutes === 90 ? '1.5hr' : `${durationMinutes / 60}hr`}
                                 </span>
                             </div>
                             <div className="flex items-center gap-1.5 text-primary text-[15px] font-black mt-2">
@@ -730,6 +756,55 @@ export default function BookTrainerPage() {
                                 ))}
                             </div>
                         </div>
+
+                        {/* Training Location */}
+                        {trainer?.training_locations?.length > 0 && (
+                            <div className="mb-8">
+                                <h4 className="text-[10px] text-text-main/40 font-bold uppercase tracking-[0.15em] mb-3">Training Location</h4>
+                                <div className="flex flex-wrap gap-2">
+                                    {trainer.training_locations.map(loc => (
+                                        <button
+                                            key={loc}
+                                            type="button"
+                                            onClick={() => setSelectedLocation(loc)}
+                                            className={`px-4 py-2.5 rounded-xl text-xs font-bold border transition-all ${
+                                                selectedLocation === loc
+                                                    ? 'bg-white text-black border-white'
+                                                    : 'bg-white/4 text-white/60 border-white/10 hover:border-white/30'
+                                            }`}
+                                        >
+                                            {loc}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Session Duration — only show trainer's offered lengths */}
+                        {trainer?.session_lengths?.length > 0 && (
+                            <div className="mb-8">
+                                <h4 className="text-[10px] text-text-main/40 font-bold uppercase tracking-[0.15em] mb-3">Session Duration</h4>
+                                <div className="flex flex-wrap gap-2">
+                                    {[...trainer.session_lengths].sort((a, b) => a - b).map(d => (
+                                        <button
+                                            key={d}
+                                            type="button"
+                                            onClick={() => { setDurationMinutes(d); setSelectedTime(''); }}
+                                            className={`px-4 py-2.5 rounded-xl text-xs font-bold border transition-all ${
+                                                durationMinutes === d
+                                                    ? 'bg-white text-black border-white'
+                                                    : 'bg-white/4 text-white/60 border-white/10 hover:border-white/30'
+                                            }`}
+                                        >
+                                            {d < 60 ? `${d} min` : d === 60 ? '1 hr' : d === 90 ? '1.5 hr' : `${d/60} hr`}
+                                            <span className="ml-2 text-[10px] opacity-70">
+                                                ${((trainer.hourly_rate || 0) * (d / 60)).toFixed(0)}
+                                            </span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
 
                         {/* Time Slots */}
                         <div className="mb-8">

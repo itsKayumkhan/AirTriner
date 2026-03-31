@@ -119,6 +119,48 @@ export default function EarningsPage() {
 
     const isTrainer = user?.role === "trainer";
 
+    const downloadCSV = () => {
+        // Build CSV rows from all payment transactions
+        const headers = ['Date', 'Athlete', 'Sport', 'Duration (min)', 'Amount ($)', 'Platform Fee ($)', 'Net Payout ($)', 'Status']
+
+        let rows: string[][]
+        if (isTrainer) {
+            rows = completedBookings.map((b) => [
+                new Date(b.scheduled_at).toLocaleDateString(),
+                '',
+                b.sport.replace(/_/g, ' '),
+                String(b.duration_minutes || 60),
+                Number(b.price).toFixed(2),
+                Number(b.platform_fee || 0).toFixed(2),
+                (Number(b.price) - Number(b.platform_fee || 0)).toFixed(2),
+                'completed',
+            ])
+        } else {
+            rows = athleteTransactions.map((t) => [
+                new Date(t.created_at).toLocaleDateString(),
+                t.trainer_name || '',
+                (t.booking?.sport || '').replace(/_/g, ' '),
+                String(t.booking?.duration_minutes || 60),
+                Number(t.amount).toFixed(2),
+                Number(t.platform_fee || 0).toFixed(2),
+                Number(t.trainer_payout || (Number(t.amount) - Number(t.platform_fee || 0))).toFixed(2),
+                t.status || 'completed',
+            ])
+        }
+
+        const csvContent = [headers, ...rows]
+            .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+            .join('\n')
+
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `airtrainr-earnings-${new Date().toISOString().slice(0, 10)}.csv`
+        a.click()
+        URL.revokeObjectURL(url)
+    }
+
     // Trainer stats
     const totalEarnings = completedBookings.reduce((s, b) => s + Number(b.price), 0);
     const totalFees = completedBookings.reduce((s, b) => s + Number(b.platform_fee), 0);
@@ -162,14 +204,27 @@ export default function EarningsPage() {
                     <h1 className="text-2xl font-black font-display tracking-wider mb-1">{isTrainer ? "Earnings" : "Payments"}</h1>
                     <p className="text-text-main/60 text-sm">{isTrainer ? "Track your income from completed sessions." : "Track your payments for completed sessions."}</p>
                 </div>
-                <button
-                    onClick={() => user && loadEarnings(user, true)}
-                    disabled={refreshing}
-                    className="flex items-center gap-2 px-4 py-2 bg-[#272A35] hover:bg-white/10 border border-white/5 rounded-xl text-sm font-bold text-white transition-colors disabled:opacity-50"
-                >
-                    <RotateCcw size={14} className={refreshing ? "animate-spin" : ""} />
-                    {refreshing ? "Refreshing..." : "Refresh"}
-                </button>
+                <div className="flex items-center gap-3">
+                    <button
+                        onClick={downloadCSV}
+                        className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/6 border border-white/10 text-white/70 text-xs font-bold hover:bg-white/10 hover:text-white transition-all"
+                    >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="7 10 12 15 17 10"/>
+                            <line x1="12" y1="15" x2="12" y2="3"/>
+                        </svg>
+                        Export CSV
+                    </button>
+                    <button
+                        onClick={() => user && loadEarnings(user, true)}
+                        disabled={refreshing}
+                        className="flex items-center gap-2 px-4 py-2 bg-[#272A35] hover:bg-white/10 border border-white/5 rounded-xl text-sm font-bold text-white transition-colors disabled:opacity-50"
+                    >
+                        <RotateCcw size={14} className={refreshing ? "animate-spin" : ""} />
+                        {refreshing ? "Refreshing..." : "Refresh"}
+                    </button>
+                </div>
             </div>
 
             {/* Summary Cards */}

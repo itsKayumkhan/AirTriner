@@ -11,6 +11,17 @@ interface Sport {
     icon?: string;
 }
 
+const FALLBACK_SPORTS: Sport[] = [
+    { id: '1', name: 'Hockey', slug: 'hockey' },
+    { id: '2', name: 'Baseball', slug: 'baseball' },
+    { id: '3', name: 'Soccer', slug: 'soccer' },
+    { id: '4', name: 'Basketball', slug: 'basketball' },
+    { id: '5', name: 'Golf', slug: 'golf' },
+    { id: '6', name: 'General Fitness', slug: 'fitness' },
+    { id: '7', name: 'Tennis', slug: 'tennis' },
+    { id: '8', name: 'Swimming', slug: 'swimming' },
+]
+
 const SPORT_IMAGES: Record<string, string> = {
     tennis: "https://images.unsplash.com/photo-1595435934249-5df7ed86e1c0?w=600&auto=format&fit=crop&q=80",
     soccer: "https://images.unsplash.com/photo-1579952363873-27f3bade9f55?w=600&auto=format&fit=crop&q=80",
@@ -41,9 +52,14 @@ export default function SportsGrid() {
                     .order("name", { ascending: true });
 
                 if (error) throw error;
-                if (data) setSports(data);
+                if (data && data.length > 0) {
+                    setSports(data);
+                } else {
+                    setSports(FALLBACK_SPORTS);
+                }
             } catch (err) {
                 console.error("Failed to fetch sports:", err);
+                setSports(FALLBACK_SPORTS);
             } finally {
                 setLoading(false);
             }

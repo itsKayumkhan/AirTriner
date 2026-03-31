@@ -52,6 +52,9 @@ export default function TrainerEditProfilePage() {
         preferredTrainingTimes: ["morning", "afternoon", "evening"] as ("morning"|"afternoon"|"evening")[],
     });
 
+    const [sessionLengths, setSessionLengths] = useState<number[]>([60]);
+    const [trainingLocations, setTrainingLocations] = useState<string[]>([]);
+
     const [newTag, setNewTag] = useState("");
     const [showTagInput, setShowTagInput] = useState(false);
 
@@ -110,6 +113,8 @@ export default function TrainerEditProfilePage() {
                     targetSkillLevels: latestProfile.target_skill_levels || ["beginner", "intermediate", "advanced", "pro"],
                     preferredTrainingTimes: latestProfile.preferredTrainingTimes || ["morning", "afternoon", "evening"],
                 }));
+                if (latestProfile.session_lengths?.length) setSessionLengths(latestProfile.session_lengths);
+                if (latestProfile.training_locations?.length) setTrainingLocations(latestProfile.training_locations);
             }
             setLoading(false);
         };
@@ -132,6 +137,8 @@ export default function TrainerEditProfilePage() {
                 travel_radius_miles: parseInt(formData.travelRadius) || 20,
                 target_skill_levels: formData.targetSkillLevels,
                 "preferredTrainingTimes": formData.preferredTrainingTimes,
+                session_lengths: sessionLengths.length > 0 ? sessionLengths : [60],
+                training_locations: trainingLocations,
             };
 
             const [profileRes, userRes] = await Promise.all([
@@ -612,6 +619,63 @@ export default function TrainerEditProfilePage() {
                                         className="w-full bg-[#12141A] border border-white/5 rounded-2xl pl-10 pr-5 py-3.5 text-white text-sm outline-none focus:border-primary/50 transition-colors"
                                     />
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Session Lengths */}
+                    <div className="bg-[#1A1C23] border border-white/5 rounded-[20px] p-6 lg:p-8 shadow-md md:col-span-2">
+                        <div className="mb-8">
+                            <h3 className="text-white font-bold text-sm uppercase tracking-widest mb-1">Session Lengths Offered</h3>
+                            <p className="text-zinc-400 text-xs mb-4">Select which session durations you offer</p>
+                            <div className="flex flex-wrap gap-3">
+                                {[30, 45, 60, 90].map(mins => (
+                                    <button
+                                        key={mins}
+                                        type="button"
+                                        onClick={() => {
+                                            setSessionLengths(prev =>
+                                                prev.includes(mins) ? prev.filter(l => l !== mins) : [...prev, mins]
+                                            )
+                                        }}
+                                        className={`px-5 py-3 rounded-xl text-sm font-bold border transition-all ${
+                                            sessionLengths.includes(mins)
+                                                ? 'bg-white text-black border-white'
+                                                : 'bg-white/4 text-white/60 border-white/10 hover:border-white/30'
+                                        }`}
+                                    >
+                                        {mins < 60 ? `${mins} min` : mins === 60 ? '1 hr' : `${mins/60 % 1 === 0 ? mins/60 : '1.5'} hr`}
+                                    </button>
+                                ))}
+                            </div>
+                            {sessionLengths.length === 0 && (
+                                <p className="text-red-400 text-xs mt-2">Please select at least one session length</p>
+                            )}
+                        </div>
+
+                        {/* Training Locations */}
+                        <div className="mb-8">
+                            <h3 className="text-white font-bold text-sm uppercase tracking-widest mb-1">Training Locations</h3>
+                            <p className="text-zinc-400 text-xs mb-4">Where do you train? (select all that apply)</p>
+                            <div className="flex flex-wrap gap-3">
+                                {['Rink', 'Field', 'Gym', 'Indoor Facility', 'Outdoor Court', 'Pool', 'Track', 'Home Visits', 'Virtual/Online'].map(loc => (
+                                    <button
+                                        key={loc}
+                                        type="button"
+                                        onClick={() => {
+                                            setTrainingLocations(prev =>
+                                                prev.includes(loc) ? prev.filter(l => l !== loc) : [...prev, loc]
+                                            )
+                                        }}
+                                        className={`px-4 py-2.5 rounded-xl text-xs font-bold border transition-all ${
+                                            trainingLocations.includes(loc)
+                                                ? 'bg-white text-black border-white'
+                                                : 'bg-white/4 text-white/60 border-white/10 hover:border-white/30'
+                                        }`}
+                                    >
+                                        {loc}
+                                    </button>
+                                ))}
                             </div>
                         </div>
                     </div>

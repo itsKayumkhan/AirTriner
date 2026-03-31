@@ -158,6 +158,7 @@ export default function SearchTrainersPage() {
     const [skillFilter, setSkillFilter] = useState<string>("any");
     const [timeFilter, setTimeFilter] = useState<string>("any");
     const [nameFilter, setNameFilter] = useState<string>("");
+    const [durationFilter, setDurationFilter] = useState<number | null>(null);
 
     // Pagination
     const [currentPage, setCurrentPage] = useState(1);
@@ -322,6 +323,7 @@ export default function SearchTrainersPage() {
             // Exact Filters
             if (skillFilter !== "any" && !t.target_skill_levels?.includes(skillFilter as any)) return false;
             if (timeFilter !== "any" && !t.preferred_training_times?.includes(timeFilter as any)) return false;
+            if (durationFilter !== null && !t.session_lengths?.includes(durationFilter)) return false;
 
             if (locationFilter) {
                 const loc = `${t.city || ""} ${t.state || ""}`.toLowerCase();
@@ -338,12 +340,12 @@ export default function SearchTrainersPage() {
         }
 
         return result;
-    }, [trainers, sportFilter, maxRate, minRating, locationFilter, sortBy, skillFilter, timeFilter, nameFilter]);
+    }, [trainers, sportFilter, maxRate, minRating, locationFilter, sortBy, skillFilter, timeFilter, nameFilter, durationFilter]);
 
     // Reset to page 1 when filters change
     useEffect(() => {
         setCurrentPage(1);
-    }, [sportFilter, maxRate, minRating, locationFilter, sortBy, skillFilter, timeFilter, nameFilter]);
+    }, [sportFilter, maxRate, minRating, locationFilter, sortBy, skillFilter, timeFilter, nameFilter, durationFilter]);
 
     const totalPages = Math.ceil(filteredTrainers.length / itemsPerPage);
     const paginatedTrainers = filteredTrainers.slice(
@@ -359,9 +361,9 @@ export default function SearchTrainersPage() {
         );
     }
 
-    const activeFiltersCount = [sportFilter !== "All Sports", locationFilter, skillFilter !== "any", timeFilter !== "any", minRating > 0, maxRate < 300].filter(Boolean).length
+    const activeFiltersCount = [sportFilter !== "All Sports", locationFilter, skillFilter !== "any", timeFilter !== "any", minRating > 0, maxRate < 300, durationFilter !== null].filter(Boolean).length
 
-    const clearAll = () => { setSportFilter("All Sports"); setLocationFilter(""); setSkillFilter("any"); setTimeFilter("any"); setMinRating(0); setMaxRate(300); setNameFilter(""); }
+    const clearAll = () => { setSportFilter("All Sports"); setLocationFilter(""); setSkillFilter("any"); setTimeFilter("any"); setMinRating(0); setMaxRate(300); setNameFilter(""); setDurationFilter(null); }
 
     return (
         <div className="max-w-[1400px] mx-auto pb-12">
@@ -498,6 +500,24 @@ export default function SearchTrainersPage() {
                         ))}
                     </div>
 
+                    {/* Duration */}
+                    <div className="flex flex-wrap gap-1 items-center bg-surface border border-white/8 rounded-full p-1">
+                        <span className="text-[10px] text-white/40 font-bold uppercase tracking-wider px-2">Dur:</span>
+                        {([null, 30, 45, 60, 90] as (number | null)[]).map(d => (
+                            <button
+                                key={d ?? 'all'}
+                                onClick={() => setDurationFilter(d)}
+                                className={`px-3 py-1 text-xs font-bold rounded-full transition-all duration-150 ${
+                                    durationFilter === d
+                                        ? 'bg-white/[0.10] text-text-main'
+                                        : 'text-text-main/35 hover:text-text-main/60'
+                                }`}
+                            >
+                                {d === null ? 'Any' : d < 60 ? `${d}m` : d === 60 ? '1h' : '1.5h'}
+                            </button>
+                        ))}
+                    </div>
+
                     {/* Divider */}
                     <div className="h-5 w-px bg-white/[0.08] mx-1 hidden sm:block" />
 
@@ -579,6 +599,17 @@ export default function SearchTrainersPage() {
                                     </span>
                                 ))}
                             </div>
+
+                            {/* Session lengths */}
+                            {trainer.session_lengths?.length > 0 && (
+                                <div className="flex flex-wrap gap-1 mt-2">
+                                    {[...trainer.session_lengths].sort((a, b) => a - b).map(d => (
+                                        <span key={d} className="text-[10px] px-2 py-0.5 rounded-full bg-white/6 text-white/50 border border-white/8">
+                                            {d < 60 ? `${d}m` : d === 60 ? '1h' : d === 90 ? '1.5h' : `${d/60}h`}
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
 
                             {/* Button */}
                             <button

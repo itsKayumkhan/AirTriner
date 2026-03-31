@@ -139,6 +139,8 @@ model TrainerProfile {
   zipCode               String?  @map("zip_code") @db.VarChar(20)
   country               String   @default("US") @db.VarChar(2)
   travelRadiusMiles     Int      @default(25) @map("travel_radius_miles")
+  sessionLengths        Int[]    @default([60]) @map("session_lengths")
+  trainingLocations     String[] @map("training_locations")
   stripeAccountId       String?  @map("stripe_account_id") @db.VarChar(255)
   createdAt             DateTime @default(now()) @map("created_at")
 

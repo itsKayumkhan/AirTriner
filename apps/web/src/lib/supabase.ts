@@ -59,6 +59,8 @@ export type TrainerProfileRow = {
     latitude: number | null;
     longitude: number | null;
     travel_radius_miles: number;
+    session_lengths: number[];
+    training_locations: string[];
     training_types: string[] | null;
     preferred_training_times: ('morning'|'afternoon'|'evening')[] | null;
     target_skill_levels: ('beginner'|'intermediate'|'advanced'|'pro')[] | null;
