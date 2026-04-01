@@ -26,6 +26,10 @@ export default function EarningsPage() {
     const [user, setUser] = useState<AuthUser | null>(null);
     const [completedBookings, setCompletedBookings] = useState<BookingRow[]>([]);
     const [upcomingPaid, setUpcomingPaid] = useState<UpcomingBooking[]>([]);
+    // Trainer-specific: released payment transactions
+    const [releasedTransactions, setReleasedTransactions] = useState<PaymentTransaction[]>([]);
+    // Trainer-specific: held transactions on completed bookings (awaiting admin release)
+    const [heldCompletedTransactions, setHeldCompletedTransactions] = useState<PaymentTransaction[]>([]);
     // Athlete-specific: all payment transactions made by athlete
     const [athleteTransactions, setAthleteTransactions] = useState<(PaymentTransaction & { booking?: BookingRow; trainer_name?: string })[]>([]);
     const [loading, setLoading] = useState(true);
@@ -48,6 +52,27 @@ export default function EarningsPage() {
             setCompletedBookings((completed || []) as BookingRow[]);
 
             if (u.role === "trainer") {
+                // Trainer: fetch released transactions for completed bookings
+                const completedBookingIds = (completed || []).map((b: BookingRow) => b.id);
+                if (completedBookingIds.length) {
+                    const { data: releasedTx } = await supabase
+                        .from("payment_transactions")
+                        .select("*")
+                        .in("booking_id", completedBookingIds)
+                        .eq("status", "released");
+                    setReleasedTransactions((releasedTx || []) as PaymentTransaction[]);
+
+                    const { data: heldTx } = await supabase
+                        .from("payment_transactions")
+                        .select("*")
+                        .in("booking_id", completedBookingIds)
+                        .eq("status", "held");
+                    setHeldCompletedTransactions((heldTx || []) as PaymentTransaction[]);
+                } else {
+                    setReleasedTransactions([]);
+                    setHeldCompletedTransactions([]);
+                }
+
                 // Trainer: upcoming confirmed with held payments
                 const { data: confirmedBookings } = await supabase
                     .from("bookings").select("*").eq("trainer_id", u.id)
@@ -161,11 +186,15 @@ export default function EarningsPage() {
         URL.revokeObjectURL(url)
     }
 
-    // Trainer stats
-    const totalEarnings = completedBookings.reduce((s, b) => s + Number(b.price), 0);
-    const totalFees = completedBookings.reduce((s, b) => s + Number(b.platform_fee), 0);
-    const netEarnings = totalEarnings - totalFees;
+    // Trainer stats — only count funds that have been released by admin
+    const totalEarnings = releasedTransactions.reduce((s, t) => s + Number(t.trainer_payout) + Number(t.platform_fee), 0);
+    const totalFees = releasedTransactions.reduce((s, t) => s + Number(t.platform_fee), 0);
+    const netEarnings = releasedTransactions.reduce((s, t) => s + Number(t.trainer_payout), 0);
+    // In Escrow: confirmed upcoming sessions + completed sessions awaiting admin release
     const pendingPayout = upcomingPaid.reduce((s, b) => s + Number(b.payment_transaction?.trainer_payout || 0), 0);
+    const heldCompletedPayout = heldCompletedTransactions.reduce((s, t) => s + Number(t.trainer_payout), 0);
+    const totalEscrow = pendingPayout + heldCompletedPayout;
+    const totalEscrowSessions = upcomingPaid.length + heldCompletedTransactions.length;
 
     // Athlete stats (from payment_transactions)
     const athleteTotalPaid = athleteTransactions.filter((t) => t.status !== "refunded").reduce((s, t) => s + Number(t.amount), 0);
@@ -246,8 +275,8 @@ export default function EarningsPage() {
                         <div className="flex items-center gap-2 text-xs text-text-main/50 mb-2 uppercase tracking-wider font-bold">
                             <Clock size={12} className="text-yellow-500" /> In Escrow
                         </div>
-                        <div className="text-3xl font-black font-display text-yellow-400">${pendingPayout.toFixed(2)}</div>
-                        <div className="text-[10px] text-text-main/40 mt-1 font-medium">{upcomingPaid.length} session{upcomingPaid.length !== 1 ? "s" : ""} pending</div>
+                        <div className="text-3xl font-black font-display text-yellow-400">${totalEscrow.toFixed(2)}</div>
+                        <div className="text-[10px] text-text-main/40 mt-1 font-medium">{totalEscrowSessions} session{totalEscrowSessions !== 1 ? "s" : ""} pending</div>
                     </div>
                 </div>
             ) : (

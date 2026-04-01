@@ -435,10 +435,10 @@ export default function AdminBookingsPage() {
 
                 {/* Pagination */}
                 {!loading && bookings.length > 0 && (
-                    <div className="px-8 py-5 flex items-center justify-between border-t border-white/5 bg-[#12141A]/50">
-                        <div className="text-xs font-bold text-text-main/40 tracking-wide uppercase">
-                            Showing <span className="text-text-main mx-1">{(currentPage - 1) * itemsPerPage + 1}</span> 
-                            to <span className="text-text-main mx-1">{Math.min(currentPage * itemsPerPage, bookings.length)}</span> 
+                    <div className="px-4 sm:px-8 py-4 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-white/5 bg-[#12141A]/50">
+                        <div className="text-[10px] font-bold text-text-main/40 tracking-wide uppercase">
+                            Showing <span className="text-text-main mx-1">{(currentPage - 1) * itemsPerPage + 1}</span>
+                            to <span className="text-text-main mx-1">{Math.min(currentPage * itemsPerPage, bookings.length)}</span>
                             of <span className="text-text-main mx-1">{bookings.length}</span> results
                         </div>
                         <div className="flex items-center gap-2">

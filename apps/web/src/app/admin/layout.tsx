@@ -221,7 +221,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
             {/* Mobile Sidebar Overlay */}
             {isMobileMenuOpen && (
-                <div className="fixed inset-0 z-50 lg:hidden">
+                <div className="fixed inset-0 z-[200] lg:hidden">
                     {/* Backdrop */}
                     <div
                         className="absolute inset-0 bg-black/60 backdrop-blur-sm"
@@ -260,7 +260,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-6">
+                    <div className="flex items-center gap-2 sm:gap-3">
                         <div className="relative" ref={notifRef}>
                             <button
                                 onClick={() => setShowNotifications(!showNotifications)}
@@ -276,7 +276,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
                             {/* Notifications Dropdown */}
                             {showNotifications && (
-                                <div className="absolute right-0 top-14 w-[380px] bg-surface border border-white/5 rounded-2xl shadow-2xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                                <div className="absolute right-0 top-14 w-[380px] max-w-[calc(100vw-1rem)] bg-surface border border-white/5 rounded-2xl shadow-2xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
                                     <div className="flex items-center justify-between p-5 border-b border-white/5">
                                         <h3 className="font-black text-text-main text-sm">Notifications</h3>
                                         <button onClick={() => setShowNotifications(false)} className="text-text-main/40 hover:text-text-main transition-colors">
@@ -324,7 +324,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                             )}
                         </div>
 
-                        <div className="flex items-center gap-3 border-l border-white/5 pl-6 cursor-pointer">
+                        <div className="flex items-center gap-2 sm:gap-3 border-l border-white/5 pl-2 sm:pl-4 cursor-pointer">
                             <div className="text-right hidden sm:block">
                                 <div className="text-sm font-bold text-text-main">{user.firstName} {user.lastName}</div>
                                 <div className="text-[10px] text-text-main/60 uppercase tracking-widest font-bold">SUPER ADMIN</div>

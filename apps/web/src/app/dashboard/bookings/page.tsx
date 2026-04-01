@@ -12,6 +12,7 @@ import { RescheduleDialog } from "@/components/bookings/RescheduleDialog";
 import { AddToCalendarDropdown } from "@/components/bookings/AddToCalendarDropdown";
 import { CancelBookingDialog } from "@/components/bookings/CancelBookingDialog";
 import { ReviewModal } from "@/components/bookings/ReviewModal";
+import Link from "next/link";
 import { ToastContainer, useToast } from "@/components/ui/Toast";
 
 type RescheduleInfo = {
@@ -145,6 +146,37 @@ export default function BookingsPage() {
             setBookings((p) => p.map((b) => b.id === bookingId ? { ...b, status: newStatus as BookingRow["status"] } : b));
             const labels: Record<string, string> = { confirmed: "Booking Confirmed", completed: "Session Complete", cancelled: "Cancelled", rejected: "Rejected" };
             toastSuccess(labels[newStatus] || "Updated");
+            const booking = bookings.find(b => b.id === bookingId);
+            if (booking) {
+                if (newStatus === "confirmed") {
+                    await supabase.from("notifications").insert({
+                        user_id: booking.athlete_id,
+                        type: "BOOKING_CONFIRMED",
+                        title: "Booking confirmed",
+                        body: "Your booking has been confirmed.",
+                        data: { booking_id: bookingId },
+                        read: false,
+                    });
+                } else if (newStatus === "completed") {
+                    await supabase.from("notifications").insert({
+                        user_id: booking.athlete_id,
+                        type: "BOOKING_COMPLETED",
+                        title: "Session Completed",
+                        body: `Your ${booking.sport} session has been marked as complete.`,
+                        data: { booking_id: bookingId },
+                        read: false,
+                    });
+                } else if (newStatus === "rejected") {
+                    await supabase.from("notifications").insert({
+                        user_id: booking.athlete_id,
+                        type: "BOOKING_REJECTED",
+                        title: "Booking Declined",
+                        body: `Your ${booking.sport} session request was declined.`,
+                        data: { booking_id: bookingId },
+                        read: false,
+                    });
+                }
+            }
         } catch (err: any) { toastError("Error", err.message); }
         finally { setActionLoading(null); }
     };
@@ -436,13 +468,13 @@ export default function BookingsPage() {
 
                                         {/* Avatar */}
                                         {!isTrainer && booking.trainer_id ? (
-                                            <a href={`/dashboard/trainers/${booking.trainer_id}`} title="View trainer profile"
+                                            <Link href={`/dashboard/trainers/${booking.trainer_id}`} title="View trainer profile"
                                                 className="relative shrink-0 group/av">
                                                 <div className={`w-11 h-11 rounded-full flex items-center justify-center font-black text-sm text-white ${sc.dimCard ? "bg-white/8" : "bg-white/10"} ring-2 ring-offset-2 ring-offset-[#13151E] ${sc.dimCard ? "ring-white/10" : "ring-white/15"} group-hover/av:ring-primary/50 transition-all`}>
                                                     {initials}
                                                 </div>
                                                 <div className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-[2px] border-[#13151E] ${sc.dot}`} />
-                                            </a>
+                                            </Link>
                                         ) : (
                                             <div className="relative shrink-0">
                                                 <div className={`w-11 h-11 rounded-full flex items-center justify-center font-black text-sm text-white ${sc.dimCard ? "bg-white/8" : "bg-white/10"} ring-2 ring-offset-2 ring-offset-[#13151E] ring-white/15`}>
@@ -457,10 +489,10 @@ export default function BookingsPage() {
                                             <div className="flex items-start justify-between gap-3">
                                                 <div className="min-w-0">
                                                     {!isTrainer && booking.trainer_id ? (
-                                                        <a href={`/dashboard/trainers/${booking.trainer_id}`}
+                                                        <Link href={`/dashboard/trainers/${booking.trainer_id}`}
                                                             className="block text-[15px] font-bold text-white hover:text-primary transition-colors leading-tight truncate">
                                                             {otherName}
-                                                        </a>
+                                                        </Link>
                                                     ) : (
                                                         <p className="text-[15px] font-bold text-white leading-tight truncate">{otherName}</p>
                                                     )}
@@ -602,7 +634,7 @@ export default function BookingsPage() {
                                         )}
 
                                         {/* Mark Complete — only if paid */}
-                                        {booking.status === "confirmed" && isTrainer && isPast && isPaid && (
+                                        {booking.status === "confirmed" && booking.status !== "completed" && isTrainer && isPast && isPaid && (
                                             <button onClick={() => updateStatus(booking.id, "completed")} disabled={actionLoading === booking.id}
                                                 className="flex items-center gap-1.5 px-5 py-2 rounded-xl bg-primary text-bg text-[11px] font-black uppercase tracking-wider hover:shadow-[0_0_14px_rgba(69,208,255,0.35)] transition-all disabled:opacity-50">
                                                 {actionLoading === booking.id ? <Loader2 size={11} className="animate-spin" /> : <Check size={12} strokeWidth={2.5} />}
@@ -610,7 +642,7 @@ export default function BookingsPage() {
                                             </button>
                                         )}
                                         {/* Mark Complete blocked — not paid */}
-                                        {booking.status === "confirmed" && isTrainer && isPast && !isPaid && (
+                                        {booking.status === "confirmed" && booking.status !== "completed" && isTrainer && isPast && !isPaid && (
                                             <span className="text-[10px] text-amber-400/60 font-semibold flex items-center gap-1">
                                                 <AlertCircle size={10} /> Cannot complete — payment not received
                                             </span>

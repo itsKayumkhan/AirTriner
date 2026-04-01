@@ -69,13 +69,16 @@ export default function SportsGrid() {
     }, []);
 
     const getSportImg = (sport: Sport) => {
-        if (sport.image_url) return sport.image_url;
-        
         const s = sport.slug.toLowerCase();
         for (const [k, v] of Object.entries(SPORT_IMAGES)) {
             if (s.includes(k) || k.includes(s)) return v;
         }
         return SPORT_IMAGES["fitness"];
+    };
+
+    const getPrimaryImg = (sport: Sport) => {
+        if (sport.image_url && sport.image_url.startsWith("http")) return sport.image_url;
+        return getSportImg(sport);
     };
 
     if (loading) {
@@ -99,11 +102,17 @@ export default function SportsGrid() {
                     textDecoration: "none",
                     display: "block"
                 }} className="sport-card">
-                    <div style={{
-                        position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 0,
-                        backgroundImage: `url('${getSportImg(sport)}')`, backgroundSize: "cover", backgroundPosition: "center",
-                        transition: "transform 0.5s ease"
-                    }} className="sport-bg"></div>
+                    <img
+                        src={getPrimaryImg(sport)}
+                        alt={sport.name}
+                        onError={(e) => { e.currentTarget.src = getSportImg(sport); }}
+                        style={{
+                            position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
+                            width: "100%", height: "100%", objectFit: "cover",
+                            transition: "transform 0.5s ease", zIndex: 0
+                        }}
+                        className="sport-bg"
+                    />
                     <div style={{
                         position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 1,
                         background: "linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.2) 60%, rgba(0,0,0,0.1) 100%)",

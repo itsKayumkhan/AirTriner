@@ -1,17 +1,32 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Download, Plus, FileText, CheckCircle, Search, XCircle, ChevronLeft, ChevronRight, UserCheck, Clock, Award } from "lucide-react";
+import { Download, Plus, FileText, CheckCircle, Search, XCircle, ChevronLeft, ChevronRight, UserCheck, Clock, Award, ExternalLink, ShieldCheck, ShieldX, X } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { FoundingBadgeTooltip } from "@/components/ui/FoundingBadge";
+
+type DocsModalState = {
+    isOpen: boolean;
+    trainerId: string | null;
+    trainerName: string;
+    docs: string[];
+    isVerified: boolean;
+    isDeclined: boolean;
+};
 
 export default function AdminTrainersPage() {
     const [searchQuery, setSearchQuery] = useState("");
     const [activeTab, setActiveTab] = useState("Pending");
     const [trainers, setTrainers] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
-    
+
+    // Docs modal
+    const [docsModal, setDocsModal] = useState<DocsModalState>({
+        isOpen: false, trainerId: null, trainerName: "", docs: [], isVerified: false, isDeclined: false
+    });
+    const [docsActionLoading, setDocsActionLoading] = useState(false);
+
     // Pagination states
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 8;
@@ -23,15 +38,19 @@ export default function AdminTrainersPage() {
                 if (!usersData) return;
 
                 const userIds = usersData.map(u => u.id);
-                const { data: profilesData } = await supabase.from("trainer_profiles").select("user_id, verification_status, sports, is_founding_50").in("user_id", userIds);
+                const { data: profilesData } = await supabase
+                    .from("trainer_profiles")
+                    .select("user_id, verification_status, sports, is_founding_50, verification_documents")
+                    .in("user_id", userIds);
                 const profilesMap = new Map((profilesData || []).map(p => [p.user_id, p]));
 
                 setTrainers(usersData.map(u => {
                     const profile = profilesMap.get(u.id);
                     const isVerified = profile?.verification_status === "verified";
-                    const isDeclined = profile?.verification_status === "declined";
+                    const isDeclined = profile?.verification_status === "rejected";
                     const statusText = isVerified ? "Verified" : (isDeclined ? "Declined" : "Pending Review");
                     const sports = profile?.sports || [];
+                    const docs: string[] = profile?.verification_documents || [];
 
                     return {
                         id: u.id,
@@ -43,6 +62,7 @@ export default function AdminTrainersPage() {
                         isVerified,
                         isDeclined,
                         isFounding50: profile?.is_founding_50 ?? false,
+                        docs,
                     };
                 }));
             } catch (err) {
@@ -59,6 +79,47 @@ export default function AdminTrainersPage() {
     const [founding50Loading, setFounding50Loading] = useState<string | null>(null);
 
     const founding50Count = trainers.filter(t => t.isFounding50).length;
+
+    const openDocsModal = (t: any) => {
+        setDocsModal({
+            isOpen: true,
+            trainerId: t.id,
+            trainerName: t.name,
+            docs: t.docs,
+            isVerified: t.isVerified,
+            isDeclined: t.isDeclined,
+        });
+    };
+
+    const handleDocsStatusUpdate = async (newStatus: "verified" | "rejected") => {
+        if (!docsModal.trainerId) return;
+        setDocsActionLoading(true);
+        try {
+            await supabase
+                .from("trainer_profiles")
+                .update({ verification_status: newStatus, is_verified: newStatus === "verified" })
+                .eq("user_id", docsModal.trainerId);
+
+            setTrainers(prev => prev.map(t => {
+                if (t.id === docsModal.trainerId) {
+                    const isVerified = newStatus === "verified";
+                    const isDeclined = newStatus === "rejected";
+                    return { ...t, isVerified, isDeclined, status: isVerified ? "Verified" : "Declined" };
+                }
+                return t;
+            }));
+
+            setDocsModal(prev => ({
+                ...prev,
+                isVerified: newStatus === "verified",
+                isDeclined: newStatus === "rejected",
+            }));
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setDocsActionLoading(false);
+        }
+    };
 
     const toggleFounding50 = async (id: string, current: boolean) => {
         setFounding50Loading(id);
@@ -90,7 +151,7 @@ export default function AdminTrainersPage() {
             setTrainers(prev => prev.map(t => {
                 if (t.id === id) {
                     const isVerified = newStatus === "verified";
-                    const isDeclined = newStatus === "declined";
+                    const isDeclined = newStatus === "rejected";
                     return { ...t, isVerified, isDeclined, status: isVerified ? "Verified" : (isDeclined ? "Declined" : "Pending Review") };
                 }
                 return t;
@@ -257,6 +318,11 @@ export default function AdminTrainersPage() {
                                                 <div className="font-bold text-text-main tracking-wide group-hover:text-primary transition-colors flex items-center gap-1.5">
                                                     {t.name}
                                                     {t.isFounding50 && <FoundingBadgeTooltip size={18} />}
+                                                    {t.isVerified && (
+                                                        <span title="Verified" className="text-green-400">
+                                                            <CheckCircle size={14} />
+                                                        </span>
+                                                    )}
                                                 </div>
                                                 <div className="text-text-main/60 font-medium text-xs">{t.email}</div>
                                             </div>
@@ -311,9 +377,12 @@ export default function AdminTrainersPage() {
                                         </div>
                                     </td>
                                     <td className="px-6 py-5">
-                                        <button className="flex items-center gap-2 text-primary text-xs font-black uppercase tracking-widest hover:text-white transition-colors bg-white/5 px-3 py-1.5 rounded-lg hover:bg-white/10">
+                                        <button
+                                            onClick={() => openDocsModal(t)}
+                                            className="flex items-center gap-2 text-primary text-xs font-black uppercase tracking-widest hover:text-white transition-colors bg-white/5 px-3 py-1.5 rounded-lg hover:bg-white/10"
+                                        >
                                             <FileText size={14} />
-                                            {t.isVerified ? "View Certs" : "Preview PDF"}
+                                            {t.docs.length > 0 ? `${t.docs.length} Doc${t.docs.length > 1 ? "s" : ""}` : "No Docs"}
                                         </button>
                                     </td>
                                     <td className="px-6 py-5 pr-8 text-right">
@@ -324,7 +393,7 @@ export default function AdminTrainersPage() {
                                                 <button onClick={() => requestStatusUpdate(t.id, t.name, "verified")} className="px-4 py-2 rounded-xl bg-primary text-bg font-black text-xs uppercase tracking-widest hover:shadow-[0_0_15px_rgba(69,208,255,0.3)] transition-all">
                                                     Approve
                                                 </button>
-                                                <button onClick={() => requestStatusUpdate(t.id, t.name, "declined")} className="px-4 py-2 rounded-xl bg-surface border border-white/5 text-text-main/80 text-xs font-black uppercase tracking-widest hover:bg-white/5 hover:text-red-500 hover:border-red-500/50 transition-all">
+                                                <button onClick={() => requestStatusUpdate(t.id, t.name, "rejected")} className="px-4 py-2 rounded-xl bg-surface border border-white/5 text-text-main/80 text-xs font-black uppercase tracking-widest hover:bg-white/5 hover:text-red-500 hover:border-red-500/50 transition-all">
                                                     Reject
                                                 </button>
                                             </div>
@@ -389,6 +458,97 @@ export default function AdminTrainersPage() {
                 onConfirm={confirmUpdateStatus}
                 isLoading={actionLoading}
             />
+
+            {/* Documents Modal */}
+            {docsModal.isOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+                    <div className="bg-[#1A1C23] border border-white/10 rounded-[24px] shadow-2xl w-full max-w-lg animate-in fade-in zoom-in-95 duration-200">
+                        {/* Modal Header */}
+                        <div className="flex items-center justify-between p-6 border-b border-white/5">
+                            <div>
+                                <h3 className="text-lg font-black text-white uppercase tracking-wider">Verification Documents</h3>
+                                <p className="text-xs text-text-main/50 font-medium mt-0.5">{docsModal.trainerName}</p>
+                            </div>
+                            <button
+                                onClick={() => setDocsModal(prev => ({ ...prev, isOpen: false }))}
+                                className="p-2 rounded-xl text-text-main/50 hover:text-white hover:bg-white/5 transition-all"
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        {/* Current status badge */}
+                        <div className="px-6 pt-4 flex items-center gap-2">
+                            <span className="text-[10px] font-black uppercase tracking-widest text-text-main/40">Current Status:</span>
+                            {docsModal.isVerified ? (
+                                <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-green-500/10 text-green-400 border border-green-500/20">Verified</span>
+                            ) : docsModal.isDeclined ? (
+                                <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-red-500/10 text-red-400 border border-red-500/20">Declined</span>
+                            ) : (
+                                <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-orange-500/10 text-orange-400 border border-orange-500/20">Pending Review</span>
+                            )}
+                        </div>
+
+                        {/* Document list */}
+                        <div className="p-6 space-y-3 max-h-72 overflow-y-auto">
+                            {docsModal.docs.length === 0 ? (
+                                <div className="flex flex-col items-center justify-center py-10 border border-dashed border-white/10 rounded-xl text-center">
+                                    <FileText size={28} className="text-text-main/20 mb-3" />
+                                    <p className="text-text-main/40 text-sm font-medium">No documents uploaded</p>
+                                    <p className="text-text-main/25 text-xs mt-1">This trainer has not uploaded any verification documents yet.</p>
+                                </div>
+                            ) : (
+                                docsModal.docs.map((docUrl, idx) => (
+                                    <div key={docUrl} className="flex items-center justify-between p-3 bg-[#12141A] border border-white/5 rounded-xl">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-8 h-8 rounded-lg bg-red-500/10 border border-red-500/20 flex items-center justify-center shrink-0">
+                                                <FileText size={14} className="text-red-400" />
+                                            </div>
+                                            <span className="text-text-main/70 text-xs font-medium">Document {idx + 1}.pdf</span>
+                                        </div>
+                                        <a
+                                            href={docUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 text-primary text-[10px] font-black uppercase tracking-wider hover:bg-white/10 transition-all"
+                                        >
+                                            <ExternalLink size={11} /> Open PDF
+                                        </a>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+
+                        {/* Approve / Reject actions */}
+                        <div className="p-6 pt-0 flex gap-3">
+                            <button
+                                onClick={() => handleDocsStatusUpdate("verified")}
+                                disabled={docsActionLoading || docsModal.isVerified}
+                                className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-green-500/10 border border-green-500/20 text-green-400 text-xs font-black uppercase tracking-widest hover:bg-green-500/20 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                                {docsActionLoading ? (
+                                    <div className="w-4 h-4 border-2 border-green-400 border-t-transparent rounded-full animate-spin" />
+                                ) : (
+                                    <ShieldCheck size={15} />
+                                )}
+                                {docsModal.isVerified ? "Already Approved" : "Approve"}
+                            </button>
+                            <button
+                                onClick={() => handleDocsStatusUpdate("rejected")}
+                                disabled={docsActionLoading || docsModal.isDeclined}
+                                className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-black uppercase tracking-widest hover:bg-red-500/20 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                                {docsActionLoading ? (
+                                    <div className="w-4 h-4 border-2 border-red-400 border-t-transparent rounded-full animate-spin" />
+                                ) : (
+                                    <ShieldX size={15} />
+                                )}
+                                {docsModal.isDeclined ? "Already Rejected" : "Reject"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

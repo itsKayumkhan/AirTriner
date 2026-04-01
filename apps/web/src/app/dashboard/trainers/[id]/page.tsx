@@ -453,7 +453,15 @@ export default function BookTrainerPage() {
             }
             // === End Double Booking Prevention ===
 
+            // Fetch platform fee from settings (fresh per request)
+            const { data: feeSettings } = await supabase
+                .from("platform_settings")
+                .select("platform_fee_percentage")
+                .single();
+            const feePercent = (feeSettings?.platform_fee_percentage ?? 3) / 100;
+
             const sessionPrice = (trainer.hourly_rate || 0) * (durationMinutes / 60);
+            const platformFee = Math.round(sessionPrice * feePercent * 100) / 100;
             const insertData = {
                 athlete_id: user.id,
                 trainer_id: trainer.user_id,
@@ -463,8 +471,8 @@ export default function BookTrainerPage() {
                 training_location: selectedLocation || null,
                 status: 'pending',
                 price: sessionPrice,
-                platform_fee: sessionPrice * 0.1, // 10% fee example
-                total_paid: sessionPrice
+                platform_fee: platformFee,
+                total_paid: sessionPrice + platformFee
             };
 
             const { error } = await supabase.from("bookings").insert(insertData);
@@ -523,7 +531,7 @@ export default function BookTrainerPage() {
             Back to Search
         </button>
 
-        <div className="max-w-[1280px] mx-auto pb-20 px-4 md:px-8 mt-4">
+        <div className="max-w-[1280px] mx-auto pb-20 px-2 sm:px-4 md:px-8 mt-4">
             <ToastContainer toasts={toasts} onRemove={remove} />
 
             {/* Cover Image */}
@@ -536,7 +544,7 @@ export default function BookTrainerPage() {
             </div>
 
             {/* Profile Header Overlapping */}
-            <div className="flex flex-col md:flex-row items-start md:items-end gap-6 px-4 md:px-12 -mt-20 sm:-mt-36 relative z-10 mb-8">
+            <div className="flex flex-col md:flex-row items-start md:items-end gap-4 px-2 sm:px-4 md:px-12 -mt-14 sm:-mt-28 md:-mt-36 relative z-10 mb-6">
                 {/* Avatar */}
                 <div className="relative">
                     <div className="w-24 h-24 sm:w-40 sm:h-40 rounded-[18px] sm:rounded-[24px] border-[4px] sm:border-[6px] border-[#0F1115] overflow-hidden bg-gray-800 shadow-xl">
@@ -580,7 +588,7 @@ export default function BookTrainerPage() {
             </div>
 
             {/* Tags/Chips */}
-            <div className="px-4 md:px-12 flex flex-wrap gap-3 mb-12">
+            <div className="px-2 sm:px-4 md:px-12 flex flex-wrap gap-2 sm:gap-3 mb-6 sm:mb-10">
                 {trainer.sports.map((sport, i) => (
                     <span key={i} className="bg-surface border border-white/5 text-text-main/80 px-5 py-2 rounded-full text-xs font-bold uppercase tracking-wider">
                         {SPORT_LABELS[sport] || sport.replace(/_/g, " ")}
@@ -589,7 +597,7 @@ export default function BookTrainerPage() {
             </div>
 
             {/* Main Content Stack */}
-            <div className="flex flex-col gap-12 px-4 md:px-12 max-w-[850px] mx-auto">
+            <div className="flex flex-col gap-8 sm:gap-12 px-2 sm:px-4 md:px-12 max-w-[850px] mx-auto">
 
                 {/* Content */}
                 <div className="flex flex-col gap-12">
@@ -645,6 +653,34 @@ export default function BookTrainerPage() {
                         })()}
                     </div>
 
+                    {/* Session Lengths */}
+                    {trainer.session_lengths?.length > 0 && (
+                        <div>
+                            <h2 className="text-xl font-black text-text-main mb-4">Session Lengths</h2>
+                            <div className="flex flex-wrap gap-2">
+                                {[...trainer.session_lengths].sort((a, b) => a - b).map((d, i) => (
+                                    <span key={i} className="bg-surface border border-white/5 text-text-main/80 px-4 py-2 rounded-full text-xs font-bold uppercase tracking-wider">
+                                        {d < 60 ? `${d} min` : d === 60 ? '1 hr' : d === 90 ? '1.5 hr' : `${d / 60} hr`}
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Training Locations */}
+                    {trainer.training_locations?.length > 0 && (
+                        <div>
+                            <h2 className="text-xl font-black text-text-main mb-4">Training Locations</h2>
+                            <div className="flex flex-wrap gap-2">
+                                {trainer.training_locations.map((loc, i) => (
+                                    <span key={i} className="bg-surface border border-white/5 text-text-main/80 px-4 py-2 rounded-full text-xs font-bold uppercase tracking-wider">
+                                        {loc}
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
                     {/* Reviews */}
                     <ReviewSection
                         reviews={trainer.recent_reviews}
@@ -655,7 +691,7 @@ export default function BookTrainerPage() {
 
                 {/* Booking Widget */}
                 <div className="w-full">
-                    <div className="bg-surface border border-white/5 rounded-[32px] p-8 shadow-2xl">
+                    <div className="bg-surface border border-white/5 rounded-[24px] sm:rounded-[32px] p-4 sm:p-8 shadow-2xl">
 
                         {/* Price & Rating */}
                         <div className="flex justify-between items-start mb-8 pb-8 border-b border-white/5">
@@ -703,7 +739,7 @@ export default function BookTrainerPage() {
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-7 gap-y-3 gap-x-2">
+                            <div className="grid grid-cols-7 gap-y-2 gap-x-1 sm:gap-y-3 sm:gap-x-2">
                                 {/* Days of week header */}
                                 {WEEKDAYS.map((day, i) => (
                                     <div key={`col-${i}`} className="flex flex-col items-center mb-1">
@@ -723,7 +759,7 @@ export default function BookTrainerPage() {
                                                 }
                                             }}
                                             disabled={d.isPastDate}
-                                            className={`w-9 h-10 rounded-[10px] text-sm font-black flex items-center justify-center transition-all duration-200
+                                            className={`w-8 h-8 sm:w-9 sm:h-10 rounded-[8px] sm:rounded-[10px] text-xs sm:text-sm font-black flex items-center justify-center transition-all duration-200
                                                 ${!d.isCurrentMonth ? "opacity-30" : ""}
                                                 ${d.isPastDate ? "opacity-20 cursor-not-allowed" : ""}
                                                 ${selectedDate === d.fullDate && !d.isPastDate

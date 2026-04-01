@@ -249,7 +249,7 @@ export default function MessagesPage() {
                                     className={`w-full text-left px-4 py-3.5 flex gap-3 items-start transition-all border-b border-white/[0.04] relative ${
                                         isActive
                                             ? "bg-white/[0.06] border-l-2 border-l-white/20"
-                                            : "hover:bg-white/[0.03] border-l-2 border-l-transparent"
+                                            : "hover:bg-white/[0.03]"
                                     }`}
                                 >
                                     {/* Avatar */}

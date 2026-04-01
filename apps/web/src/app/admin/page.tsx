@@ -133,16 +133,16 @@ export default function AdminDashboardPage() {
         <div className="space-y-6">
 
             {/* Top Bar inside Content */}
-            <div className="flex justify-between items-center mb-8">
-                <h1 className="text-3xl font-black text-text-main tracking-tight">Overview</h1>
-                <div className="relative w-96">
-                    <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-main/40" />
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 mb-8">
+                <h1 className="text-2xl font-black text-text-main tracking-tight">Overview</h1>
+                <div className="relative w-full md:w-72">
+                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-main/40" />
                     <input
                         type="text"
                         placeholder="Search athletes, trainers..."
                         value={searchQuery}
                         onChange={e => setSearchQuery(e.target.value)}
-                        className="w-full bg-surface border border-white/5 rounded-full pl-12 pr-4 py-3 text-sm text-text-main focus:outline-none focus:border-gray-600 focus:ring-1 focus:ring-gray-600 transition-colors"
+                        className="w-full bg-surface border border-white/5 rounded-full pl-10 pr-4 py-2.5 text-sm text-text-main focus:outline-none focus:border-gray-600 focus:ring-1 focus:ring-gray-600 transition-colors"
                     />
                 </div>
             </div>
@@ -178,14 +178,14 @@ export default function AdminDashboardPage() {
                     </div>
                     {/* CSS Bar Chart */}
                     <div className="flex flex-col gap-2 mt-4">
-                        <div className="h-48 flex items-end justify-between gap-1.5 px-1">
+                        <div className="h-48 sm:h-56 flex items-end justify-between gap-1 sm:gap-1.5 px-1">
                             {["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"].map((month, i) => {
                                 const isActive = i === new Date().getMonth();
                                 return (
                                     <div key={month} className="flex-1 flex justify-center group">
                                         <div
-                                            style={{ height: `${chartHeights[i]}%` }}
-                                            className={`w-full max-w-8 rounded-t-lg transition-all duration-500 ${isActive ? "bg-primary shadow-[0_0_12px_rgba(69,208,255,0.3)]" : "bg-white/10 group-hover:bg-primary/40"}`}
+                                            style={{ height: `${Math.max(chartHeights[i], 12)}%` }}
+                                            className={`w-full max-w-8 rounded-t-md transition-all duration-500 ${isActive ? "bg-primary shadow-[0_0_12px_rgba(69,208,255,0.3)]" : "bg-white/20 group-hover:bg-primary/50"}`}
                                         />
                                     </div>
                                 );
@@ -194,7 +194,7 @@ export default function AdminDashboardPage() {
                         <div className="flex justify-between px-1 border-t border-white/5 pt-2">
                             {["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"].map((month, i) => (
                                 <div key={month} className="flex-1 flex justify-center">
-                                    <span className={`text-[9px] font-bold tracking-widest ${i === new Date().getMonth() ? "text-primary" : "text-text-main/30"}`}>{month}</span>
+                                    <span className={`text-[8px] sm:text-[9px] font-bold tracking-widest ${i % 2 !== 0 ? "hidden sm:block" : ""} ${i === new Date().getMonth() ? "text-primary" : "text-text-main/40"}`}>{month}</span>
                                 </div>
                             ))}
                         </div>
@@ -264,15 +264,15 @@ export default function AdminDashboardPage() {
                 </div>
 
                 <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse">
+                    <table className="w-full min-w-[600px] text-left border-collapse">
                         <thead>
                             <tr className="border-b border-white/[0.05] text-[10px] uppercase font-bold tracking-widest text-text-main/30 bg-white/[0.03]">
-                                <th className="pb-4 pl-2 font-black">Transaction ID</th>
-                                <th className="pb-4 font-black">Athlete</th>
-                                <th className="pb-4 font-black">Trainer</th>
-                                <th className="pb-4 font-black">Date</th>
-                                <th className="pb-4 font-black">Amount</th>
-                                <th className="pb-4 font-black">Status</th>
+                                <th className="pb-4 pl-2 font-black whitespace-nowrap">Transaction ID</th>
+                                <th className="pb-4 font-black whitespace-nowrap">Athlete</th>
+                                <th className="pb-4 font-black whitespace-nowrap">Trainer</th>
+                                <th className="pb-4 font-black whitespace-nowrap">Date</th>
+                                <th className="pb-4 font-black whitespace-nowrap">Amount</th>
+                                <th className="pb-4 font-black whitespace-nowrap">Status</th>
                             </tr>
                         </thead>
                         <tbody className="text-sm">
@@ -284,16 +284,16 @@ export default function AdminDashboardPage() {
                                 </tr>
                             ) : filteredTransactions.map((t, i) => (
                                 <tr key={i} className="border-b border-white/[0.04] last:border-0 hover:bg-white/[0.025] transition-colors">
-                                    <td className="py-4 pl-2 font-medium text-text-main/60">{t.id}</td>
+                                    <td className="py-4 pl-2 font-medium text-text-main/60 whitespace-nowrap">{t.id}</td>
                                     <td className="py-4">
                                         <div className="flex items-center gap-3">
                                             <div className="w-8 h-8 rounded-full bg-[#fce6cd] flex-shrink-0"></div>
-                                            <span className="font-bold text-text-main">{t.athlete}</span>
+                                            <span className="font-bold text-text-main whitespace-nowrap">{t.athlete}</span>
                                         </div>
                                     </td>
-                                    <td className="py-4 text-text-main/80 font-medium">{t.trainer}</td>
-                                    <td className="py-4 text-text-main/60 text-xs tracking-wide">{t.date}</td>
-                                    <td className="py-4 font-black text-text-main">{t.amount}</td>
+                                    <td className="py-4 text-text-main/80 font-medium whitespace-nowrap">{t.trainer}</td>
+                                    <td className="py-4 text-text-main/60 text-xs tracking-wide whitespace-nowrap">{t.date}</td>
+                                    <td className="py-4 font-black text-text-main whitespace-nowrap">{t.amount}</td>
                                     <td className="py-4">
                                         <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border ${t.status === "Completed"
                                             ? "bg-primary/10 text-primary border-primary/20"

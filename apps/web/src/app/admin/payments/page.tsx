@@ -240,7 +240,7 @@ export default function AdminPaymentsPage() {
     const stats = [
         { title: "Total Platform Volume", value: `$${totalVolume.toLocaleString("en-US", { minimumFractionDigits: 2 })}`, req: volPct === null ? null : `${volPct >= 0 ? "+" : ""}${volPct}%`, desc: "vs last month", icon: <Wallet size={20} />, isNegative: volPct !== null && volPct < 0 },
         { title: "Commissions Earned", value: `$${totalCommissions.toLocaleString("en-US", { minimumFractionDigits: 2 })}`, req: commPct === null ? null : `${commPct >= 0 ? "+" : ""}${commPct}%`, desc: "vs last month", icon: <Percent size={20} />, isNegative: commPct !== null && commPct < 0 },
-        { title: "Pending Payouts", value: `$${pendingPayouts.toLocaleString("en-US", { minimumFractionDigits: 2 })}`, req: `${heldCount} held`, desc: "awaiting release", icon: <TrendingDown size={20} />, isNegative: true },
+        { title: "Pending Payouts", value: `$${pendingPayouts.toLocaleString("en-US", { minimumFractionDigits: 2 })}`, req: `${heldCount} held`, desc: "awaiting release", icon: heldCount > 0 ? <TrendingDown size={20} /> : <TrendingUp size={20} />, isNegative: heldCount > 0 },
     ];
 
     return (
@@ -249,7 +249,7 @@ export default function AdminPaymentsPage() {
             {/* Header */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-8">
                 <div className="flex flex-col gap-2">
-                    <h1 className="text-4xl md:text-5xl font-black tracking-tight uppercase leading-none flex items-center gap-4">
+                    <h1 className="text-2xl sm:text-3xl md:text-4xl font-black tracking-tight uppercase leading-none flex flex-wrap items-center gap-2 sm:gap-4">
                         <span className="text-text-main">Payments &</span>
                         <span className="text-primary border-b-4 border-primary pb-1">Revenue</span>
                     </h1>

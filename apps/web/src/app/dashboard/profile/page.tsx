@@ -639,7 +639,7 @@ export default function ProfilePage() {
                     <button
                         onClick={handleSave}
                         disabled={saving}
-                        className="flex items-center justify-center gap-2.5 w-full sm:w-auto px-5 py-3 rounded-xl bg-primary text-bg font-black text-sm shadow-lg hover:opacity-90 transition-all disabled:opacity-60"
+                        className="flex items-center justify-center gap-2.5 w-full sm:w-auto px-5 py-3 rounded-xl bg-primary text-bg font-black text-sm shadow-lg hover:opacity-90 transition-all disabled:opacity-60 whitespace-nowrap"
                     >
                         <Save size={15} strokeWidth={2.5} />
                         {saving ? "Saving..." : "Save Changes"}

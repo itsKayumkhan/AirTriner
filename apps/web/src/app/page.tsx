@@ -178,6 +178,56 @@ function Navbar() {
                 </button>
             </div>
 
+            {/* Mobile Dropdown Menu */}
+            {mobileMenuOpen && (
+                <div style={{
+                    background: "#0F1115",
+                    borderTop: "1px solid var(--gray-800)",
+                    borderBottom: "1px solid var(--gray-800)",
+                    padding: "16px 24px 20px",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "10px",
+                }}>
+                    {user ? (
+                        <>
+                            <a href="/dashboard" onClick={() => setMobileMenuOpen(false)} style={{
+                                textDecoration: "none", color: "var(--color-bg)", fontSize: "13px", fontWeight: 800,
+                                padding: "12px 20px", background: "var(--primary)", borderRadius: "var(--radius-full)",
+                                textTransform: "uppercase", letterSpacing: "1px", textAlign: "center"
+                            }}>
+                                DASHBOARD
+                            </a>
+                            <button onClick={() => { setMobileMenuOpen(false); handleLogout(); }} style={{
+                                background: "transparent", cursor: "pointer", border: "1px solid var(--gray-700)",
+                                color: "white", fontSize: "13px", fontWeight: 700,
+                                padding: "12px 20px", borderRadius: "var(--radius-full)",
+                                textTransform: "uppercase", letterSpacing: "1px"
+                            }}>
+                                LOG OUT
+                            </button>
+                        </>
+                    ) : (
+                        <>
+                            <a href="/auth/login" onClick={() => setMobileMenuOpen(false)} style={{
+                                textDecoration: "none", color: "white", fontSize: "13px", fontWeight: 700,
+                                padding: "12px 20px", border: "1px solid var(--gray-700)", borderRadius: "var(--radius-full)",
+                                textTransform: "uppercase", letterSpacing: "1px", textAlign: "center"
+                            }}>
+                                LOG IN
+                            </a>
+                            <a href="/auth/register" onClick={() => setMobileMenuOpen(false)} style={{
+                                textDecoration: "none", color: "var(--color-bg)", fontSize: "13px", fontWeight: 800,
+                                padding: "12px 20px", background: "var(--primary)", borderRadius: "var(--radius-full)",
+                                textTransform: "uppercase", letterSpacing: "1px", textAlign: "center"
+                            }}>
+                                GET STARTED
+                            </a>
+                        </>
+                    )}
+                </div>
+            )}
+
             <style>{`
         @media (max-width: 968px) {
           .desktop-nav { display: none !important; }
@@ -200,6 +250,11 @@ export default function Home() {
     const coachSliderRef = useRef<HTMLDivElement>(null);
     const [reviewIndex, setReviewIndex] = useState(0);
     const [coaches, setCoaches] = useState<any[]>(ELITE_COACHES);
+    const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
+
+    useEffect(() => {
+        setCurrentUser(getSession());
+    }, []);
 
     useEffect(() => {
         const fetchCoaches = async () => {
@@ -354,26 +409,69 @@ export default function Home() {
 
                     {/* Buttons */}
                     <div className="hero-btns" style={{ display: "flex", gap: "14px", justifyContent: "center", flexWrap: "wrap", marginBottom: "52px" }}>
-                        <a href="/dashboard/search" style={{
-                            padding: "16px 36px", background: "var(--primary)", color: "#0A0D14",
-                            borderRadius: "var(--radius-full)", fontWeight: 800, fontSize: "14px", textDecoration: "none",
-                            textTransform: "uppercase", letterSpacing: "1.5px", transition: "all 0.2s",
-                            boxShadow: "0 0 24px rgba(69,208,255,0.5), 0 0 48px rgba(69,208,255,0.2)"
-                        }}>
-                            FIND A TRAINER
-                        </a>
-                        <a href="/auth/register?role=trainer" style={{
-                            padding: "16px 36px", background: "transparent", color: "white",
-                            border: "2px solid rgba(255,255,255,0.25)", borderRadius: "var(--radius-full)",
-                            fontWeight: 800, fontSize: "14px", textDecoration: "none",
-                            textTransform: "uppercase", letterSpacing: "1.5px", transition: "all 0.2s",
-                            backdropFilter: "blur(4px)"
-                        }}
-                            onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--primary)"; e.currentTarget.style.color = "var(--primary)"; }}
-                            onMouseLeave={(e) => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.25)"; e.currentTarget.style.color = "white"; }}
-                        >
-                            JOIN AS A TRAINER
-                        </a>
+                        {currentUser ? (
+                            <>
+                                <a href="/dashboard" style={{
+                                    padding: "16px 36px", background: "var(--primary)", color: "#0A0D14",
+                                    borderRadius: "var(--radius-full)", fontWeight: 800, fontSize: "14px", textDecoration: "none",
+                                    textTransform: "uppercase", letterSpacing: "1.5px", transition: "all 0.2s",
+                                    boxShadow: "0 0 24px rgba(69,208,255,0.5), 0 0 48px rgba(69,208,255,0.2)"
+                                }}>
+                                    {currentUser.role === "trainer" ? "MY DASHBOARD" : "MY DASHBOARD"}
+                                </a>
+                                {currentUser.role === "athlete" && (
+                                    <a href="/dashboard/search" style={{
+                                        padding: "16px 36px", background: "transparent", color: "white",
+                                        border: "2px solid rgba(255,255,255,0.25)", borderRadius: "var(--radius-full)",
+                                        fontWeight: 800, fontSize: "14px", textDecoration: "none",
+                                        textTransform: "uppercase", letterSpacing: "1.5px", transition: "all 0.2s",
+                                        backdropFilter: "blur(4px)"
+                                    }}
+                                        onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--primary)"; e.currentTarget.style.color = "var(--primary)"; }}
+                                        onMouseLeave={(e) => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.25)"; e.currentTarget.style.color = "white"; }}
+                                    >
+                                        FIND A TRAINER
+                                    </a>
+                                )}
+                                {currentUser.role === "trainer" && (
+                                    <a href="/dashboard/search" style={{
+                                        padding: "16px 36px", background: "transparent", color: "white",
+                                        border: "2px solid rgba(255,255,255,0.25)", borderRadius: "var(--radius-full)",
+                                        fontWeight: 800, fontSize: "14px", textDecoration: "none",
+                                        textTransform: "uppercase", letterSpacing: "1.5px", transition: "all 0.2s",
+                                        backdropFilter: "blur(4px)"
+                                    }}
+                                        onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--primary)"; e.currentTarget.style.color = "var(--primary)"; }}
+                                        onMouseLeave={(e) => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.25)"; e.currentTarget.style.color = "white"; }}
+                                    >
+                                        BROWSE ATHLETES
+                                    </a>
+                                )}
+                            </>
+                        ) : (
+                            <>
+                                <a href="/dashboard/search" style={{
+                                    padding: "16px 36px", background: "var(--primary)", color: "#0A0D14",
+                                    borderRadius: "var(--radius-full)", fontWeight: 800, fontSize: "14px", textDecoration: "none",
+                                    textTransform: "uppercase", letterSpacing: "1.5px", transition: "all 0.2s",
+                                    boxShadow: "0 0 24px rgba(69,208,255,0.5), 0 0 48px rgba(69,208,255,0.2)"
+                                }}>
+                                    FIND A TRAINER
+                                </a>
+                                <a href="/auth/register?role=trainer" style={{
+                                    padding: "16px 36px", background: "transparent", color: "white",
+                                    border: "2px solid rgba(255,255,255,0.25)", borderRadius: "var(--radius-full)",
+                                    fontWeight: 800, fontSize: "14px", textDecoration: "none",
+                                    textTransform: "uppercase", letterSpacing: "1.5px", transition: "all 0.2s",
+                                    backdropFilter: "blur(4px)"
+                                }}
+                                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--primary)"; e.currentTarget.style.color = "var(--primary)"; }}
+                                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.25)"; e.currentTarget.style.color = "white"; }}
+                                >
+                                    JOIN AS A TRAINER
+                                </a>
+                            </>
+                        )}
                     </div>
 
                     {/* Social proof */}
@@ -657,7 +755,7 @@ export default function Home() {
                             transition: "all 0.3s ease"
                         }}>
                             <QuoteIcon />
-                            <p style={{ fontSize: "20px", lineHeight: 1.6, fontStyle: "italic", marginTop: "24px", marginBottom: "24px", fontWeight: 500, minHeight: "160px", height: "160px", overflow: "hidden", transition: "opacity 0.3s ease" }}>
+                            <p style={{ fontSize: "20px", lineHeight: 1.6, fontStyle: "italic", marginTop: "24px", marginBottom: "24px", fontWeight: 500, minHeight: "160px", overflow: "hidden", transition: "opacity 0.3s ease" }}>
                                 "{REVIEWS[reviewIndex].text}"
                             </p>
 
@@ -690,17 +788,28 @@ export default function Home() {
                         </h2>
                         <p style={{ color: "var(--gray-400)", fontSize: "16px", marginBottom: "32px" }}>Join 12,000+ athletes and coaches already on AirTrainr.</p>
                         <div style={{ display: "flex", gap: "12px", justifyContent: "center", flexWrap: "wrap" }}>
-                            <a href="/dashboard/search" style={{
-                                padding: "14px 32px", background: "var(--primary)", color: "#0A0D14",
-                                borderRadius: "var(--radius-full)", fontWeight: 800, fontSize: "13px",
-                                textDecoration: "none", textTransform: "uppercase", letterSpacing: "1px",
-                                boxShadow: "0 0 20px rgba(69,208,255,0.4)"
-                            }}>FIND A TRAINER</a>
-                            <a href="/auth/register?role=trainer" style={{
-                                padding: "14px 32px", background: "transparent", color: "white",
-                                border: "1px solid rgba(255,255,255,0.15)", borderRadius: "var(--radius-full)",
-                                fontWeight: 800, fontSize: "13px", textDecoration: "none", textTransform: "uppercase", letterSpacing: "1px"
-                            }}>JOIN AS TRAINER</a>
+                            {currentUser ? (
+                                <a href="/dashboard" style={{
+                                    padding: "14px 32px", background: "var(--primary)", color: "#0A0D14",
+                                    borderRadius: "var(--radius-full)", fontWeight: 800, fontSize: "13px",
+                                    textDecoration: "none", textTransform: "uppercase", letterSpacing: "1px",
+                                    boxShadow: "0 0 20px rgba(69,208,255,0.4)"
+                                }}>GO TO DASHBOARD</a>
+                            ) : (
+                                <>
+                                    <a href="/dashboard/search" style={{
+                                        padding: "14px 32px", background: "var(--primary)", color: "#0A0D14",
+                                        borderRadius: "var(--radius-full)", fontWeight: 800, fontSize: "13px",
+                                        textDecoration: "none", textTransform: "uppercase", letterSpacing: "1px",
+                                        boxShadow: "0 0 20px rgba(69,208,255,0.4)"
+                                    }}>FIND A TRAINER</a>
+                                    <a href="/auth/register?role=trainer" style={{
+                                        padding: "14px 32px", background: "transparent", color: "white",
+                                        border: "1px solid rgba(255,255,255,0.15)", borderRadius: "var(--radius-full)",
+                                        fontWeight: 800, fontSize: "13px", textDecoration: "none", textTransform: "uppercase", letterSpacing: "1px"
+                                    }}>JOIN AS TRAINER</a>
+                                </>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -837,14 +946,16 @@ export default function Home() {
                         gap: 24px !important;
                     }
                     .reviews-card p {
-                        font-size: 16px !important;
-                        min-height: unset !important;
-                        height: auto !important;
+                        font-size: 15px !important;
+                        min-height: 180px !important;
                     }
                     .footer-grid {
-                        grid-template-columns: 1fr !important;
-                        gap: 40px !important;
-                        text-align: center !important;
+                        grid-template-columns: 1fr 1fr !important;
+                        gap: 32px !important;
+                        text-align: left !important;
+                    }
+                    .footer-brand {
+                        grid-column: 1 / -1 !important;
                     }
                     .footer-col {
                         display: flex !important;

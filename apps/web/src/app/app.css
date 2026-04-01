@@ -136,16 +136,16 @@ body {
   box-shadow: 0 0 0 1px rgba(69, 208, 255, 0.3), var(--glow-primary-sm);
 }
 
-/* Buttons with glow */
-button[class*="bg-primary"],
-a[class*="bg-primary"],
+/* Buttons with glow — only exact bg-primary, not bg-primary/10 etc. */
+button.bg-primary,
+a.bg-primary,
 .btn-primary {
   box-shadow: var(--glow-primary-sm);
   transition: box-shadow var(--transition-base);
 }
 
-button[class*="bg-primary"]:hover,
-a[class*="bg-primary"]:hover,
+button.bg-primary:hover,
+a.bg-primary:hover,
 .btn-primary:hover {
   box-shadow: var(--glow-primary);
 }

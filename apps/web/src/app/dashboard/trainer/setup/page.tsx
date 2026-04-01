@@ -18,7 +18,11 @@ import {
     AlertTriangle,
     MapPin,
     Clock,
-    Eye
+    Eye,
+    Upload,
+    Trash2,
+    ExternalLink,
+    ShieldCheck
 } from "lucide-react";
 
 const FALLBACK_SPORTS: { id: string; name: string; slug: string }[] = [
@@ -74,8 +78,13 @@ export default function TrainerEditProfilePage() {
 
     const [requireVerification, setRequireVerification] = useState(true);
 
+    // Verification documents state
+    const [verificationDocs, setVerificationDocs] = useState<string[]>([]);
+    const [uploadingDoc, setUploadingDoc] = useState(false);
+
     // File upload refs
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const docInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         const fetchSports = async () => {
@@ -146,6 +155,7 @@ export default function TrainerEditProfilePage() {
                 }));
                 if (latestProfile.session_lengths?.length) setSessionLengths(latestProfile.session_lengths);
                 if (latestProfile.training_locations?.length) setTrainingLocations(latestProfile.training_locations);
+                if (latestProfile.verification_documents?.length) setVerificationDocs(latestProfile.verification_documents);
             }
             setLoading(false);
         };
@@ -275,6 +285,71 @@ export default function TrainerEditProfilePage() {
             setPopup({ type: "error", message: "Error removing image!" });
         } finally {
             setUploading(false);
+        }
+    };
+
+    const handleUploadDocument = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (!e.target.files || e.target.files.length === 0 || !user) return;
+        const file = e.target.files[0];
+
+        if (file.type !== "application/pdf") {
+            setPopup({ type: "error", message: "Only PDF files are allowed for verification documents." });
+            if (docInputRef.current) docInputRef.current.value = "";
+            return;
+        }
+        if (file.size > 10 * 1024 * 1024) {
+            setPopup({ type: "error", message: "File size must be under 10 MB." });
+            if (docInputRef.current) docInputRef.current.value = "";
+            return;
+        }
+
+        setUploadingDoc(true);
+        try {
+            const fileName = `${user.id}/${uuidv4()}.pdf`;
+            const { error: uploadError } = await supabase.storage
+                .from("verification-documents")
+                .upload(fileName, file, { contentType: "application/pdf" });
+
+            if (uploadError) throw uploadError;
+
+            const { data: publicUrlData } = supabase.storage
+                .from("verification-documents")
+                .getPublicUrl(fileName);
+
+            const docUrl = publicUrlData.publicUrl;
+            const updatedDocs = [...verificationDocs, docUrl];
+
+            const { error: updateError } = await supabase
+                .from("trainer_profiles")
+                .update({ verification_documents: updatedDocs })
+                .eq("user_id", user.id);
+
+            if (updateError) throw updateError;
+
+            setVerificationDocs(updatedDocs);
+            setPopup({ type: "success", message: "Document uploaded successfully. An admin will review it shortly." });
+        } catch (err) {
+            console.error("Document upload error:", err);
+            setPopup({ type: "error", message: "Failed to upload document. Please try again." });
+        } finally {
+            setUploadingDoc(false);
+            if (docInputRef.current) docInputRef.current.value = "";
+        }
+    };
+
+    const handleRemoveDocument = async (docUrl: string) => {
+        if (!user) return;
+        const updatedDocs = verificationDocs.filter(d => d !== docUrl);
+        try {
+            const { error } = await supabase
+                .from("trainer_profiles")
+                .update({ verification_documents: updatedDocs })
+                .eq("user_id", user.id);
+            if (error) throw error;
+            setVerificationDocs(updatedDocs);
+        } catch (err) {
+            console.error("Failed to remove document:", err);
+            setPopup({ type: "error", message: "Failed to remove document." });
         }
     };
 
@@ -451,10 +526,10 @@ export default function TrainerEditProfilePage() {
                                                     }));
                                                 }}
                                                 className={`
-                                                    px-5 py-2.5 rounded-full text-[11px] font-black uppercase tracking-wider transition-all duration-200
+                                                    px-5 py-2.5 rounded-full text-[11px] font-black uppercase tracking-wider transition-all duration-200 border
                                                     ${selected
-                                                        ? "bg-primary text-bg shadow-[0_4px_15px_rgba(69,208,255,0.25)] border-transparent"
-                                                        : "bg-transparent border border-white/10 text-text-main/50 hover:border-white/30 hover:text-white"
+                                                        ? "bg-primary/10 border-primary/50 text-primary shadow-[0_0_12px_rgba(69,208,255,0.12)]"
+                                                        : "bg-transparent border-white/10 text-text-main/50 hover:border-white/30 hover:text-white"
                                                     }
                                                 `}
                                             >
@@ -580,7 +655,7 @@ export default function TrainerEditProfilePage() {
                                         }}
                                         className={`px-6 py-3 rounded-full text-xs font-black uppercase tracking-wider transition-all duration-200 border ${
                                             selected
-                                                ? "bg-primary text-bg shadow-[0_4px_15px_rgba(69,208,255,0.25)] border-transparent"
+                                                ? "bg-primary/10 border-primary/50 text-primary shadow-[0_0_12px_rgba(69,208,255,0.12)]"
                                                 : "bg-[#12141A] border-white/10 text-text-main/50 hover:border-white/30 hover:text-white"
                                         }`}
                                     >
@@ -618,7 +693,7 @@ export default function TrainerEditProfilePage() {
                                         }}
                                         className={`px-6 py-3 rounded-full text-xs font-black uppercase tracking-wider transition-all duration-200 border ${
                                             selected
-                                                ? "bg-primary text-bg shadow-[0_4px_15px_rgba(69,208,255,0.25)] border-transparent"
+                                                ? "bg-primary/10 border-primary/50 text-primary shadow-[0_0_12px_rgba(69,208,255,0.12)]"
                                                 : "bg-[#12141A] border-white/10 text-text-main/50 hover:border-white/30 hover:text-white"
                                         }`}
                                     >
@@ -662,6 +737,84 @@ export default function TrainerEditProfilePage() {
                                 </div>
                             </div>
                         </div>
+                    </div>
+
+                    {/* Verification Documents */}
+                    <div className="bg-[#1A1C23] border border-white/5 rounded-[20px] p-6 lg:p-8 shadow-md md:col-span-2">
+                        <div className="flex items-center justify-between mb-6">
+                            <div className="flex items-center gap-3">
+                                <ShieldCheck size={20} className="text-primary" strokeWidth={2.5} />
+                                <div>
+                                    <h3 className="text-[15px] font-black text-white tracking-widest uppercase">VERIFICATION DOCUMENTS</h3>
+                                    <p className="text-[11px] text-text-main/40 font-medium mt-0.5">Upload certifications or ID (PDF only). Reviewed by admin.</p>
+                                </div>
+                            </div>
+                            <div>
+                                <input
+                                    ref={docInputRef}
+                                    type="file"
+                                    accept="application/pdf"
+                                    className="hidden"
+                                    onChange={handleUploadDocument}
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => docInputRef.current?.click()}
+                                    disabled={uploadingDoc}
+                                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary/10 border border-primary/20 text-primary text-xs font-black uppercase tracking-wider hover:bg-primary/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {uploadingDoc ? (
+                                        <><div className="w-3.5 h-3.5 border-2 border-primary border-t-transparent rounded-full animate-spin" /> Uploading...</>
+                                    ) : (
+                                        <><Upload size={14} /> Upload PDF</>
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+
+                        {verificationDocs.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center py-8 border border-dashed border-white/10 rounded-xl text-center">
+                                <FileUp size={28} className="text-text-main/20 mb-3" />
+                                <p className="text-text-main/40 text-sm font-medium">No documents uploaded yet</p>
+                                <p className="text-text-main/25 text-xs mt-1">Certificates, coaching licenses, or photo ID (PDF only, max 10 MB)</p>
+                            </div>
+                        ) : (
+                            <div className="space-y-2">
+                                {verificationDocs.map((docUrl, idx) => {
+                                    const fileName = docUrl.split("/").pop()?.split("?")[0] || `Document ${idx + 1}`;
+                                    return (
+                                        <div key={docUrl} className="flex items-center justify-between p-3 bg-[#12141A] border border-white/5 rounded-xl group">
+                                            <div className="flex items-center gap-3 min-w-0">
+                                                <div className="w-8 h-8 rounded-lg bg-red-500/10 border border-red-500/20 flex items-center justify-center shrink-0">
+                                                    <FileText size={14} className="text-red-400" />
+                                                </div>
+                                                <span className="text-text-main/70 text-xs font-medium truncate max-w-50">
+                                                    Document {idx + 1}.pdf
+                                                </span>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <a
+                                                    href={docUrl}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 text-text-main/60 text-[10px] font-black uppercase tracking-wider hover:bg-white/10 hover:text-white transition-all"
+                                                >
+                                                    <ExternalLink size={11} /> View
+                                                </a>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleRemoveDocument(docUrl)}
+                                                    className="p-1.5 rounded-lg text-text-main/30 hover:text-red-400 hover:bg-red-500/10 transition-all"
+                                                    title="Remove document"
+                                                >
+                                                    <Trash2 size={14} />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
                     </div>
 
                     {/* Session Lengths */}

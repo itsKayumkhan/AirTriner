@@ -40,13 +40,13 @@ export default function HowItWorks() {
     ];
 
     return (
-        <section style={{ padding: "120px 24px", background: "var(--color-bg)", borderBottom: "1px solid var(--gray-900)", position: "relative", overflow: "hidden" }}>
+        <section style={{ padding: "80px 20px", background: "var(--color-bg)", borderBottom: "1px solid var(--gray-900)", position: "relative", overflow: "hidden" }} className="how-it-works-section">
             {/* Background Decor */}
             <div style={{ position: "absolute", top: "20%", left: "-10%", width: "40%", height: "40%", background: "var(--primary)", filter: "blur(180px)", opacity: 0.03, borderRadius: "50%", zIndex: 0 }}></div>
             
             <div style={{ maxWidth: "1300px", margin: "0 auto", position: "relative", zIndex: 1 }}>
-                <div style={{ textAlign: "center", marginBottom: "80px" }}>
-                    <h2 style={{ fontSize: "42px", fontWeight: 900, fontFamily: "var(--font-display)", textTransform: "uppercase", marginBottom: "16px", letterSpacing: "2px" }}>
+                <div style={{ textAlign: "center", marginBottom: "48px" }}>
+                    <h2 style={{ fontSize: "clamp(24px, 5vw, 42px)", fontWeight: 900, fontFamily: "var(--font-display)", textTransform: "uppercase", marginBottom: "16px", letterSpacing: "2px" }}>
                         HOW AIRTRAINR WORKS
                     </h2>
                     <div style={{ width: "80px", height: "4px", background: "var(--primary)", margin: "0 auto 24px" }}></div>
@@ -55,10 +55,17 @@ export default function HowItWorks() {
                     </p>
                 </div>
 
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "60px", alignItems: "start" }}>
-                    
+                <style>{`
+                    @media (max-width: 768px) {
+                        .how-it-works-section { padding: 48px 16px !important; }
+                        .how-card { padding: 24px !important; border-radius: 20px !important; }
+                        .how-grid { gap: 24px !important; }
+                    }
+                `}</style>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "32px", alignItems: "start" }} className="how-grid">
+
                     {/* ATHLETES SIDE */}
-                    <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: "32px", padding: "48px" }}>
+                    <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: "32px", padding: "40px" }} className="how-card">
                         <div style={{ display: "flex", alignItems: "center", gap: "16px", marginBottom: "40px" }}>
                             <div style={{ width: "48px", height: "48px", borderRadius: "14px", background: "var(--primary)", color: "var(--color-bg)", display: "flex", alignItems: "center", justifyContent: "center" }}>
                                 <Users className="w-6 h-6" />
@@ -93,7 +100,7 @@ export default function HowItWorks() {
                     </div>
 
                     {/* TRAINERS SIDE */}
-                    <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: "32px", padding: "48px" }}>
+                    <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: "32px", padding: "40px" }} className="how-card">
                         <div style={{ display: "flex", alignItems: "center", gap: "16px", marginBottom: "40px" }}>
                             <div style={{ width: "48px", height: "48px", borderRadius: "14px", background: "var(--primary)", color: "var(--color-bg)", display: "flex", alignItems: "center", justifyContent: "center" }}>
                                 <Briefcase className="w-6 h-6" />

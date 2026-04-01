@@ -22,7 +22,8 @@ import {
     X,
     HelpCircle,
     Send,
-    Crown
+    Crown,
+    AlertTriangle,
 } from "lucide-react";
 import { IconButton } from "@/components/ui/Buttons";
 import { AuthContext } from "@/context/AuthContext";
@@ -157,6 +158,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
 import { useNotifications } from "@/context/NotificationContext";
 import { useMessages } from "@/context/MessagesContext";
+import { supabase } from "@/lib/supabase";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function DashboardLayoutContent({ user, mobileMenuOpen, setMobileMenuOpen, navItems, handleLogout, children }: any) {
@@ -165,8 +167,28 @@ function DashboardLayoutContent({ user, mobileMenuOpen, setMobileMenuOpen, navIt
     const { unreadCount: notifCount } = useNotifications();
     const { unreadCount: msgCount } = useMessages();
     const [hydrated, setHydrated] = useState(false);
+    const [subscriptionStatus, setSubscriptionStatus] = useState<string | null>(null);
 
     useEffect(() => { setHydrated(true); }, []);
+
+    useEffect(() => {
+        if (user?.role !== "trainer") return;
+        supabase
+            .from("trainer_profiles")
+            .select("subscription_status")
+            .eq("user_id", user.id)
+            .single()
+            .then(({ data }) => {
+                setSubscriptionStatus(data?.subscription_status ?? null);
+            });
+    }, [user]);
+
+    const showExpiryBanner =
+        user?.role === "trainer" &&
+        subscriptionStatus !== null &&
+        subscriptionStatus !== "active" &&
+        subscriptionStatus !== "trial";
+
     if (!hydrated) return null;
 
     return (
@@ -297,6 +319,21 @@ function DashboardLayoutContent({ user, mobileMenuOpen, setMobileMenuOpen, navIt
 
                 {/* Page Content */}
                 <main className="flex-1 overflow-y-auto w-full relative custom-scrollbar">
+                    {showExpiryBanner && (
+                        <div className="sticky top-0 z-30 w-full bg-amber-500/10 border-b border-amber-500/25 px-4 sm:px-8 py-3 flex items-center gap-3">
+                            <AlertTriangle size={16} className="text-amber-400 shrink-0" />
+                            <p className="text-amber-300 text-sm font-semibold flex-1">
+                                Your subscription has {subscriptionStatus === "cancelled" ? "been cancelled" : "expired"}.
+                                {" "}Renew to keep full access to all trainer features.
+                            </p>
+                            <button
+                                onClick={() => router.push("/dashboard/subscription")}
+                                className="text-amber-300 text-xs font-black border border-amber-500/40 rounded-lg px-3 py-1.5 hover:bg-amber-500/15 transition-colors shrink-0"
+                            >
+                                Renew
+                            </button>
+                        </div>
+                    )}
                     <div className="w-full max-w-[1200px] mx-auto p-4 sm:p-6 lg:p-8">
                         <div className="overflow-x-auto">
                             {children}

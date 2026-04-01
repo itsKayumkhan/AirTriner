@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { getSession, AuthUser } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
-import { Send, Users, Plus, X, Clock, MapPin, DollarSign, Star, ChevronRight, Filter, Search, Calendar, MessageSquare, Zap, Award, PartyPopper } from "lucide-react";
+import { Send, Users, Plus, X, Clock, MapPin, DollarSign, Star, ChevronRight, Filter, Search, Calendar, MessageSquare, Zap, Award, PartyPopper, Lock, Crown } from "lucide-react";
 
 interface Athlete {
     id: string;
@@ -36,6 +36,7 @@ export default function TrainingOffersPage() {
     const router = useRouter();
     const [user, setUser] = useState<AuthUser | null>(null);
     const [loading, setLoading] = useState(true);
+    const [subscriptionStatus, setSubscriptionStatus] = useState<string | null>(null);
     const [athletes, setAthletes] = useState<Athlete[]>([]);
     const [offers, setOffers] = useState<Offer[]>([]);
     const [showNewOffer, setShowNewOffer] = useState(false);
@@ -68,7 +69,19 @@ export default function TrainingOffersPage() {
         }
         setUser(session);
         loadData(session);
+        loadSubscriptionStatus(session.id);
     }, [router]);
+
+    const loadSubscriptionStatus = async (userId: string) => {
+        const { data } = await supabase
+            .from("trainer_profiles")
+            .select("subscription_status")
+            .eq("user_id", userId)
+            .single();
+        setSubscriptionStatus(data?.subscription_status ?? null);
+    };
+
+    const isSubscriptionActive = subscriptionStatus === "active" || subscriptionStatus === "trial";
 
     const loadData = async (session: AuthUser) => {
         try {
@@ -242,17 +255,50 @@ export default function TrainingOffersPage() {
         );
     }
 
+    if (!isSubscriptionActive) {
+        return (
+            <div className="max-w-[1000px] w-full pb-12">
+                {/* Header */}
+                <div className="mb-8">
+                    <h1 className="text-2xl font-black font-display tracking-wider mb-1">Training Offers</h1>
+                    <p className="text-text-main/60 text-sm font-medium">Send personalized offers to athletes and grow your business.</p>
+                </div>
+
+                {/* Locked state */}
+                <div className="flex flex-col items-center justify-center py-20 bg-[#1A1C23] border border-white/5 rounded-[20px] shadow-md text-center px-6">
+                    <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center mb-5">
+                        <Lock size={28} className="text-amber-400" />
+                    </div>
+                    <h2 className="text-xl font-black text-white mb-2">Subscription Required</h2>
+                    <p className="text-text-main/60 text-sm max-w-sm mb-1">
+                        Your subscription has expired or been cancelled.
+                    </p>
+                    <p className="text-text-main/40 text-sm max-w-sm mb-8">
+                        Renew your subscription to send training offers and grow your client base.
+                    </p>
+                    <button
+                        onClick={() => router.push("/dashboard/subscription")}
+                        className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-amber-500 text-black font-black text-sm hover:bg-amber-400 transition-colors"
+                    >
+                        <Crown size={16} strokeWidth={2.5} />
+                        Upgrade Subscription
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="max-w-[1000px] w-full pb-12">
             {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
                 <div>
-                    <h1 className="text-[32px] font-black font-display italic tracking-wide text-white uppercase mb-1 leading-none drop-shadow-sm">Training Offers</h1>
-                    <p className="text-text-main/60 font-medium text-[15px]">Send personalized offers to athletes and grow your business.</p>
+                    <h1 className="text-2xl font-black font-display tracking-wider mb-1">Training Offers</h1>
+                    <p className="text-text-main/60 text-sm font-medium">Send personalized offers to athletes and grow your business.</p>
                 </div>
                 <button
                     onClick={() => { setShowNewOffer(true); setTab("athletes"); }}
-                    className="px-6 py-2.5 rounded-full bg-primary text-bg font-black text-sm hover:shadow-[0_0_15px_rgba(69,208,255,0.3)] transition-all flex items-center gap-2"
+                    className="px-5 py-2.5 rounded-xl bg-primary text-bg font-black text-sm hover:opacity-90 transition-all flex items-center gap-2 shrink-0"
                 >
                     <Plus size={18} strokeWidth={3} /> New Offer
                 </button>
@@ -271,7 +317,7 @@ export default function TrainingOffersPage() {
                                 ? "bg-[#272A35] text-white shadow-sm"
                                 : "bg-transparent text-text-main/50 hover:text-white hover:bg-white/5"}
                         `}
-                    >{t.icon} {t.label}</button>
+                    ><span className="flex items-center justify-center gap-2">{t.icon} {t.label}</span></button>
                 ))}
             </div>
 

@@ -150,13 +150,43 @@ export default function NotificationsPage() {
     const unreadCount = notifications.filter(n => !n.read).length;
 
     const typeIcons: Record<string, React.ReactNode> = {
-        BOOKING_CONFIRMED: <CheckCircle className="text-primary w-5 h-5 shrink-0" />,
-        BOOKING_CANCELLED: <XCircle className="text-red-500 w-5 h-5 shrink-0" />,
-        BOOKING_COMPLETED: <PartyPopper className="text-primary w-5 h-5 shrink-0" />,
-        NEW_REQUEST_NEARBY: <MapPin className="text-primary w-5 h-5 shrink-0" />,
-        REVIEW_RECEIVED: <Star className="text-orange-500 w-5 h-5 shrink-0" />,
-        PAYMENT_RECEIVED: <Wallet className="text-green-500 w-5 h-5 shrink-0" />,
-        NEW_MESSAGE: <MessageSquare className="text-blue-500 w-5 h-5 shrink-0" />,
+        BOOKING_CONFIRMED:   <CheckCircle   className="text-sky-400 w-5 h-5 shrink-0" />,
+        BOOKING_REJECTED:    <XCircle        className="text-red-400 w-5 h-5 shrink-0" />,
+        BOOKING_CANCELLED:   <XCircle        className="text-red-400 w-5 h-5 shrink-0" />,
+        BOOKING_COMPLETED:   <PartyPopper    className="text-emerald-400 w-5 h-5 shrink-0" />,
+        NEW_REQUEST_NEARBY:  <MapPin         className="text-primary w-5 h-5 shrink-0" />,
+        REVIEW_RECEIVED:     <Star           className="text-amber-400 w-5 h-5 shrink-0" />,
+        PAYMENT_RECEIVED:    <Wallet         className="text-green-400 w-5 h-5 shrink-0" />,
+        NEW_MESSAGE:         <MessageSquare  className="text-violet-400 w-5 h-5 shrink-0" />,
+        RESCHEDULE_ACCEPTED: <CheckCircle    className="text-sky-400 w-5 h-5 shrink-0" />,
+        RESCHEDULE_DECLINED: <XCircle        className="text-red-400 w-5 h-5 shrink-0" />,
+        REVIEW_REQUEST:      <Star           className="text-amber-400 w-5 h-5 shrink-0" />,
+    };
+    const typeBg: Record<string, string> = {
+        BOOKING_CONFIRMED:   "bg-sky-500/15 border-sky-500/30",
+        BOOKING_REJECTED:    "bg-red-500/15 border-red-500/30",
+        BOOKING_CANCELLED:   "bg-red-500/15 border-red-500/30",
+        BOOKING_COMPLETED:   "bg-emerald-500/15 border-emerald-500/30",
+        NEW_REQUEST_NEARBY:  "bg-primary/15 border-primary/30",
+        REVIEW_RECEIVED:     "bg-amber-500/15 border-amber-500/30",
+        PAYMENT_RECEIVED:    "bg-green-500/15 border-green-500/30",
+        NEW_MESSAGE:         "bg-violet-500/15 border-violet-500/30",
+        RESCHEDULE_ACCEPTED: "bg-sky-500/15 border-sky-500/30",
+        RESCHEDULE_DECLINED: "bg-red-500/15 border-red-500/30",
+        REVIEW_REQUEST:      "bg-amber-500/15 border-amber-500/30",
+    };
+    const typeDot: Record<string, string> = {
+        BOOKING_CONFIRMED:   "bg-sky-400",
+        BOOKING_REJECTED:    "bg-red-400",
+        BOOKING_CANCELLED:   "bg-red-400",
+        BOOKING_COMPLETED:   "bg-emerald-400",
+        NEW_REQUEST_NEARBY:  "bg-primary",
+        REVIEW_RECEIVED:     "bg-amber-400",
+        PAYMENT_RECEIVED:    "bg-green-400",
+        NEW_MESSAGE:         "bg-violet-400",
+        RESCHEDULE_ACCEPTED: "bg-sky-400",
+        RESCHEDULE_DECLINED: "bg-red-400",
+        REVIEW_REQUEST:      "bg-amber-400",
     };
 
     const timeAgo = (date: string) => {
@@ -220,7 +250,7 @@ export default function NotificationsPage() {
                                 : "bg-white/[0.025] hover:bg-white/[0.04] cursor-pointer"
                                 }`}
                         >
-                            <div className="mt-0.5 shrink-0 p-2 rounded-xl bg-white/[0.04] border border-white/[0.06]">
+                            <div className={`mt-0.5 shrink-0 p-2 rounded-xl border ${typeBg[n.type] || "bg-white/[0.04] border-white/[0.06]"}`}>
                                 {typeIcons[n.type] || <Bell className="text-text-main/40 w-4 h-4" />}
                             </div>
                             <div className="flex-1 min-w-0">
@@ -229,7 +259,7 @@ export default function NotificationsPage() {
                                         {n.title}
                                     </span>
                                     {!n.read && (
-                                        <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
+                                        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${typeDot[n.type] || "bg-primary"}`} />
                                     )}
                                 </div>
                                 <p className="text-sm text-text-main/60 font-medium leading-relaxed max-w-xl">

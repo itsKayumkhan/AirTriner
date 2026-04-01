@@ -138,6 +138,14 @@ export default function AvailabilityPage() {
         }
     };
 
+    const to12h = (t: string) => {
+        const [hStr, m] = t.split(':');
+        let h = parseInt(hStr, 10);
+        const ampm = h >= 12 ? 'PM' : 'AM';
+        h = h % 12 || 12;
+        return `${h}:${m} ${ampm}`;
+    };
+
     // Group slots by day
     const slotsByDay = DAYS.map((day, i) => ({
         day,
@@ -244,7 +252,7 @@ export default function AvailabilityPage() {
                                     >
                                         <Clock size={14} className={!slot.is_blocked ? "text-primary" : "text-text-main/30"} />
                                         <span className="text-[14px] font-bold tracking-wide">
-                                            {slot.start_time.slice(0, 5)} – {slot.end_time.slice(0, 5)}
+                                            {to12h(slot.start_time.slice(0, 5))} – {to12h(slot.end_time.slice(0, 5))}
                                         </span>
                                         <div className="flex items-center gap-1.5 ml-1 border-l border-current/10 pl-2.5">
                                             <button

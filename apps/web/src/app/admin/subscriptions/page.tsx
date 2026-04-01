@@ -364,7 +364,7 @@ export default function AdminSubscriptionsPage() {
                                                         {s.expiresAt ? new Date(s.expiresAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—"}
                                                     </div>
                                                     {daysInfo && (
-                                                        <div className={`text-[9px] font-black uppercase ${daysInfo.isOverdue ? "text-red-500" : "text-primary"}`}>{daysInfo.label}</div>
+                                                        <span className={`inline-block mt-1 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider ${daysInfo.isOverdue ? "bg-red-500/10 text-red-400 border border-red-500/20" : "bg-primary/10 text-primary border border-primary/20"}`}>{daysInfo.label}</span>
                                                     )}
                                                 </div>
                                             </td>
@@ -453,9 +453,9 @@ export default function AdminSubscriptionsPage() {
                                                 {selectedSub.expiresAt ? new Date(selectedSub.expiresAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—"}
                                             </p>
                                             {getDaysInfo(selectedSub) && (
-                                                <p className={`text-[9px] font-black uppercase ${getDaysInfo(selectedSub)?.isOverdue ? "text-red-500" : "text-primary"}`}>
+                                                <span className={`inline-block mt-1 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider ${getDaysInfo(selectedSub)?.isOverdue ? "bg-red-500/10 text-red-400 border border-red-500/20" : "bg-primary/10 text-primary border border-primary/20"}`}>
                                                     {getDaysInfo(selectedSub)?.label}
-                                                </p>
+                                                </span>
                                             )}
                                         </div>
                                         <div className="bg-bg/60 border border-white/[0.04] rounded-xl p-3">

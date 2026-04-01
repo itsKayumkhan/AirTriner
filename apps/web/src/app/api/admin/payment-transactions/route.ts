@@ -85,8 +85,10 @@ export async function GET() {
         const lastMonth = calcTotals(lastMonthTx || []);
         const thisMonth = calcTotals(thisMonthTx || []);
 
-        const pctChange = (curr: number, prev: number) => {
-            if (prev === 0) return curr > 0 ? 100 : 0;
+        const pctChange = (curr: number, prev: number): number | null => {
+            if (curr === 0 && prev === 0) return null; // no data either month
+            if (curr === 0) return null;               // no activity this month — hide badge
+            if (prev === 0) return null;               // new platform, no baseline to compare
             return Math.round(((curr - prev) / prev) * 100);
         };
 

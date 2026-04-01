@@ -182,13 +182,19 @@ export type AvailabilitySlotRow = {
 
 export type SubAccountRow = {
     id: string;
-    parent_athlete_id: string;
-    first_name: string;
-    last_name: string;
-    date_of_birth: string | null;
-    sport: string | null;
-    skill_level: string | null;
+    parent_user_id: string;
+    profile_data: {
+        first_name: string;
+        last_name: string;
+        age?: number;
+        sport?: string;
+        skill_level?: string;
+        notes?: string;
+    };
+    max_bookings_per_month: number;
+    is_active: boolean;
     created_at: string;
+    updated_at: string;
 };
 
 export type DisputeRow = {
