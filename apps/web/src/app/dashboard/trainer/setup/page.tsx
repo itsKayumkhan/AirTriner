@@ -165,6 +165,21 @@ export default function TrainerEditProfilePage() {
 
     const handleSaveProfile = async () => {
         if (!user) return;
+
+        // Validate required fields
+        const missing: string[] = [];
+        if (!formData.firstName.trim()) missing.push("First Name");
+        if (!formData.lastName.trim()) missing.push("Last Name");
+        if (!formData.sports || formData.sports.length === 0) missing.push("Sports (select at least one)");
+        if (!formData.hourlyRate || parseFloat(formData.hourlyRate) <= 0) missing.push("Hourly Rate");
+        if (!formData.yearsExperience) missing.push("Years Experience");
+        if (!formData.city?.trim()) missing.push("City");
+
+        if (missing.length > 0) {
+            setPopup({ type: "error", message: `Please fill in: ${missing.join(", ")}` });
+            return;
+        }
+
         setSaving(true);
         try {
             const updateData: Record<string, unknown> = {

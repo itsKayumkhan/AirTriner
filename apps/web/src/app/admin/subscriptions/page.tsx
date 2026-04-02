@@ -180,6 +180,8 @@ export default function AdminSubscriptionsPage() {
                     updateData.subscription_expires_at = expiresAt.toISOString();
                 } else {
                     updateData.subscription_expires_at = new Date().toISOString();
+                    updateData.is_founding_50 = false;
+                    updateData.founding_50_granted_at = null;
                 }
                 const { error } = await supabase.from("trainer_profiles").update(updateData).eq("id", profileId);
                 if (error) throw error;

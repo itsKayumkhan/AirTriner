@@ -86,13 +86,20 @@ export function RescheduleDialog({
             setSlotsLoading(true); setAvailableSlots([]); setSelectedTime(""); setNoSlotsMsg(null); setError(null);
             try {
                 const date = new Date(selectedDate + "T00:00:00");
-                const dayOfWeek = date.toLocaleDateString("en-US", { weekday: "long" }).toLowerCase();
+                const dayOfWeek = date.getDay(); // 0=Sun, 1=Mon, ... 6=Sat
+                const dayName = date.toLocaleDateString("en-US", { weekday: "long" });
+
+                // Weekend check
+                if (dayOfWeek === 0 || dayOfWeek === 6) { setNoSlotsMsg(`Trainer is not available on ${dayName}s.`); return; }
+
                 const { data: slots } = await supabase.from("availability_slots").select("start_time, end_time").eq("trainer_id", trainerId).eq("day_of_week", dayOfWeek);
-                if (!slots || slots.length === 0) { setNoSlotsMsg(`Trainer is not available on ${date.toLocaleDateString("en-US", { weekday: "long" })}s.`); return; }
+                // If trainer hasn't set availability, use default 9am-5pm
+                const effectiveSlots = (slots && slots.length > 0) ? slots : [{ start_time: "09:00", end_time: "17:00" }];
 
                 const dayStart = selectedDate + "T00:00:00.000Z";
                 const dayEnd = selectedDate + "T23:59:59.999Z";
-                const { data: existingBookings } = await supabase.from("bookings").select("scheduled_at, duration_minutes").eq("trainer_id", trainerId).in("status", ["confirmed", "pending"]).neq("id", bookingId).gte("scheduled_at", dayStart).lte("scheduled_at", dayEnd);
+                // Only confirmed bookings block slots (not pending)
+                const { data: existingBookings } = await supabase.from("bookings").select("scheduled_at, duration_minutes").eq("trainer_id", trainerId).in("status", ["confirmed"]).neq("id", bookingId).gte("scheduled_at", dayStart).lte("scheduled_at", dayEnd);
 
                 const blockedRanges = (existingBookings || []).map((b: { scheduled_at: string; duration_minutes: number }) => {
                     const s = new Date(b.scheduled_at); return { start: s.getHours() * 60 + s.getMinutes(), end: s.getHours() * 60 + s.getMinutes() + (b.duration_minutes || 60) };
@@ -101,7 +108,7 @@ export function RescheduleDialog({
                 const nowMins = new Date().getHours() * 60 + new Date().getMinutes() + 120;
 
                 const allSlots: string[] = [];
-                for (const slot of slots) {
+                for (const slot of effectiveSlots) {
                     for (const t of generateSlots(slot.start_time, slot.end_time, durationMinutes)) {
                         const [h, m] = t.split(":").map(Number);
                         const startMins = h * 60 + m, endMins = startMins + durationMinutes;
@@ -137,15 +144,16 @@ export function RescheduleDialog({
             if (!session) throw new Error("You must be logged in");
             const proposed = new Date(`${selectedDate}T${selectedTime}`);
             const proposedEnd = new Date(proposed.getTime() + durationMinutes * 60 * 1000);
-            const dayOfWeek = proposed.toLocaleDateString("en-US", { weekday: "long" }).toLowerCase();
+            const dayOfWeek = proposed.getDay(); // 0=Sun, 1=Mon, ... 6=Sat
             const timeHHMM = proposed.toTimeString().slice(0, 5);
             const endHHMM = proposedEnd.toTimeString().slice(0, 5);
 
             const { data: slots } = await supabase.from("availability_slots").select("start_time, end_time").eq("trainer_id", trainerId).eq("day_of_week", dayOfWeek);
-            if (!(slots || []).some((s: { start_time: string; end_time: string }) => s.start_time <= timeHHMM && s.end_time >= endHHMM))
+            const effectiveSlots = (slots && slots.length > 0) ? slots : [{ start_time: "09:00", end_time: "17:00" }];
+            if (!effectiveSlots.some((s: { start_time: string; end_time: string }) => s.start_time <= timeHHMM && s.end_time >= endHHMM))
                 throw new Error("Trainer is no longer available at this time. Please pick another slot.");
 
-            const { data: conflicts } = await supabase.from("bookings").select("scheduled_at, duration_minutes").eq("trainer_id", trainerId).in("status", ["confirmed", "pending"]).neq("id", bookingId).gte("scheduled_at", selectedDate + "T00:00:00.000Z").lte("scheduled_at", selectedDate + "T23:59:59.999Z");
+            const { data: conflicts } = await supabase.from("bookings").select("scheduled_at, duration_minutes").eq("trainer_id", trainerId).in("status", ["confirmed"]).neq("id", bookingId).gte("scheduled_at", selectedDate + "T00:00:00.000Z").lte("scheduled_at", selectedDate + "T23:59:59.999Z");
             if ((conflicts || []).some((b: { scheduled_at: string; duration_minutes: number }) => { const bs = new Date(b.scheduled_at).getTime(), be = bs + (b.duration_minutes || 60) * 60000; return proposed.getTime() < be && proposedEnd.getTime() > bs; }))
                 throw new Error("This slot was just booked by someone else. Please pick another.");
 

@@ -135,16 +135,6 @@ export default function AdminDashboardPage() {
             {/* Top Bar inside Content */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 mb-8">
                 <h1 className="text-2xl font-black text-text-main tracking-tight">Overview</h1>
-                <div className="relative w-full md:w-72">
-                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-main/40" />
-                    <input
-                        type="text"
-                        placeholder="Search athletes, trainers..."
-                        value={searchQuery}
-                        onChange={e => setSearchQuery(e.target.value)}
-                        className="w-full bg-surface border border-white/5 rounded-full pl-10 pr-4 py-2.5 text-sm text-text-main focus:outline-none focus:border-gray-600 focus:ring-1 focus:ring-gray-600 transition-colors"
-                    />
-                </div>
             </div>
 
             {/* Stats Cards */}
@@ -166,7 +156,7 @@ export default function AdminDashboardPage() {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
                 {/* Chart Mock */}
-                <div className="lg:col-span-2 bg-surface border border-white/5 rounded-[24px] p-6">
+                <div className="lg:col-span-2 bg-surface border border-white/5 rounded-[24px] p-6 self-start">
                     <div className="flex justify-between items-center mb-6">
                         <div>
                             <h2 className="text-lg font-black text-text-main">Platform Growth</h2>
@@ -184,8 +174,8 @@ export default function AdminDashboardPage() {
                                 return (
                                     <div key={month} className="flex-1 flex justify-center group">
                                         <div
-                                            style={{ height: `${Math.max(chartHeights[i], 12)}%` }}
-                                            className={`w-full max-w-8 rounded-t-md transition-all duration-500 ${isActive ? "bg-primary shadow-[0_0_12px_rgba(69,208,255,0.3)]" : "bg-white/20 group-hover:bg-primary/50"}`}
+                                            style={{ height: `${Math.max(chartHeights[i], 15)}%` }}
+                                            className={`w-full max-w-10 rounded-t-md transition-all duration-500 ${isActive ? "bg-primary shadow-[0_0_12px_rgba(69,208,255,0.3)]" : "bg-white/30 group-hover:bg-primary/50"}`}
                                         />
                                     </div>
                                 );
@@ -264,15 +254,15 @@ export default function AdminDashboardPage() {
                 </div>
 
                 <div className="overflow-x-auto">
-                    <table className="w-full min-w-[600px] text-left border-collapse">
+                    <table className="w-full min-w-[600px] border-collapse">
                         <thead>
-                            <tr className="border-b border-white/[0.05] text-[10px] uppercase font-bold tracking-widest text-text-main/30 bg-white/[0.03]">
-                                <th className="pb-4 pl-2 font-black whitespace-nowrap">Transaction ID</th>
-                                <th className="pb-4 font-black whitespace-nowrap">Athlete</th>
-                                <th className="pb-4 font-black whitespace-nowrap">Trainer</th>
-                                <th className="pb-4 font-black whitespace-nowrap">Date</th>
-                                <th className="pb-4 font-black whitespace-nowrap">Amount</th>
-                                <th className="pb-4 font-black whitespace-nowrap">Status</th>
+                            <tr className="border-b border-white/[0.05] text-xs font-bold tracking-wide text-text-main/40 bg-white/[0.03]">
+                                <th className="pb-4 pt-3 px-4 font-black whitespace-nowrap text-center">Transaction ID</th>
+                                <th className="pb-4 pt-3 px-4 font-black whitespace-nowrap text-center">Athlete</th>
+                                <th className="pb-4 pt-3 px-4 font-black whitespace-nowrap text-center">Trainer</th>
+                                <th className="pb-4 pt-3 px-4 font-black whitespace-nowrap text-center">Date</th>
+                                <th className="pb-4 pt-3 px-4 font-black whitespace-nowrap text-center">Amount</th>
+                                <th className="pb-4 pt-3 px-4 font-black whitespace-nowrap text-center">Status</th>
                             </tr>
                         </thead>
                         <tbody className="text-sm">
@@ -284,17 +274,17 @@ export default function AdminDashboardPage() {
                                 </tr>
                             ) : filteredTransactions.map((t, i) => (
                                 <tr key={i} className="border-b border-white/[0.04] last:border-0 hover:bg-white/[0.025] transition-colors">
-                                    <td className="py-4 pl-2 font-medium text-text-main/60 whitespace-nowrap">{t.id}</td>
-                                    <td className="py-4">
-                                        <div className="flex items-center gap-3">
+                                    <td className="py-4 px-4 font-medium text-text-main/60 whitespace-nowrap text-center">{t.id}</td>
+                                    <td className="py-4 px-4 text-center">
+                                        <div className="flex items-center justify-center gap-3">
                                             <div className="w-8 h-8 rounded-full bg-[#fce6cd] flex-shrink-0"></div>
                                             <span className="font-bold text-text-main whitespace-nowrap">{t.athlete}</span>
                                         </div>
                                     </td>
-                                    <td className="py-4 text-text-main/80 font-medium whitespace-nowrap">{t.trainer}</td>
-                                    <td className="py-4 text-text-main/60 text-xs tracking-wide whitespace-nowrap">{t.date}</td>
-                                    <td className="py-4 font-black text-text-main whitespace-nowrap">{t.amount}</td>
-                                    <td className="py-4">
+                                    <td className="py-4 px-4 text-text-main/80 font-medium whitespace-nowrap text-center">{t.trainer}</td>
+                                    <td className="py-4 px-4 text-text-main/60 text-xs tracking-wide whitespace-nowrap text-center">{t.date}</td>
+                                    <td className="py-4 px-4 font-black text-text-main whitespace-nowrap text-center">{t.amount}</td>
+                                    <td className="py-4 px-4 text-center">
                                         <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border ${t.status === "Completed"
                                             ? "bg-primary/10 text-primary border-primary/20"
                                             : "bg-orange-500/10 text-orange-500 border-orange-500/20"

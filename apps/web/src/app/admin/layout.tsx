@@ -86,7 +86,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                         title: `New ${b.sport} booking`,
                         desc: `${name} — ${b.status}`,
                         time: new Date(b.created_at),
-                        read: b.status !== 'pending',
+                        read: false,
                     });
                 });
 
@@ -293,6 +293,10 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                                             notifications.map(n => (
                                                 <div
                                                     key={n.id}
+                                                    onClick={() => {
+                                                        setNotifications(prev => prev.map(x => x.id === n.id ? { ...x, read: true } : x));
+                                                        setUnreadCount(prev => !n.read ? Math.max(0, prev - 1) : prev);
+                                                    }}
                                                     className={`flex items-start gap-3 px-5 py-4 border-b border-white/5 hover:bg-white/5 transition-colors cursor-pointer ${!n.read ? 'bg-primary/5' : ''}`}
                                                 >
                                                     <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${
@@ -312,12 +316,18 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                                             ))
                                         )}
                                     </div>
-                                    <div className="p-3 border-t border-white/5">
+                                    <div className="p-3 border-t border-white/5 flex items-center gap-2">
                                         <button
-                                            onClick={() => { setShowNotifications(false); router.push('/admin'); }}
-                                            className="w-full text-center text-xs font-black text-primary uppercase tracking-widest py-2 hover:bg-primary/5 rounded-lg transition-colors"
+                                            onClick={() => { setShowNotifications(false); router.push('/admin/bookings'); }}
+                                            className="flex-1 text-center text-xs font-black text-primary uppercase tracking-widest py-2 hover:bg-primary/5 rounded-lg transition-colors"
                                         >
                                             View All Activity
+                                        </button>
+                                        <button
+                                            onClick={() => { setNotifications([]); setUnreadCount(0); setShowNotifications(false); }}
+                                            className="flex-1 text-center text-xs font-black text-red-400 uppercase tracking-widest py-2 hover:bg-red-500/5 rounded-lg transition-colors"
+                                        >
+                                            Clear All
                                         </button>
                                     </div>
                                 </div>

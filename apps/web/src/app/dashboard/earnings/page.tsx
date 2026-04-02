@@ -156,8 +156,8 @@ export default function EarningsPage() {
                 b.sport.replace(/_/g, ' '),
                 String(b.duration_minutes || 60),
                 Number(b.price).toFixed(2),
-                Number(b.platform_fee || 0).toFixed(2),
-                (Number(b.price) - Number(b.platform_fee || 0)).toFixed(2),
+                '0.00',
+                Number(b.price).toFixed(2),
                 'completed',
             ])
         } else {
@@ -187,9 +187,9 @@ export default function EarningsPage() {
     }
 
     // Trainer stats — only count funds that have been released by admin
-    const totalEarnings = releasedTransactions.reduce((s, t) => s + Number(t.trainer_payout) + Number(t.platform_fee), 0);
-    const totalFees = releasedTransactions.reduce((s, t) => s + Number(t.platform_fee), 0);
-    const netEarnings = releasedTransactions.reduce((s, t) => s + Number(t.trainer_payout), 0);
+    // Coach gets full session fee — platform fee is charged to athlete separately
+    const totalEarnings = releasedTransactions.reduce((s, t) => s + Number(t.trainer_payout), 0);
+    const netEarnings = totalEarnings;
     // In Escrow: confirmed upcoming sessions + completed sessions awaiting admin release
     const pendingPayout = upcomingPaid.reduce((s, b) => s + Number(b.payment_transaction?.trainer_payout || 0), 0);
     const heldCompletedPayout = heldCompletedTransactions.reduce((s, t) => s + Number(t.trainer_payout), 0);

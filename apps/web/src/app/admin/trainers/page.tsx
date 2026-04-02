@@ -31,46 +31,47 @@ export default function AdminTrainersPage() {
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 8;
 
+    const loadTrainers = async () => {
+        try {
+            const { data: usersData } = await supabase.from("users").select("*").eq("role", "trainer");
+            if (!usersData) return;
+
+            const userIds = usersData.map(u => u.id);
+            const { data: profilesData } = await supabase
+                .from("trainer_profiles")
+                .select("user_id, verification_status, sports, is_founding_50, verification_documents")
+                .in("user_id", userIds);
+            const profilesMap = new Map((profilesData || []).map(p => [p.user_id, p]));
+
+            setTrainers(usersData.map(u => {
+                const profile = profilesMap.get(u.id);
+                const isVerified = profile?.verification_status === "verified";
+                const isDeclined = profile?.verification_status === "rejected";
+                const statusText = isVerified ? "Verified" : (isDeclined ? "Declined" : "Pending Review");
+                const sports = profile?.sports || [];
+                const docs: string[] = profile?.verification_documents || [];
+
+                return {
+                    id: u.id,
+                    name: `${u.first_name || ""} ${u.last_name || ""}`.trim() || u.email.split('@')[0],
+                    email: u.email,
+                    initials: `${u.first_name?.[0] || ""}${u.last_name?.[0] || ""}`.toUpperCase() || u.email[0].toUpperCase(),
+                    specialty: sports.length > 0 ? sports[0] : "General",
+                    status: statusText,
+                    isVerified,
+                    isDeclined,
+                    isFounding50: profile?.is_founding_50 ?? false,
+                    docs,
+                };
+            }));
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     useEffect(() => {
-        const loadTrainers = async () => {
-            try {
-                const { data: usersData } = await supabase.from("users").select("*").eq("role", "trainer");
-                if (!usersData) return;
-
-                const userIds = usersData.map(u => u.id);
-                const { data: profilesData } = await supabase
-                    .from("trainer_profiles")
-                    .select("user_id, verification_status, sports, is_founding_50, verification_documents")
-                    .in("user_id", userIds);
-                const profilesMap = new Map((profilesData || []).map(p => [p.user_id, p]));
-
-                setTrainers(usersData.map(u => {
-                    const profile = profilesMap.get(u.id);
-                    const isVerified = profile?.verification_status === "verified";
-                    const isDeclined = profile?.verification_status === "rejected";
-                    const statusText = isVerified ? "Verified" : (isDeclined ? "Declined" : "Pending Review");
-                    const sports = profile?.sports || [];
-                    const docs: string[] = profile?.verification_documents || [];
-
-                    return {
-                        id: u.id,
-                        name: `${u.first_name || ""} ${u.last_name || ""}`.trim() || u.email.split('@')[0],
-                        email: u.email,
-                        initials: `${u.first_name?.[0] || ""}${u.last_name?.[0] || ""}`.toUpperCase() || u.email[0].toUpperCase(),
-                        specialty: sports.length > 0 ? sports[0] : "General",
-                        status: statusText,
-                        isVerified,
-                        isDeclined,
-                        isFounding50: profile?.is_founding_50 ?? false,
-                        docs,
-                    };
-                }));
-            } catch (err) {
-                console.error(err);
-            } finally {
-                setLoading(false);
-            }
-        };
         loadTrainers();
     }, []);
 
@@ -99,6 +100,24 @@ export default function AdminTrainersPage() {
                 .from("trainer_profiles")
                 .update({ verification_status: newStatus, is_verified: newStatus === "verified" })
                 .eq("user_id", docsModal.trainerId);
+
+            // Insert notification for the trainer
+            const notification = newStatus === "verified"
+                ? {
+                    user_id: docsModal.trainerId,
+                    type: "PROFILE_VERIFIED",
+                    title: "Profile Approved!",
+                    body: "Congratulations! Your trainer profile has been verified. Athletes can now find and book you.",
+                    read: false,
+                }
+                : {
+                    user_id: docsModal.trainerId,
+                    type: "PROFILE_REJECTED",
+                    title: "Verification Update",
+                    body: "Your profile verification needs attention. Please review your documents and resubmit.",
+                    read: false,
+                };
+            await supabase.from("notifications").insert(notification);
 
             setTrainers(prev => prev.map(t => {
                 if (t.id === docsModal.trainerId) {
@@ -129,7 +148,7 @@ export default function AdminTrainersPage() {
                 founding_50_granted_at: !current ? new Date().toISOString() : null,
                 ...((!current) ? { subscription_status: "active", subscription_expires_at: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString() } : {})
             }).eq("user_id", id);
-            setTrainers(prev => prev.map(t => t.id === id ? { ...t, isFounding50: !current } : t));
+            await loadTrainers();
         } catch (err) {
             console.error(err);
         } finally {

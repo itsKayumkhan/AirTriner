@@ -100,7 +100,7 @@ export async function POST(req: NextRequest) {
                 trainerId: booking.trainer_id,
                 amount: booking.total_paid,
                 platformFee: booking.platform_fee,
-                trainerPayout: String(Number(booking.price) - Number(booking.platform_fee)),
+                trainerPayout: String(booking.price),
             },
         });
 

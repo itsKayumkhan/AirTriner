@@ -276,7 +276,6 @@ function DashboardLayoutContent({ user, mobileMenuOpen, setMobileMenuOpen, navIt
                     <div className="w-[360px]" />
                     <div className="flex items-center gap-4">
                         <IconButton icon={<User size={18} />} onClick={() => router.push(user.role === 'trainer' ? '/dashboard/trainer/setup' : '/dashboard/profile')} />
-                        <IconButton icon={<HelpCircle size={18} />} />
                         <div className="relative group ml-4 cursor-pointer">
                             <div className="w-10 h-10 rounded-full bg-gray-800 border-2 border-gray-700 flex items-center justify-center font-bold text-sm hover:border-primary transition-colors overflow-hidden">
                                 {user.firstName.charAt(0)}{user.lastName.charAt(0)}

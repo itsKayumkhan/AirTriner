@@ -5,6 +5,7 @@ import { getSession, AuthUser } from "@/lib/auth";
 import { supabase, NotificationRow } from "@/lib/supabase";
 import { OfferModal } from "@/components/notifications/OfferModal";
 import { Bell, CheckCircle, XCircle, PartyPopper, MapPin, Star, Wallet, MessageSquare } from "lucide-react";
+import { useNotifications } from "@/context/NotificationContext";
 
 interface OfferNotificationData {
     offer_id?: string;
@@ -13,6 +14,7 @@ interface OfferNotificationData {
 }
 
 export default function NotificationsPage() {
+    const { markAllRead: ctxMarkAllRead, clearAllNotifications: ctxClearAll } = useNotifications();
     const [user, setUser] = useState<AuthUser | null>(null);
     const [notifications, setNotifications] = useState<NotificationRow[]>([]);
     const [loading, setLoading] = useState(true);
@@ -53,6 +55,7 @@ export default function NotificationsPage() {
         if (!user) return;
         await supabase.from("notifications").update({ read: true }).eq("user_id", user.id).eq("read", false);
         setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+        ctxMarkAllRead();
     };
 
     const clearAllNotifications = async () => {
@@ -60,6 +63,7 @@ export default function NotificationsPage() {
         try {
             await supabase.from("notifications").delete().eq("user_id", user.id);
             setNotifications([]);
+            ctxClearAll();
         } catch (err) {
             console.error("Failed to clear notifications:", err);
         }

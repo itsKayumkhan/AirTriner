@@ -1,6 +1,7 @@
 "use client";
 
-import { MessageSquare, Send, Activity, ArrowLeft, CheckCheck } from "lucide-react";
+import { MessageSquare, Send, Activity, ArrowLeft, CheckCheck, ShieldCheck } from "lucide-react";
+import { FoundingBadge } from "@/components/ui/FoundingBadge";
 import { useEffect, useState, useRef } from "react";
 import { getSession, AuthUser } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
@@ -15,6 +16,8 @@ interface Conversation {
     lastMessage: string;
     lastMessageAt: string;
     unreadCount: number;
+    otherUserFounding50?: boolean;
+    otherUserVerified?: boolean;
 }
 
 interface Message {
@@ -107,13 +110,16 @@ export default function MessagesPage() {
             const otherCol = isTrainer ? "athlete_id" : "trainer_id";
             const { data: bookings } = await supabase.from("bookings").select("id, trainer_id, athlete_id, sport, status").eq(col, u.id).in("status", ["confirmed", "completed", "pending"]);
             if (!bookings?.length) { setLoading(false); return; }
-            const otherUserIds = bookings.map((b: any) => b[otherCol]);
-            const { data: otherUsers } = await supabase.from("users").select("id, first_name, last_name").in("id", [...new Set(otherUserIds)]);
+            const otherUserIds = [...new Set(bookings.map((b: any) => b[otherCol]))];
+            const { data: otherUsers } = await supabase.from("users").select("id, first_name, last_name").in("id", otherUserIds);
+            const { data: trainerProfiles } = await supabase.from("trainer_profiles").select("user_id, is_founding_50, is_verified").in("user_id", otherUserIds);
+            const trainerMap = new Map((trainerProfiles || []).map((tp: any) => [tp.user_id, tp]));
             const userMap = new Map((otherUsers || []).map((u: any) => [u.id, u]));
             const bookingIds = bookings.map((b: any) => b.id);
             const { data: allMessages } = await supabase.from("messages").select("*").in("booking_id", bookingIds).order("created_at", { ascending: false });
             const convos: Conversation[] = bookings.map((b: any) => {
                 const other = userMap.get(b[otherCol]) as any;
+                const tp = trainerMap.get(b[otherCol]) as any;
                 const bookingMessages = (allMessages || []).filter((m: Message) => m.booking_id === b.id);
                 const lastMsg = bookingMessages[0];
                 const unreadCount = bookingMessages.filter((m: any) => m.sender_id !== u.id && !m.read_at).length;
@@ -123,6 +129,8 @@ export default function MessagesPage() {
                     otherUserInitials: other ? `${other.first_name[0]}${other.last_name[0]}`.toUpperCase() : "?",
                     sport: b.sport, lastMessage: lastMsg?.content || "No messages yet",
                     lastMessageAt: lastMsg?.created_at || b.id, unreadCount,
+                    otherUserFounding50: tp?.is_founding_50 ?? false,
+                    otherUserVerified: tp?.is_verified ?? false,
                 };
             });
             convos.sort((a, b) => {
@@ -269,8 +277,10 @@ export default function MessagesPage() {
                                     {/* Info */}
                                     <div className="flex-1 min-w-0">
                                         <div className="flex items-center justify-between gap-1 mb-0.5">
-                                            <span className={`text-sm font-bold truncate ${isActive ? "text-white" : "text-text-main/80"}`}>
+                                            <span className={`text-sm font-bold truncate flex items-center gap-1 ${isActive ? "text-white" : "text-text-main/80"}`}>
                                                 {c.otherUserName}
+                                                {c.otherUserFounding50 && <FoundingBadge size={16} />}
+                                                {c.otherUserVerified && !c.otherUserFounding50 && <ShieldCheck size={14} className="text-primary shrink-0" />}
                                             </span>
                                             <span className="text-[10px] text-text-main/30 font-medium shrink-0">
                                                 {timeFormat(c.lastMessageAt)}
@@ -308,7 +318,11 @@ export default function MessagesPage() {
                                 {selectedConvo.otherUserInitials}
                             </div>
                             <div className="flex-1 min-w-0">
-                                <p className="text-[14px] font-bold text-white leading-tight truncate">{selectedConvo.otherUserName}</p>
+                                <p className="text-[14px] font-bold text-white leading-tight truncate flex items-center gap-1.5">
+                                    {selectedConvo.otherUserName}
+                                    {selectedConvo.otherUserFounding50 && <FoundingBadge size={18} />}
+                                    {selectedConvo.otherUserVerified && !selectedConvo.otherUserFounding50 && <ShieldCheck size={15} className="text-primary shrink-0" />}
+                                </p>
                                 <div className="flex items-center gap-1.5 mt-0.5">
                                     <Activity size={9} className="text-primary/50" />
                                     <p className="text-[10px] text-text-main/40 font-semibold uppercase tracking-wider">

@@ -59,7 +59,8 @@ export default function AdminBookingsPage() {
                     const athInfo = usersMap.get(b.athlete_id) || { name: "Unknown", initials: "U" };
                     const trnInfo = usersMap.get(b.trainer_id) || { name: "Unknown", initials: "U" };
                     return {
-                        id: b.id.substring(0, 8),
+                        id: b.id,
+                        refId: b.id.substring(0, 8),
                         athlete: athInfo.name,
                         athleteInitials: athInfo.initials,
                         trainer: trnInfo.name,
@@ -164,7 +165,7 @@ export default function AdminBookingsPage() {
             if (!error) {
                 // Update local state without full reload
                 setRawBookings(prev => prev.map(b => {
-                    if (b.id !== id.substring(0,8) && b.id !== id) return b;
+                    if (b.id !== id) return b;
                     
                     const getStatusStyles = (status: string) => {
                         if (status === "completed") return { sColor: "text-green-500", sBg: "bg-green-500/10", sBorder: "border-green-500/20", display: "Completed", icon: <CheckCircle size={12} /> };
@@ -279,17 +280,17 @@ export default function AdminBookingsPage() {
 
                     {/* Sport Dropdown */}
                     <div className="relative z-40">
-                        <button 
-                            type="button" 
+                        <button
+                            type="button"
                             onClick={() => { setIsSportOpen(!isSportOpen); setIsDateOpen(false); }}
-                            className="flex items-center justify-between gap-3 w-full sm:w-auto bg-[#12141A] border border-white/5 rounded-full px-5 py-3 text-xs uppercase tracking-widest font-bold text-text-main/80 hover:bg-white/5 hover:text-text-main transition-colors whitespace-nowrap"
+                            className="flex items-center justify-between gap-3 w-full sm:w-auto min-w-[180px] bg-[#12141A] border border-white/5 rounded-full px-5 py-3 text-xs uppercase tracking-widest font-bold text-text-main/80 hover:bg-white/5 hover:text-text-main transition-colors whitespace-nowrap"
                         >
                             <span className="flex items-center gap-2"><LayoutGrid size={14} className="text-primary"/> {selectedSport}</span> 
                             <ChevronDown size={14} className={`transition-transform duration-300 ${isSportOpen ? 'rotate-180' : ''}`} />
                         </button>
 
                         {isSportOpen && (
-                            <div className="absolute top-full right-0 sm:left-0 sm:right-auto lg:right-0 lg:left-auto mt-2 w-48 bg-surface border border-white/[0.04] rounded-2xl shadow-2xl overflow-hidden py-2 backdrop-blur-xl">
+                            <div className="absolute top-full right-0 sm:left-0 sm:right-auto lg:right-0 lg:left-auto mt-2 w-52 bg-surface border border-white/[0.04] rounded-2xl shadow-2xl max-h-[60vh] overflow-y-auto py-2 backdrop-blur-xl">
                                 {sportsList.map(opt => (
                                     <button
                                         type="button"
@@ -356,7 +357,7 @@ export default function AdminBookingsPage() {
                                 <tr key={b.id} onClick={() => setDetailBooking(b)} className="border-b border-white/[0.04] last:border-0 hover:bg-white/[0.025] transition-colors group cursor-pointer">
                                     <td className="px-6 py-5 pl-8">
                                         <div className="flex items-center gap-2 text-text-main/60 font-black text-xs tracking-wider uppercase">
-                                            <span className="text-primary/50">#</span>{b.id}
+                                            <span className="text-primary/50">#</span>{b.refId}
                                         </div>
                                     </td>
                                     <td className="px-6 py-5">
@@ -409,7 +410,7 @@ export default function AdminBookingsPage() {
                                                 {b.rawStatus !== "completed" && b.rawStatus !== "cancelled" && (
                                                     <button
                                                         type="button"
-                                                        onClick={(e) => { e.stopPropagation(); requestAction(b.id, b.id, "complete"); }}
+                                                        onClick={(e) => { e.stopPropagation(); requestAction(b.id, b.refId, "complete"); }}
                                                         className="flex items-center gap-3 w-full px-4 py-3 text-xs font-bold text-text-main hover:bg-white/5 transition-colors"
                                                     >
                                                         <CheckCircle size={14} className="text-green-500" /> Mark Completed
@@ -418,12 +419,19 @@ export default function AdminBookingsPage() {
                                                 {b.rawStatus !== "cancelled" && b.rawStatus !== "completed" && (
                                                     <button
                                                         type="button"
-                                                        onClick={(e) => { e.stopPropagation(); requestAction(b.id, b.id, "cancel"); }}
+                                                        onClick={(e) => { e.stopPropagation(); requestAction(b.id, b.refId, "cancel"); }}
                                                         className="flex items-center gap-3 w-full px-4 py-3 text-xs font-bold text-red-500 hover:bg-red-500/10 transition-colors"
                                                     >
                                                         <XCircle size={14} /> Cancel Booking
                                                     </button>
                                                 )}
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => { e.stopPropagation(); setDetailBooking(b); setActionMenuOpen(null); }}
+                                                    className="flex items-center gap-3 w-full px-4 py-3 text-xs font-bold text-text-main/70 hover:bg-white/5 transition-colors"
+                                                >
+                                                    <Edit2 size={14} className="text-primary/60" /> View Details
+                                                </button>
                                             </div>
                                         )}
                                     </td>
@@ -531,13 +539,13 @@ export default function AdminBookingsPage() {
                         {detailBooking.rawStatus !== "completed" && detailBooking.rawStatus !== "cancelled" && (
                             <div className="flex gap-3 mt-5 pt-4 border-t border-white/[0.04]">
                                 <button
-                                    onClick={() => { setDetailBooking(null); requestAction(detailBooking.id, detailBooking.id, "complete"); }}
+                                    onClick={() => { setDetailBooking(null); requestAction(detailBooking.id, detailBooking.refId, "complete"); }}
                                     className="flex-1 py-2.5 rounded-xl bg-green-500/10 text-green-500 text-xs font-black uppercase tracking-widest hover:bg-green-500/20 transition-colors border border-green-500/20"
                                 >
                                     Mark Complete
                                 </button>
                                 <button
-                                    onClick={() => { setDetailBooking(null); requestAction(detailBooking.id, detailBooking.id, "cancel"); }}
+                                    onClick={() => { setDetailBooking(null); requestAction(detailBooking.id, detailBooking.refId, "cancel"); }}
                                     className="flex-1 py-2.5 rounded-xl bg-red-500/10 text-red-500 text-xs font-black uppercase tracking-widest hover:bg-red-500/20 transition-colors border border-red-500/20"
                                 >
                                     Cancel

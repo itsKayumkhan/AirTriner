@@ -14,8 +14,8 @@ const MessagesContext = createContext<MessagesContextType | undefined>(undefined
 export function MessagesProvider({ children }: { children: ReactNode }) {
     const { user } = useAuth();
     const [dbUnreadCount, setDbUnreadCount] = useState(0);
-    // Track which bookingIds the user has already opened this session
-    const localReadIds = useRef<Set<string>>(new Set());
+    // Track how many unread messages we've locally marked as read per conversation
+    const localReadCounts = useRef<Map<string, number>>(new Map());
     const [localReadVersion, setLocalReadVersion] = useState(0); // trigger re-render
 
     const fetchDbCount = useCallback(async () => {
@@ -44,9 +44,28 @@ export function MessagesProvider({ children }: { children: ReactNode }) {
 
     const markConversationRead = useCallback(async (bookingId: string) => {
         if (!user) return;
-        // Immediately mark locally so badge clears without waiting for DB
-        if (!localReadIds.current.has(bookingId)) {
-            localReadIds.current.add(bookingId);
+        // Immediately count unread messages for this conversation and mark locally
+        if (!localReadCounts.current.has(bookingId)) {
+            try {
+                const { data: bookings } = await supabase
+                    .from("bookings")
+                    .select("id")
+                    .or(`athlete_id.eq.${user.id},trainer_id.eq.${user.id}`)
+                    .eq("id", bookingId);
+                if (bookings?.length) {
+                    const { count } = await supabase
+                        .from("messages")
+                        .select("id", { count: "exact", head: true })
+                        .eq("booking_id", bookingId)
+                        .neq("sender_id", user.id)
+                        .is("read_at", null);
+                    localReadCounts.current.set(bookingId, count ?? 0);
+                } else {
+                    localReadCounts.current.set(bookingId, 0);
+                }
+            } catch {
+                localReadCounts.current.set(bookingId, 0);
+            }
             setLocalReadVersion(v => v + 1);
         }
         // Best-effort DB update (may succeed if RLS allows it)
@@ -64,12 +83,13 @@ export function MessagesProvider({ children }: { children: ReactNode }) {
         }
     }, [user, fetchDbCount]);
 
-    // Compute displayed count: DB count minus conversations we've already opened
+    // Compute displayed count: DB count minus total messages we've locally marked as read
     // (bounded at 0 to handle race conditions)
-    const unreadCount = Math.max(0, dbUnreadCount - localReadIds.current.size);
+    const locallyReadTotal = Array.from(localReadCounts.current.values()).reduce((sum, n) => sum + n, 0);
+    const unreadCount = Math.max(0, dbUnreadCount - locallyReadTotal);
 
     useEffect(() => {
-        if (!user) { setDbUnreadCount(0); localReadIds.current.clear(); return; }
+        if (!user) { setDbUnreadCount(0); localReadCounts.current.clear(); return; }
 
         fetchDbCount();
 

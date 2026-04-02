@@ -628,7 +628,7 @@ export default function BookTrainerPage() {
                     {/* About */}
                     <div>
                         <h2 className="text-xl font-black text-text-main mb-4">About {trainer.user?.first_name}</h2>
-                        <p className="text-text-main/60 text-[15px] leading-relaxed">
+                        <p className="text-text-main/60 text-base leading-relaxed">
                             {trainer.bio || `Specializing in high-performance athletic training and metabolic conditioning. My approach combines data-driven science with old-school grit to help you push past plateaus and redefine your physical limits. Whether you're an elite athlete or just starting your journey, we'll build a foundation of functional strength and explosive power.`}
                         </p>
                     </div>
@@ -641,7 +641,7 @@ export default function BookTrainerPage() {
                             return certs.length > 0 ? (
                                 <div className="flex flex-wrap gap-2">
                                     {certs.map((cert, i) => (
-                                        <span key={i} className="inline-flex items-center gap-2 px-4 py-2.5 bg-surface border border-white/[0.08] rounded-xl text-sm font-semibold text-text-main/80">
+                                        <span key={i} className="inline-flex items-center gap-2 px-4 py-2.5 bg-surface border border-white/[0.08] rounded-xl text-base font-semibold text-text-main/80">
                                             <BadgeCheck size={15} className="text-primary/70 shrink-0" />
                                             {cert}
                                         </span>
@@ -659,7 +659,7 @@ export default function BookTrainerPage() {
                             <h2 className="text-xl font-black text-text-main mb-4">Session Lengths</h2>
                             <div className="flex flex-wrap gap-2">
                                 {[...trainer.session_lengths].sort((a, b) => a - b).map((d, i) => (
-                                    <span key={i} className="bg-surface border border-white/5 text-text-main/80 px-4 py-2 rounded-full text-xs font-bold uppercase tracking-wider">
+                                    <span key={i} className="bg-surface border border-white/5 text-text-main/80 px-4 py-2 rounded-full text-sm font-bold uppercase tracking-wider">
                                         {d < 60 ? `${d} min` : d === 60 ? '1 hr' : d === 90 ? '1.5 hr' : `${d / 60} hr`}
                                     </span>
                                 ))}
@@ -673,7 +673,7 @@ export default function BookTrainerPage() {
                             <h2 className="text-xl font-black text-text-main mb-4">Training Locations</h2>
                             <div className="flex flex-wrap gap-2">
                                 {trainer.training_locations.map((loc, i) => (
-                                    <span key={i} className="bg-surface border border-white/5 text-text-main/80 px-4 py-2 rounded-full text-xs font-bold uppercase tracking-wider">
+                                    <span key={i} className="bg-surface border border-white/5 text-text-main/80 px-4 py-2 rounded-full text-sm font-bold uppercase tracking-wider">
                                         {loc}
                                     </span>
                                 ))}

@@ -217,6 +217,7 @@ export default function ProfilePage() {
     const handleSave = async () => {
         if (!user) return;
         if (!validate()) {
+            setError("Please fix the highlighted fields below before saving.");
             window.scrollTo({ top: 0, behavior: "smooth" });
             return;
         }

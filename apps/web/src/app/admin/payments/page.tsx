@@ -483,13 +483,13 @@ export default function AdminPaymentsPage() {
                     <table className="w-full text-left border-collapse whitespace-nowrap">
                         <thead>
                             <tr className="border-b border-white/5 text-[10px] uppercase font-black tracking-widest text-text-main/40 bg-white/5">
-                                <th className="px-6 py-5 pl-8">Txn Ref</th>
-                                <th className="px-6 py-5">Customer</th>
-                                <th className="px-6 py-5">Trainer</th>
-                                <th className="px-6 py-5">Processed Date</th>
-                                <th className="px-6 py-5">Amount (USD)</th>
-                                <th className="px-6 py-5">Status</th>
-                                <th className="px-6 py-5 pr-8 text-right">Action</th>
+                                <th className="px-6 py-5 pl-8 text-center">Txn Ref</th>
+                                <th className="px-6 py-5 text-center">Customer</th>
+                                <th className="px-6 py-5 text-center">Trainer</th>
+                                <th className="px-6 py-5 text-center">Processed Date</th>
+                                <th className="px-6 py-5 text-center">Amount (USD)</th>
+                                <th className="px-6 py-5 text-center">Status</th>
+                                <th className="px-6 py-5 pr-8 text-center">Action</th>
                             </tr>
                         </thead>
                         <tbody className="text-sm">
@@ -513,30 +513,30 @@ export default function AdminPaymentsPage() {
                             ) : (
                                 transactions.map((t) => (
                                     <tr key={t.id} className="border-b border-white/[0.04] hover:bg-white/5 transition-colors group">
-                                        <td className="px-6 py-5 pl-8">
-                                            <div className="flex items-center gap-2 text-text-main/60 font-black text-xs tracking-wider uppercase">
+                                        <td className="px-6 py-5 pl-8 text-center">
+                                            <div className="flex items-center justify-center gap-2 text-text-main/60 font-black text-xs tracking-wider uppercase">
                                                 {t.displayId}
                                             </div>
                                         </td>
-                                        <td className="px-6 py-5">
-                                            <div className="flex items-center gap-3">
+                                        <td className="px-6 py-5 text-center">
+                                            <div className="flex items-center justify-center gap-3">
                                                 <div className="w-8 h-8 rounded-full bg-white/5 text-text-main flex items-center justify-center font-black text-xs border border-white/[0.04] flex-shrink-0">
                                                     {t.initials}
                                                 </div>
                                                 <span className="font-bold text-text-main tracking-wide group-hover:text-primary transition-colors cursor-pointer">{t.customer}</span>
                                             </div>
                                         </td>
-                                        <td className="px-6 py-5">
-                                            <div className="flex items-center gap-3">
+                                        <td className="px-6 py-5 text-center">
+                                            <div className="flex items-center justify-center gap-3">
                                                 <div className="w-8 h-8 rounded-full bg-[#1e3a8a]/30 text-text-main/80 flex items-center justify-center font-bold text-xs border border-[#2563eb]/20 flex-shrink-0">
                                                     {t.trainerInitials}
                                                 </div>
                                                 <span className="font-medium text-text-main/80">{t.trainer}</span>
                                             </div>
                                         </td>
-                                        <td className="px-6 py-5 text-text-main/60 font-medium">{t.date}</td>
-                                        <td className="px-6 py-5 font-black text-text-main text-base tracking-tighter">{t.amount}</td>
-                                        <td className="px-6 py-5">
+                                        <td className="px-6 py-5 text-center text-text-main/60 font-medium">{t.date}</td>
+                                        <td className="px-6 py-5 text-center font-black text-text-main text-base tracking-tighter">{t.amount}</td>
+                                        <td className="px-6 py-5 text-center">
                                             <span className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[10px] font-black uppercase tracking-widest inline-flex ${
                                                 t.status === "released"
                                                     ? "bg-primary/10 text-primary border-primary/20"
@@ -550,7 +550,7 @@ export default function AdminPaymentsPage() {
                                                 {t.status}
                                             </span>
                                         </td>
-                                        <td className="px-6 py-5 pr-8 text-right relative">
+                                        <td className="px-6 py-5 pr-8 text-center relative">
                                             {t.status === "held" ? (
                                                 <div className="flex flex-col items-end gap-1.5">
                                                     {/* Edge case badges */}

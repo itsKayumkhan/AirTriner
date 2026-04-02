@@ -121,10 +121,8 @@ function RegisterForm() {
                 role: role as "athlete" | "trainer",
                 dateOfBirth,
                 sports: selectedSports,
-                ...(role === "athlete" ? {
-                    skillLevel: skillLevel || undefined,
-                    city: city || undefined,
-                } : {}),
+                ...(role === "athlete" ? { skillLevel: skillLevel || undefined } : {}),
+                city: city || undefined,
             });
             router.push(role === "trainer" ? "/dashboard/trainer/setup" : "/dashboard");
         } catch (err: unknown) {
