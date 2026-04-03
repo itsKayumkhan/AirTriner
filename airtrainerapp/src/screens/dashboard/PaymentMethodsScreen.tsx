@@ -10,9 +10,16 @@ import {
     RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as WebBrowser from 'expo-web-browser';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows } from '../../theme';
+
+// ─── API URL ─────────────────────────────────────────────────────────────────
+
+const API_URL = 'https://api.airtrainr.com/api/v1';
+
+// ─── Types ───────────────────────────────────────────────────────────────────
 
 type Transaction = {
     id: string;
@@ -25,6 +32,8 @@ type Transaction = {
     athlete_id: string | null;
     trainer_id: string | null;
 };
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function formatCurrency(amount: number): string {
     return `$${Number(amount).toFixed(2)}`;
@@ -52,6 +61,8 @@ function getStatusColor(status: string): string {
 function getStatusLabel(status: string): string {
     return status.charAt(0).toUpperCase() + status.slice(1);
 }
+
+// ─── Sub-components ──────────────────────────────────────────────────────────
 
 function SportPill({ sport }: { sport: string | null }) {
     if (!sport) return null;
@@ -102,11 +113,14 @@ function TransactionItem({ tx }: { tx: Transaction }) {
     );
 }
 
+// ─── Main Component ──────────────────────────────────────────────────────────
+
 export default function PaymentMethodsScreen({ navigation }: any) {
     const { user } = useAuth();
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
+    const [connecting, setConnecting] = useState(false);
 
     const isTrainer = user?.role === 'trainer';
     const trainerProfile = user?.trainerProfile;
@@ -147,12 +161,44 @@ export default function PaymentMethodsScreen({ navigation }: any) {
         setRefreshing(false);
     };
 
-    const handleConnectStripe = () => {
-        Alert.alert(
-            'Connect Stripe',
-            'Stripe payout setup is coming soon! You\'ll be able to receive payments directly to your bank account.',
-            [{ text: 'OK' }]
-        );
+    // ── Stripe Connect handler ───────────────────────────────────────────────
+
+    const handleConnectStripe = async () => {
+        setConnecting(true);
+        try {
+            // Get the current session for auth token
+            const { data: sessionData } = await supabase.auth.getSession();
+            const accessToken = sessionData?.session?.access_token;
+
+            const response = await fetch(`${API_URL}/payments/trainer/onboarding`, {
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+                },
+            });
+
+            if (response.ok) {
+                const { url } = await response.json();
+                if (url) {
+                    await WebBrowser.openBrowserAsync(url);
+                    // Refresh status after returning from Stripe
+                    fetchTransactions();
+                }
+            } else {
+                // Fallback: direct user to web
+                Alert.alert(
+                    'Stripe Connect',
+                    'To connect your Stripe account, please visit airtrainr.com on your computer and go to Payment Methods in your profile settings.'
+                );
+            }
+        } catch (error) {
+            Alert.alert(
+                'Stripe Connect',
+                'To connect your Stripe account, please visit airtrainr.com on your computer and go to Payment Methods.'
+            );
+        } finally {
+            setConnecting(false);
+        }
     };
 
     const handleAddPaymentMethod = () => {
@@ -200,42 +246,57 @@ export default function PaymentMethodsScreen({ navigation }: any) {
                 {isTrainer ? (
                     <View style={styles.section}>
                         <Text style={styles.sectionLabel}>PAYOUT ACCOUNT</Text>
-                        <View style={styles.paymentCard}>
-                            <View style={styles.paymentCardLeft}>
-                                <View
-                                    style={[
-                                        styles.paymentIconWrap,
-                                        stripeConnected
-                                            ? styles.paymentIconWrapConnected
-                                            : styles.paymentIconWrapPending,
-                                    ]}
-                                >
-                                    <Ionicons
-                                        name={stripeConnected ? 'checkmark-circle' : 'alert-circle-outline'}
-                                        size={24}
-                                        color={stripeConnected ? Colors.success : Colors.warning}
-                                    />
+
+                        {stripeConnected ? (
+                            /* Connected State */
+                            <View style={styles.stripeConnectedCard}>
+                                <View style={styles.stripeConnectedLeft}>
+                                    <View style={styles.stripeConnectedIconWrap}>
+                                        <Ionicons name="checkmark-circle" size={24} color={Colors.success} />
+                                    </View>
+                                    <View style={styles.paymentCardInfo}>
+                                        <Text style={styles.paymentCardTitle}>Stripe Connected</Text>
+                                        <Text style={styles.paymentCardSubtitle}>
+                                            Account: {'\u00B7\u00B7\u00B7'}{trainerProfile!.stripe_account_id!.slice(-6)}
+                                        </Text>
+                                    </View>
                                 </View>
-                                <View style={styles.paymentCardInfo}>
-                                    <Text style={styles.paymentCardTitle}>
-                                        {stripeConnected ? 'Stripe Connected' : 'Stripe Not Connected'}
-                                    </Text>
-                                    <Text style={styles.paymentCardSubtitle}>
-                                        {stripeConnected
-                                            ? `Account: ···${trainerProfile!.stripe_account_id!.slice(-6)}`
-                                            : 'Connect to receive payouts'}
-                                    </Text>
+                                <View style={styles.stripeConnectedBadge}>
+                                    <Ionicons name="checkmark" size={14} color={Colors.success} />
+                                    <Text style={styles.stripeConnectedBadgeText}>Active</Text>
                                 </View>
                             </View>
-                            {!stripeConnected && (
+                        ) : (
+                            /* Not Connected State */
+                            <View style={styles.stripeWarningCard}>
+                                <View style={styles.stripeWarningIconRow}>
+                                    <View style={styles.stripeWarningIconWrap}>
+                                        <Ionicons name="alert-circle-outline" size={28} color={Colors.warning} />
+                                    </View>
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={styles.stripeWarningTitle}>Connect to Receive Payouts</Text>
+                                        <Text style={styles.stripeWarningSubtitle}>
+                                            Link your Stripe account to start receiving payments from completed sessions.
+                                        </Text>
+                                    </View>
+                                </View>
                                 <TouchableOpacity
-                                    style={styles.connectButton}
+                                    style={styles.stripeConnectBtn}
                                     onPress={handleConnectStripe}
+                                    activeOpacity={0.85}
+                                    disabled={connecting}
                                 >
-                                    <Text style={styles.connectButtonText}>Connect</Text>
+                                    {connecting ? (
+                                        <ActivityIndicator size="small" color="#fff" />
+                                    ) : (
+                                        <>
+                                            <Ionicons name="link-outline" size={18} color="#fff" />
+                                            <Text style={styles.stripeConnectBtnText}>Connect Stripe Account</Text>
+                                        </>
+                                    )}
                                 </TouchableOpacity>
-                            )}
-                        </View>
+                            </View>
+                        )}
 
                         {/* Payout info strip */}
                         <View style={styles.payoutInfoStrip}>
@@ -305,9 +366,19 @@ export default function PaymentMethodsScreen({ navigation }: any) {
                         <Text style={styles.stripeCtaText}>
                             Connect your Stripe account to automatically receive payouts after each completed session. No delays, no hassle.
                         </Text>
-                        <TouchableOpacity style={styles.stripeCtaButton} onPress={handleConnectStripe}>
-                            <Ionicons name="link-outline" size={18} color={Colors.background} />
-                            <Text style={styles.stripeCtaButtonText}>Connect Stripe Account</Text>
+                        <TouchableOpacity
+                            style={styles.stripeCtaButton}
+                            onPress={handleConnectStripe}
+                            disabled={connecting}
+                        >
+                            {connecting ? (
+                                <ActivityIndicator size="small" color={Colors.background} />
+                            ) : (
+                                <>
+                                    <Ionicons name="link-outline" size={18} color={Colors.background} />
+                                    <Text style={styles.stripeCtaButtonText}>Connect Stripe Account</Text>
+                                </>
+                            )}
                         </TouchableOpacity>
                     </View>
                 )}
@@ -315,6 +386,8 @@ export default function PaymentMethodsScreen({ navigation }: any) {
         </View>
     );
 }
+
+// ─── Styles ──────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
     container: {
@@ -371,8 +444,8 @@ const styles = StyleSheet.create({
         letterSpacing: 1.2,
     },
 
-    // Payment Card (trainer & athlete)
-    paymentCard: {
+    // Stripe Connected Card
+    stripeConnectedCard: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
@@ -380,28 +453,90 @@ const styles = StyleSheet.create({
         borderRadius: BorderRadius.lg,
         padding: Spacing.lg,
         borderWidth: 1,
-        borderColor: Colors.border,
+        borderColor: Colors.success + '44',
         ...Shadows.small,
     },
-    paymentCardLeft: {
+    stripeConnectedLeft: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: Spacing.md,
         flex: 1,
     },
-    paymentIconWrap: {
+    stripeConnectedIconWrap: {
         width: 44,
         height: 44,
         borderRadius: BorderRadius.md,
+        backgroundColor: 'rgba(0,200,83,0.12)',
         justifyContent: 'center',
         alignItems: 'center',
     },
-    paymentIconWrapConnected: {
+    stripeConnectedBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
         backgroundColor: 'rgba(0,200,83,0.12)',
+        paddingHorizontal: Spacing.md,
+        paddingVertical: 4,
+        borderRadius: BorderRadius.pill,
+        borderWidth: 1,
+        borderColor: Colors.success + '44',
     },
-    paymentIconWrapPending: {
+    stripeConnectedBadgeText: {
+        fontSize: FontSize.xs,
+        fontWeight: FontWeight.bold,
+        color: Colors.success,
+    },
+
+    // Stripe Warning Card (not connected)
+    stripeWarningCard: {
+        backgroundColor: Colors.card,
+        borderRadius: BorderRadius.lg,
+        padding: Spacing.lg,
+        borderWidth: 1,
+        borderColor: Colors.warning + '44',
+        gap: Spacing.lg,
+        ...Shadows.small,
+    },
+    stripeWarningIconRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.md,
+    },
+    stripeWarningIconWrap: {
+        width: 48,
+        height: 48,
+        borderRadius: BorderRadius.md,
         backgroundColor: Colors.warningLight,
+        justifyContent: 'center',
+        alignItems: 'center',
     },
+    stripeWarningTitle: {
+        fontSize: FontSize.md,
+        fontWeight: FontWeight.bold,
+        color: Colors.text,
+    },
+    stripeWarningSubtitle: {
+        fontSize: FontSize.sm,
+        color: Colors.textSecondary,
+        marginTop: 2,
+        lineHeight: 20,
+    },
+    stripeConnectBtn: {
+        backgroundColor: Colors.primary,
+        borderRadius: BorderRadius.md,
+        paddingVertical: Spacing.md,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: Spacing.sm,
+    },
+    stripeConnectBtnText: {
+        fontSize: FontSize.md,
+        fontWeight: FontWeight.bold,
+        color: '#fff',
+    },
+
+    // Payment card info (shared)
     paymentCardInfo: {
         flex: 1,
         gap: 3,
@@ -414,19 +549,6 @@ const styles = StyleSheet.create({
     paymentCardSubtitle: {
         fontSize: FontSize.sm,
         color: Colors.textSecondary,
-    },
-
-    // Connect button
-    connectButton: {
-        backgroundColor: Colors.primary,
-        paddingHorizontal: Spacing.lg,
-        paddingVertical: Spacing.sm,
-        borderRadius: BorderRadius.md,
-    },
-    connectButtonText: {
-        fontSize: FontSize.sm,
-        fontWeight: FontWeight.semibold,
-        color: Colors.background,
     },
 
     // Payout info strip
@@ -447,37 +569,6 @@ const styles = StyleSheet.create({
     payoutInfoText: {
         fontSize: FontSize.xs,
         color: Colors.textSecondary,
-    },
-
-    // Visa card icon
-    visaCardIconWrap: {
-        width: 52,
-        height: 36,
-        borderRadius: BorderRadius.sm,
-        backgroundColor: Colors.accent,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    visaLabel: {
-        fontSize: 11,
-        fontWeight: FontWeight.heavy,
-        color: '#ffffff',
-        letterSpacing: 0.5,
-    },
-
-    // Default badge
-    defaultBadge: {
-        backgroundColor: Colors.primaryGlow,
-        paddingHorizontal: Spacing.sm,
-        paddingVertical: 3,
-        borderRadius: BorderRadius.pill,
-        borderWidth: 1,
-        borderColor: Colors.borderActive,
-    },
-    defaultBadgeText: {
-        fontSize: FontSize.xs,
-        fontWeight: FontWeight.semibold,
-        color: Colors.primary,
     },
 
     // Coming soon card

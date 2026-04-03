@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import {
-    View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Alert, ActivityIndicator,
+    View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Alert, ActivityIndicator, Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
+import * as Location from 'expo-location';
 import { Colors, Spacing, BorderRadius, FontSize, FontWeight } from '../../theme';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
@@ -16,6 +18,7 @@ const TRAINING_TYPES = [
     { key: 'pre_season', label: 'Pre-Season' },
     { key: 'in_season', label: 'In-Season' },
 ];
+const TRAINING_TIMES = ['Morning', 'Afternoon', 'Evening'];
 
 export default function EditProfileScreen({ navigation }: any) {
     const { user, refreshUser } = useAuth();
@@ -24,6 +27,9 @@ export default function EditProfileScreen({ navigation }: any) {
 
     const [firstName, setFirstName] = useState(user?.firstName || '');
     const [lastName, setLastName] = useState(user?.lastName || '');
+    // Avatar
+    const [avatarUrl, setAvatarUrl] = useState(user?.avatarUrl || '');
+    const [avatarLoading, setAvatarLoading] = useState(false);
     // Trainer-specific
     const [headline, setHeadline] = useState(tp?.headline || '');
     const [bio, setBio] = useState(tp?.bio || '');
@@ -34,6 +40,95 @@ export default function EditProfileScreen({ navigation }: any) {
     const [city, setCity] = useState(tp?.city || user?.athleteProfile?.city || '');
     const [stateVal, setStateVal] = useState(tp?.state || user?.athleteProfile?.state || '');
     const [isSaving, setIsSaving] = useState(false);
+    // Location (athlete)
+    const [locationLoading, setLocationLoading] = useState(false);
+    // Preferred training times (athlete)
+    const [selectedTrainingTimes, setSelectedTrainingTimes] = useState<string[]>(
+        user?.athleteProfile?.preferredTrainingTimes || []
+    );
+
+    const getInitials = () => {
+        const f = (firstName || user?.firstName || '').charAt(0).toUpperCase();
+        const l = (lastName || user?.lastName || '').charAt(0).toUpperCase();
+        return `${f}${l}` || '?';
+    };
+
+    const handlePickAvatar = async () => {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+            Alert.alert('Permission needed', 'Please allow photo access to upload an avatar.');
+            return;
+        }
+
+        const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ['images'],
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.7,
+        });
+
+        if (!result.canceled && result.assets[0]) {
+            setAvatarLoading(true);
+            try {
+                const asset = result.assets[0];
+                const fileName = `avatars/${user!.id}_${Date.now()}.jpg`;
+
+                // Read file and upload to Supabase storage
+                const response = await fetch(asset.uri);
+                const blob = await response.blob();
+
+                const { error: uploadError } = await supabase.storage
+                    .from('avatars')
+                    .upload(fileName, blob, { contentType: 'image/jpeg', upsert: true });
+
+                if (uploadError) {
+                    Alert.alert('Upload Failed', uploadError.message);
+                    setAvatarLoading(false);
+                    return;
+                }
+
+                const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(fileName);
+
+                await supabase.from('users').update({ avatar_url: publicUrl }).eq('id', user!.id);
+                setAvatarUrl(publicUrl);
+            } catch (error: any) {
+                Alert.alert('Upload Failed', error.message || 'Could not upload avatar.');
+            } finally {
+                setAvatarLoading(false);
+            }
+        }
+    };
+
+    const handleSetLocation = async () => {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') {
+            Alert.alert('Permission needed', 'Location access is needed for trainer matching.');
+            return;
+        }
+
+        setLocationLoading(true);
+        try {
+            const location = await Location.getCurrentPositionAsync({});
+            const { latitude, longitude } = location.coords;
+
+            // Reverse geocode to get city
+            const [geocode] = await Location.reverseGeocodeAsync({ latitude, longitude });
+
+            await supabase.from('athlete_profiles').update({
+                latitude, longitude,
+                city: geocode?.city || city,
+                state: geocode?.region || stateVal,
+            }).eq('user_id', user!.id);
+
+            setCity(geocode?.city || city);
+            setStateVal(geocode?.region || stateVal);
+            Alert.alert('Location Updated', `Set to ${geocode?.city}, ${geocode?.region}`);
+        } catch (error: any) {
+            Alert.alert('Location Error', error.message || 'Could not fetch location.');
+        } finally {
+            setLocationLoading(false);
+        }
+    };
 
     const toggleSport = (sport: string) => {
         setSelectedSports((prev) =>
@@ -44,6 +139,12 @@ export default function EditProfileScreen({ navigation }: any) {
     const toggleTrainingType = (type: string) => {
         setSelectedTrainingTypes((prev) =>
             prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]
+        );
+    };
+
+    const toggleTrainingTime = (time: string) => {
+        setSelectedTrainingTimes((prev) =>
+            prev.includes(time) ? prev.filter((t) => t !== time) : [...prev, time]
         );
     };
 
@@ -76,6 +177,19 @@ export default function EditProfileScreen({ navigation }: any) {
                 if (trainerError) throw trainerError;
             }
 
+            // Update athlete profile (training times + location)
+            if (!isTrainer) {
+                const { error: athleteError } = await supabase
+                    .from('athlete_profiles')
+                    .update({
+                        preferred_training_times: selectedTrainingTimes,
+                        city: city.trim(),
+                        state: stateVal.trim(),
+                    })
+                    .eq('user_id', user.id);
+                if (athleteError) throw athleteError;
+            }
+
             await refreshUser();
             Alert.alert('Success', 'Profile updated successfully.', [
                 { text: 'OK', onPress: () => navigation.goBack() },
@@ -98,6 +212,31 @@ export default function EditProfileScreen({ navigation }: any) {
             </View>
 
             <ScrollView contentContainerStyle={styles.contentContainer} showsVerticalScrollIndicator={false}>
+                {/* Avatar Section */}
+                <View style={styles.avatarSection}>
+                    <View style={styles.avatarWrapper}>
+                        {avatarUrl ? (
+                            <Image source={{ uri: avatarUrl }} style={styles.avatar} />
+                        ) : (
+                            <View style={[styles.avatar, styles.avatarPlaceholder]}>
+                                <Text style={styles.avatarInitials}>{getInitials()}</Text>
+                            </View>
+                        )}
+                        <View style={styles.cameraIconOverlay}>
+                            <Ionicons name="camera" size={16} color="#fff" />
+                        </View>
+                        {avatarLoading && (
+                            <View style={styles.avatarLoadingOverlay}>
+                                <ActivityIndicator color="#fff" size="small" />
+                            </View>
+                        )}
+                    </View>
+                    <TouchableOpacity style={styles.changePhotoButton} onPress={handlePickAvatar} disabled={avatarLoading}>
+                        <Ionicons name="image-outline" size={18} color={Colors.primary} style={{ marginRight: 6 }} />
+                        <Text style={styles.changePhotoText}>Change Photo</Text>
+                    </TouchableOpacity>
+                </View>
+
                 {/* Basic Info */}
                 <Text style={styles.sectionTitle}>Basic Info</Text>
                 <View style={styles.row}>
@@ -130,6 +269,20 @@ export default function EditProfileScreen({ navigation }: any) {
                         <TextInput style={styles.input} value={stateVal} onChangeText={setStateVal} placeholderTextColor={Colors.textTertiary} placeholder="State" />
                     </View>
                 </View>
+
+                {/* GPS Location Button (athlete only) */}
+                {!isTrainer && (
+                    <TouchableOpacity style={styles.locationButton} onPress={handleSetLocation} disabled={locationLoading}>
+                        {locationLoading ? (
+                            <ActivityIndicator color="#fff" size="small" />
+                        ) : (
+                            <>
+                                <Ionicons name="map-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
+                                <Text style={styles.locationButtonText}>Set My Location via GPS</Text>
+                            </>
+                        )}
+                    </TouchableOpacity>
+                )}
 
                 {/* Trainer-only sections */}
                 {isTrainer && (
@@ -177,6 +330,20 @@ export default function EditProfileScreen({ navigation }: any) {
                     </>
                 )}
 
+                {/* Athlete-only: Preferred Training Times */}
+                {!isTrainer && (
+                    <>
+                        <Text style={styles.sectionTitle}>Preferred Training Times</Text>
+                        <View style={styles.chipContainer}>
+                            {TRAINING_TIMES.map((time) => (
+                                <TouchableOpacity key={time} style={[styles.chip, selectedTrainingTimes.includes(time) && styles.chipActive]} onPress={() => toggleTrainingTime(time)}>
+                                    <Text style={[styles.chipText, selectedTrainingTimes.includes(time) && styles.chipTextActive]}>{time}</Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+                    </>
+                )}
+
                 <TouchableOpacity
                     style={[styles.saveButton, (!firstName.trim() || isSaving) && styles.saveButtonDisabled]}
                     onPress={handleSave}
@@ -200,6 +367,42 @@ const styles = StyleSheet.create({
     backButton: { width: 44, height: 44, borderRadius: 14, backgroundColor: Colors.surface, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: Colors.border },
     headerTitle: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: Colors.text },
     contentContainer: { padding: Spacing.xxl },
+    // Avatar
+    avatarSection: { alignItems: 'center', marginBottom: Spacing.lg },
+    avatarWrapper: { position: 'relative', marginBottom: Spacing.sm },
+    avatar: { width: 100, height: 100, borderRadius: 50, borderWidth: 3, borderColor: Colors.primary },
+    avatarPlaceholder: { backgroundColor: Colors.surface, justifyContent: 'center', alignItems: 'center' },
+    avatarInitials: { fontSize: 36, fontWeight: FontWeight.bold, color: Colors.primary },
+    cameraIconOverlay: {
+        position: 'absolute', bottom: 0, right: 0,
+        width: 32, height: 32, borderRadius: 16,
+        backgroundColor: Colors.primary,
+        justifyContent: 'center', alignItems: 'center',
+        borderWidth: 2, borderColor: Colors.background,
+    },
+    avatarLoadingOverlay: {
+        ...StyleSheet.absoluteFillObject,
+        borderRadius: 50,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        justifyContent: 'center', alignItems: 'center',
+    },
+    changePhotoButton: {
+        flexDirection: 'row', alignItems: 'center',
+        paddingHorizontal: Spacing.lg, paddingVertical: Spacing.sm,
+        borderRadius: BorderRadius.pill,
+        borderWidth: 1, borderColor: Colors.primary,
+    },
+    changePhotoText: { fontSize: FontSize.sm, fontWeight: FontWeight.medium, color: Colors.primary },
+    // Location button
+    locationButton: {
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+        backgroundColor: Colors.info,
+        padding: Spacing.md,
+        borderRadius: BorderRadius.md,
+        marginBottom: Spacing.lg,
+    },
+    locationButtonText: { color: '#fff', fontSize: FontSize.sm, fontWeight: FontWeight.bold },
+    // Existing styles
     sectionTitle: { fontSize: FontSize.md, fontWeight: FontWeight.bold, color: Colors.text, marginTop: Spacing.xxl, marginBottom: Spacing.md },
     row: { flexDirection: 'row', gap: Spacing.md },
     formGroup: { marginBottom: Spacing.lg },

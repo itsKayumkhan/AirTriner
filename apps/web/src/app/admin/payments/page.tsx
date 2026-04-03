@@ -487,7 +487,7 @@ export default function AdminPaymentsPage() {
                                 <th className="px-6 py-5 text-center">Customer</th>
                                 <th className="px-6 py-5 text-center">Trainer</th>
                                 <th className="px-6 py-5 text-center">Processed Date</th>
-                                <th className="px-6 py-5 text-center">Amount (USD)</th>
+                                <th className="px-6 py-5 text-center">Payout (USD)</th>
                                 <th className="px-6 py-5 text-center">Status</th>
                                 <th className="px-6 py-5 pr-8 text-center">Action</th>
                             </tr>
@@ -535,7 +535,10 @@ export default function AdminPaymentsPage() {
                                             </div>
                                         </td>
                                         <td className="px-6 py-5 text-center text-text-main/60 font-medium">{t.date}</td>
-                                        <td className="px-6 py-5 text-center font-black text-text-main text-base tracking-tighter">{t.amount}</td>
+                                        <td className="px-6 py-5 text-center">
+                                            <div className="font-black text-text-main text-base tracking-tighter">{t.trainerPayout}</div>
+                                            <div className="text-[10px] text-orange-400/70 font-bold mt-0.5">Fee: {t.platformFee}</div>
+                                        </td>
                                         <td className="px-6 py-5 text-center">
                                             <span className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[10px] font-black uppercase tracking-widest inline-flex ${
                                                 t.status === "released"

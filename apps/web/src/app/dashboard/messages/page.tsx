@@ -8,7 +8,8 @@ import { supabase } from "@/lib/supabase";
 import { useMessages } from "@/context/MessagesContext";
 
 interface Conversation {
-    bookingId: string;
+    bookingId: string;       // most recent booking id (for display)
+    allBookingIds: string[]; // all booking ids with this user
     otherUserId: string;
     otherUserName: string;
     otherUserInitials: string;
@@ -86,16 +87,20 @@ export default function MessagesPage() {
                 if (payload.eventType === "INSERT") {
                     const bookingId = msg.booking_id;
                     if (!bookingId || !bookingIds.includes(bookingId)) return;
-                    if (bookingId === selectedBookingId) {
+                    // Find the merged conversation that owns this booking ID
+                    setConversations((prev) => {
+                        const existing = prev.find(c => c.allBookingIds.includes(bookingId));
+                        if (!existing) return prev;
+                        const isActive = existing.bookingId === selectedBookingId;
+                        const updated = { ...existing, lastMessage: msg.content || existing.lastMessage, lastMessageAt: msg.created_at || existing.lastMessageAt, unreadCount: (isActive || msg.sender_id === user.id) ? 0 : existing.unreadCount + 1 };
+                        return [updated, ...prev.filter(c => !c.allBookingIds.includes(bookingId))];
+                    });
+                    // If in the active conversation, add message to thread
+                    const activeConvo = conversations.find(c => c.bookingId === selectedBookingId);
+                    if (activeConvo?.allBookingIds.includes(bookingId)) {
                         setMessages((prev) => prev.some((m) => m.id === msg.id) ? prev : [...prev, msg as Message]);
                         if (msg.sender_id !== user.id) markAsReadApi(bookingId).catch(err => console.error('Failed to mark as read:', err));
                     }
-                    setConversations((prev) => {
-                        const existing = prev.find(c => c.bookingId === bookingId);
-                        if (!existing) return prev;
-                        const updated = { ...existing, lastMessage: msg.content || existing.lastMessage, lastMessageAt: msg.created_at || existing.lastMessageAt, unreadCount: (bookingId === selectedBookingId || msg.sender_id === user.id) ? 0 : existing.unreadCount + 1 };
-                        return [updated, ...prev.filter(c => c.bookingId !== bookingId)];
-                    });
                 }
             }).subscribe();
         return () => { subscription.unsubscribe(); };
@@ -117,22 +122,42 @@ export default function MessagesPage() {
             const userMap = new Map((otherUsers || []).map((u: any) => [u.id, u]));
             const bookingIds = bookings.map((b: any) => b.id);
             const { data: allMessages } = await supabase.from("messages").select("*").in("booking_id", bookingIds).order("created_at", { ascending: false });
-            const convos: Conversation[] = bookings.map((b: any) => {
+            // Build one conversation per other user (merge all bookings)
+            const userConvoMap = new Map<string, Conversation>();
+            bookings.forEach((b: any) => {
                 const other = userMap.get(b[otherCol]) as any;
                 const tp = trainerMap.get(b[otherCol]) as any;
                 const bookingMessages = (allMessages || []).filter((m: Message) => m.booking_id === b.id);
                 const lastMsg = bookingMessages[0];
                 const unreadCount = bookingMessages.filter((m: any) => m.sender_id !== u.id && !m.read_at).length;
-                return {
-                    bookingId: b.id, otherUserId: b[otherCol],
-                    otherUserName: other ? `${other.first_name} ${other.last_name}` : "Unknown",
-                    otherUserInitials: other ? `${other.first_name[0]}${other.last_name[0]}`.toUpperCase() : "?",
-                    sport: b.sport, lastMessage: lastMsg?.content || "No messages yet",
-                    lastMessageAt: lastMsg?.created_at || b.id, unreadCount,
-                    otherUserFounding50: tp?.is_founding_50 ?? false,
-                    otherUserVerified: tp?.is_verified ?? false,
-                };
+                const existing = userConvoMap.get(b[otherCol]);
+                if (existing) {
+                    // Merge: accumulate booking IDs, unread counts; keep latest message
+                    existing.allBookingIds.push(b.id);
+                    existing.unreadCount += unreadCount;
+                    const existingTime = new Date(existing.lastMessageAt).getTime();
+                    const thisTime = lastMsg ? new Date(lastMsg.created_at).getTime() : 0;
+                    if (thisTime > existingTime) {
+                        existing.lastMessage = lastMsg?.content || existing.lastMessage;
+                        existing.lastMessageAt = lastMsg?.created_at || existing.lastMessageAt;
+                        existing.bookingId = b.id;
+                        existing.sport = b.sport;
+                    }
+                } else {
+                    userConvoMap.set(b[otherCol], {
+                        bookingId: b.id,
+                        allBookingIds: [b.id],
+                        otherUserId: b[otherCol],
+                        otherUserName: other ? `${other.first_name} ${other.last_name}` : "Unknown",
+                        otherUserInitials: other ? `${other.first_name[0]}${other.last_name[0]}`.toUpperCase() : "?",
+                        sport: b.sport, lastMessage: lastMsg?.content || "No messages yet",
+                        lastMessageAt: lastMsg?.created_at || b.id, unreadCount,
+                        otherUserFounding50: tp?.is_founding_50 ?? false,
+                        otherUserVerified: tp?.is_verified ?? false,
+                    });
+                }
             });
+            const convos = Array.from(userConvoMap.values());
             convos.sort((a, b) => {
                 const tA = new Date(a.lastMessageAt).getTime(), tB = new Date(b.lastMessageAt).getTime();
                 if (isNaN(tA) && isNaN(tB)) return 0;
@@ -142,22 +167,27 @@ export default function MessagesPage() {
             setConversations(convos);
             if (convos.length > 0 && !selectedBookingId) {
                 setSelectedBookingId(convos[0].bookingId);
-                loadMessages(convos[0].bookingId);
+                loadMessages(convos[0].bookingId, convos[0].allBookingIds);
+                // Mark first conversation as read on initial load
+                convos[0].allBookingIds.forEach(id => markConversationRead(id));
             }
         } catch (err) { console.error("Failed to load conversations:", err); }
         finally { setLoading(false); }
     };
 
-    const loadMessages = async (bookingId: string) => {
-        const { data } = await supabase.from("messages").select("*").eq("booking_id", bookingId).order("created_at", { ascending: true });
+    const loadMessages = async (bookingId: string, allIds?: string[]) => {
+        const ids = allIds || [bookingId];
+        const { data } = await supabase.from("messages").select("*").in("booking_id", ids).order("created_at", { ascending: true });
         setMessages((data || []) as Message[]);
     };
 
     const selectConversation = async (bookingId: string) => {
+        const convo = conversations.find(c => c.bookingId === bookingId);
         setSelectedBookingId(bookingId);
-        loadMessages(bookingId);
+        loadMessages(bookingId, convo?.allBookingIds);
         setConversations(prev => prev.map(c => c.bookingId === bookingId ? { ...c, unreadCount: 0 } : c));
-        markAsReadApi(bookingId);
+        // Mark all booking IDs for this conversation as read
+        (convo?.allBookingIds || [bookingId]).forEach(id => markAsReadApi(id));
         setShowSidebar(false);
         setTimeout(() => inputRef.current?.focus(), 100);
     };

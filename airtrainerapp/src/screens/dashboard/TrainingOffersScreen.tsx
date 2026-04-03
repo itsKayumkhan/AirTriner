@@ -42,6 +42,30 @@ type FormState = {
     duration_minutes: string;
 };
 
+type Athlete = {
+    id: string;
+    first_name: string;
+    last_name: string;
+    avatar_url: string | null;
+    email: string;
+};
+
+type SentOffer = {
+    id: string;
+    trainer_id: string;
+    athlete_id: string;
+    message: string | null;
+    price: number;
+    session_length_min: number | null;
+    sport: string | null;
+    status: string;
+    proposed_dates: any;
+    created_at: string;
+    athlete: { first_name: string; last_name: string } | null;
+};
+
+type TabKey = 'packages' | 'send';
+
 const EMPTY_FORM: FormState = {
     title: '',
     description: '',
@@ -50,12 +74,17 @@ const EMPTY_FORM: FormState = {
     duration_minutes: '60',
 };
 
+const SESSION_LENGTHS = [30, 45, 60, 90];
+
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export default function TrainingOffersScreen({ navigation }: any) {
     const { user } = useAuth();
     const trainerProfile = user?.trainerProfile;
 
+    const [activeTab, setActiveTab] = useState<TabKey>('packages');
+
+    // ── My Packages state ─────────────────────────────────────────────────────
     const [offers, setOffers] = useState<TrainingOffer[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -63,6 +92,23 @@ export default function TrainingOffersScreen({ navigation }: any) {
     const [isSaving, setIsSaving] = useState(false);
     const [form, setForm] = useState<FormState>(EMPTY_FORM);
     const [formErrors, setFormErrors] = useState<Partial<FormState>>({});
+
+    // ── Send Offer state ──────────────────────────────────────────────────────
+    const [athleteQuery, setAthleteQuery] = useState('');
+    const [athleteResults, setAthleteResults] = useState<Athlete[]>([]);
+    const [isSearching, setIsSearching] = useState(false);
+    const [selectedAthlete, setSelectedAthlete] = useState<Athlete | null>(null);
+    const [offerMessage, setOfferMessage] = useState('');
+    const [offerPrice, setOfferPrice] = useState('');
+    const [sessionLength, setSessionLength] = useState(60);
+    const [selectedSport, setSelectedSport] = useState('');
+    const [proposedDate, setProposedDate] = useState('');
+    const [proposedTime, setProposedTime] = useState('');
+    const [isSendingOffer, setIsSendingOffer] = useState(false);
+
+    // ── Sent Offers state ─────────────────────────────────────────────────────
+    const [sentOffers, setSentOffers] = useState<SentOffer[]>([]);
+    const [isSentLoading, setIsSentLoading] = useState(false);
 
     // ── Data fetching ─────────────────────────────────────────────────────────
 
@@ -85,15 +131,71 @@ export default function TrainingOffersScreen({ navigation }: any) {
         }
     }, [trainerProfile?.id]);
 
+    const fetchSentOffers = useCallback(async () => {
+        if (!trainerProfile?.id) return;
+        setIsSentLoading(true);
+        try {
+            const { data, error } = await supabase
+                .from('training_offers')
+                .select('*, athlete:users!training_offers_athlete_id_fkey(first_name, last_name)')
+                .eq('trainer_id', trainerProfile.id)
+                .not('athlete_id', 'is', null)
+                .order('created_at', { ascending: false });
+
+            if (error) throw error;
+            setSentOffers((data || []) as SentOffer[]);
+        } catch (err: any) {
+            console.error('TrainingOffersScreen fetchSentOffers:', err);
+        } finally {
+            setIsSentLoading(false);
+        }
+    }, [trainerProfile?.id]);
+
     useEffect(() => {
         fetchOffers();
     }, [fetchOffers]);
 
+    useEffect(() => {
+        if (activeTab === 'send') {
+            fetchSentOffers();
+        }
+    }, [activeTab, fetchSentOffers]);
+
     const onRefresh = async () => {
         setRefreshing(true);
-        await fetchOffers();
+        if (activeTab === 'packages') {
+            await fetchOffers();
+        } else {
+            await fetchSentOffers();
+        }
         setRefreshing(false);
     };
+
+    // ── Athlete search ────────────────────────────────────────────────────────
+
+    const searchAthletes = useCallback(async (query: string) => {
+        setAthleteQuery(query);
+        if (query.trim().length < 2) {
+            setAthleteResults([]);
+            return;
+        }
+        setIsSearching(true);
+        try {
+            const { data, error } = await supabase
+                .from('users')
+                .select('id, first_name, last_name, avatar_url, email')
+                .eq('role', 'athlete')
+                .ilike('first_name', `%${query}%`)
+                .limit(10);
+
+            if (error) throw error;
+            setAthleteResults((data || []) as Athlete[]);
+        } catch (err: any) {
+            console.error('Athlete search error:', err);
+        } finally {
+            setIsSearching(false);
+        }
+    }, []);
 
     // ── Form validation ───────────────────────────────────────────────────────
 
@@ -136,6 +238,76 @@ export default function TrainingOffersScreen({ navigation }: any) {
             Alert.alert('Error', err.message || 'Could not save offer.');
         } finally {
             setIsSaving(false);
+        }
+    };
+
+    // ── Send targeted offer ───────────────────────────────────────────────────
+
+    const handleSendOffer = async () => {
+        if (!selectedAthlete) {
+            Alert.alert('Error', 'Please select an athlete.');
+            return;
+        }
+        if (!offerMessage.trim()) {
+            Alert.alert('Error', 'Please enter a message.');
+            return;
+        }
+        const priceVal = parseFloat(offerPrice);
+        if (!offerPrice || isNaN(priceVal) || priceVal <= 0) {
+            Alert.alert('Error', 'Please enter a valid price.');
+            return;
+        }
+        if (!trainerProfile?.id) {
+            Alert.alert('Error', 'Trainer profile not found.');
+            return;
+        }
+        setIsSendingOffer(true);
+        try {
+            const proposedDates = proposedDate && proposedTime
+                ? { scheduledAt: `${proposedDate}T${proposedTime}:00` }
+                : null;
+
+            const { error } = await supabase.from('training_offers').insert({
+                trainer_id: trainerProfile.id,
+                athlete_id: selectedAthlete.id,
+                message: offerMessage.trim(),
+                price: priceVal,
+                session_length_min: sessionLength,
+                sport: selectedSport || null,
+                proposed_dates: proposedDates,
+                status: 'pending',
+            });
+            if (error) throw error;
+
+            // Notify athlete
+            await supabase.from('notifications').insert({
+                user_id: selectedAthlete.id,
+                type: 'TRAINING_OFFER',
+                title: 'New Training Offer',
+                body: `You received a training offer${selectedSport ? ` for ${selectedSport}` : ''}`,
+                data: { offerId: 'will-be-set-by-trigger' },
+                read: false,
+            });
+
+            Alert.alert('Offer Sent', `Your offer has been sent to ${selectedAthlete.first_name}`);
+
+            // Reset form
+            setSelectedAthlete(null);
+            setAthleteQuery('');
+            setAthleteResults([]);
+            setOfferMessage('');
+            setOfferPrice('');
+            setSessionLength(60);
+            setSelectedSport('');
+            setProposedDate('');
+            setProposedTime('');
+
+            // Refresh sent offers
+            await fetchSentOffers();
+        } catch (err: any) {
+            Alert.alert('Error', err.message || 'Could not send offer.');
+        } finally {
+            setIsSendingOffer(false);
         }
     };
 
@@ -194,45 +366,278 @@ export default function TrainingOffersScreen({ navigation }: any) {
                 <View style={{ width: 44 }} />
             </View>
 
-            {/* List */}
-            <ScrollView
-                contentContainerStyle={styles.list}
-                showsVerticalScrollIndicator={false}
-                refreshControl={
-                    <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} colors={[Colors.primary]} />
-                }
-            >
-                {/* Hint banner */}
-                <View style={styles.hintRow}>
-                    <Ionicons name="information-circle-outline" size={18} color={Colors.primary} />
-                    <Text style={styles.hintText}>Long-press any card to delete it.</Text>
-                </View>
-
-                {offers.length === 0 ? (
-                    <EmptyState />
-                ) : (
-                    offers.map((offer) => (
-                        <OfferCard key={offer.id} offer={offer} onLongPress={() => handleLongPress(offer)} />
-                    ))
-                )}
-
-                {/* FAB spacer */}
-                <View style={{ height: 100 }} />
-            </ScrollView>
-
-            {/* Floating Action Button */}
-            <TouchableOpacity style={styles.fab} onPress={openModal} activeOpacity={0.85}>
-                <LinearGradient
-                    colors={[Colors.primary, Colors.accent]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={styles.fabGradient}
+            {/* Tabs */}
+            <View style={styles.tabRow}>
+                <TouchableOpacity
+                    style={[styles.tab, activeTab === 'packages' && styles.tabActive]}
+                    onPress={() => setActiveTab('packages')}
+                    activeOpacity={0.7}
                 >
-                    <Ionicons name="add" size={30} color="#fff" />
-                </LinearGradient>
-            </TouchableOpacity>
+                    <Ionicons
+                        name="pricetag-outline"
+                        size={16}
+                        color={activeTab === 'packages' ? '#fff' : Colors.textSecondary}
+                    />
+                    <Text style={[styles.tabText, activeTab === 'packages' && styles.tabTextActive]}>
+                        My Packages
+                    </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                    style={[styles.tab, activeTab === 'send' && styles.tabActive]}
+                    onPress={() => setActiveTab('send')}
+                    activeOpacity={0.7}
+                >
+                    <Ionicons
+                        name="send-outline"
+                        size={16}
+                        color={activeTab === 'send' ? '#fff' : Colors.textSecondary}
+                    />
+                    <Text style={[styles.tabText, activeTab === 'send' && styles.tabTextActive]}>
+                        Send Offer
+                    </Text>
+                </TouchableOpacity>
+            </View>
 
-            {/* Create Modal */}
+            {/* Tab Content */}
+            {activeTab === 'packages' ? (
+                <>
+                    {/* My Packages List */}
+                    <ScrollView
+                        contentContainerStyle={styles.list}
+                        showsVerticalScrollIndicator={false}
+                        refreshControl={
+                            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} colors={[Colors.primary]} />
+                        }
+                    >
+                        {/* Hint banner */}
+                        <View style={styles.hintRow}>
+                            <Ionicons name="information-circle-outline" size={18} color={Colors.primary} />
+                            <Text style={styles.hintText}>Long-press any card to delete it.</Text>
+                        </View>
+
+                        {offers.length === 0 ? (
+                            <EmptyState />
+                        ) : (
+                            offers.map((offer) => (
+                                <OfferCard key={offer.id} offer={offer} onLongPress={() => handleLongPress(offer)} />
+                            ))
+                        )}
+
+                        {/* FAB spacer */}
+                        <View style={{ height: 100 }} />
+                    </ScrollView>
+
+                    {/* Floating Action Button */}
+                    <TouchableOpacity style={styles.fab} onPress={openModal} activeOpacity={0.85}>
+                        <LinearGradient
+                            colors={[Colors.primary, Colors.accent]}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 1 }}
+                            style={styles.fabGradient}
+                        >
+                            <Ionicons name="add" size={30} color="#fff" />
+                        </LinearGradient>
+                    </TouchableOpacity>
+                </>
+            ) : (
+                /* Send Offer Tab */
+                <ScrollView
+                    contentContainerStyle={styles.list}
+                    showsVerticalScrollIndicator={false}
+                    keyboardShouldPersistTaps="handled"
+                    refreshControl={
+                        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} colors={[Colors.primary]} />
+                    }
+                >
+                    {/* Athlete Search */}
+                    <Text style={styles.sectionTitle}>Find Athlete</Text>
+                    <View style={styles.searchInputWrap}>
+                        <Ionicons name="search-outline" size={18} color={Colors.textTertiary} style={{ marginRight: Spacing.sm }} />
+                        <TextInput
+                            style={styles.searchInput}
+                            value={athleteQuery}
+                            onChangeText={searchAthletes}
+                            placeholder="Search athletes by name..."
+                            placeholderTextColor={Colors.textTertiary}
+                            autoCapitalize="words"
+                        />
+                        {isSearching && <ActivityIndicator size="small" color={Colors.primary} />}
+                    </View>
+
+                    {/* Search Results */}
+                    {athleteResults.length > 0 && (
+                        <View style={styles.searchResults}>
+                            {athleteResults.map((athlete) => (
+                                <AthleteCard
+                                    key={athlete.id}
+                                    athlete={athlete}
+                                    isSelected={selectedAthlete?.id === athlete.id}
+                                    onSelect={() => {
+                                        setSelectedAthlete(athlete);
+                                        setAthleteResults([]);
+                                        setAthleteQuery(`${athlete.first_name} ${athlete.last_name}`);
+                                    }}
+                                />
+                            ))}
+                        </View>
+                    )}
+
+                    {/* Selected Athlete Badge */}
+                    {selectedAthlete && (
+                        <View style={styles.selectedBadge}>
+                            <View style={styles.avatarSmall}>
+                                <Text style={styles.avatarSmallText}>
+                                    {selectedAthlete.first_name[0]}{selectedAthlete.last_name[0]}
+                                </Text>
+                            </View>
+                            <Text style={styles.selectedBadgeText}>
+                                {selectedAthlete.first_name} {selectedAthlete.last_name}
+                            </Text>
+                            <TouchableOpacity
+                                onPress={() => {
+                                    setSelectedAthlete(null);
+                                    setAthleteQuery('');
+                                }}
+                                style={styles.selectedBadgeClose}
+                            >
+                                <Ionicons name="close-circle" size={18} color={Colors.textTertiary} />
+                            </TouchableOpacity>
+                        </View>
+                    )}
+
+                    {/* Offer Form - shown after selecting athlete */}
+                    {selectedAthlete && (
+                        <View style={styles.offerForm}>
+                            <Text style={styles.sectionTitle}>Offer Details</Text>
+
+                            {/* Message */}
+                            <FieldLabel label="Message" required />
+                            <TextInput
+                                style={[styles.input, styles.inputMultiline]}
+                                value={offerMessage}
+                                onChangeText={setOfferMessage}
+                                placeholder="Describe your training offer..."
+                                placeholderTextColor={Colors.textTertiary}
+                                multiline
+                                numberOfLines={4}
+                                textAlignVertical="top"
+                            />
+
+                            {/* Price */}
+                            <FieldLabel label="Price (USD)" required />
+                            <View style={styles.inputPrefix}>
+                                <Text style={styles.prefixSymbol}>$</Text>
+                                <TextInput
+                                    style={styles.inputInner}
+                                    value={offerPrice}
+                                    onChangeText={setOfferPrice}
+                                    keyboardType="decimal-pad"
+                                    placeholder="50"
+                                    placeholderTextColor={Colors.textTertiary}
+                                />
+                            </View>
+
+                            {/* Session Length */}
+                            <FieldLabel label="Session Length" />
+                            <View style={styles.chipRow}>
+                                {SESSION_LENGTHS.map((len) => (
+                                    <TouchableOpacity
+                                        key={len}
+                                        style={[styles.chip, sessionLength === len && styles.chipActive]}
+                                        onPress={() => setSessionLength(len)}
+                                        activeOpacity={0.7}
+                                    >
+                                        <Text style={[styles.chipText, sessionLength === len && styles.chipTextActive]}>
+                                            {len} min
+                                        </Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+
+                            {/* Sport */}
+                            <FieldLabel label="Sport" />
+                            <TextInput
+                                style={styles.input}
+                                value={selectedSport}
+                                onChangeText={setSelectedSport}
+                                placeholder="e.g. Hockey, Basketball, Soccer"
+                                placeholderTextColor={Colors.textTertiary}
+                                autoCapitalize="words"
+                            />
+
+                            {/* Proposed Date and Time */}
+                            <View style={styles.row}>
+                                <View style={{ flex: 1 }}>
+                                    <FieldLabel label="Proposed Date" />
+                                    <TextInput
+                                        style={styles.input}
+                                        value={proposedDate}
+                                        onChangeText={setProposedDate}
+                                        placeholder="YYYY-MM-DD"
+                                        placeholderTextColor={Colors.textTertiary}
+                                    />
+                                </View>
+                                <View style={{ width: Spacing.md }} />
+                                <View style={{ flex: 1 }}>
+                                    <FieldLabel label="Proposed Time" />
+                                    <TextInput
+                                        style={styles.input}
+                                        value={proposedTime}
+                                        onChangeText={setProposedTime}
+                                        placeholder="HH:MM"
+                                        placeholderTextColor={Colors.textTertiary}
+                                    />
+                                </View>
+                            </View>
+
+                            {/* Send Button */}
+                            <TouchableOpacity
+                                style={[styles.saveBtn, isSendingOffer && { opacity: 0.6 }]}
+                                onPress={handleSendOffer}
+                                disabled={isSendingOffer}
+                                activeOpacity={0.8}
+                            >
+                                <LinearGradient
+                                    colors={[Colors.primary, Colors.accent]}
+                                    start={{ x: 0, y: 0 }}
+                                    end={{ x: 1, y: 0 }}
+                                    style={styles.saveBtnGradient}
+                                >
+                                    {isSendingOffer ? (
+                                        <ActivityIndicator color="#fff" size="small" />
+                                    ) : (
+                                        <>
+                                            <Ionicons name="send" size={18} color="#fff" />
+                                            <Text style={styles.saveBtnText}>Send Offer</Text>
+                                        </>
+                                    )}
+                                </LinearGradient>
+                            </TouchableOpacity>
+                        </View>
+                    )}
+
+                    {/* Sent Offers Section */}
+                    <View style={styles.sentOffersSection}>
+                        <Text style={styles.sectionTitle}>Sent Offers</Text>
+                        {isSentLoading ? (
+                            <ActivityIndicator size="small" color={Colors.primary} style={{ marginTop: Spacing.xl }} />
+                        ) : sentOffers.length === 0 ? (
+                            <View style={styles.sentEmptyWrap}>
+                                <Ionicons name="paper-plane-outline" size={28} color={Colors.textTertiary} />
+                                <Text style={styles.sentEmptyText}>No offers sent yet</Text>
+                            </View>
+                        ) : (
+                            sentOffers.map((offer) => (
+                                <SentOfferCard key={offer.id} offer={offer} />
+                            ))
+                        )}
+                    </View>
+
+                    <View style={{ height: 40 }} />
+                </ScrollView>
+            )}
+
+            {/* Create Modal (for My Packages tab) */}
             <CreateOfferModal
                 visible={showModal}
                 form={form}
@@ -258,6 +663,78 @@ function EmptyState() {
             <Text style={styles.emptySubtitle}>
                 Create your first training offer.{'\n'}Tap the + button to get started.
             </Text>
+        </View>
+    );
+}
+
+function AthleteCard({
+    athlete,
+    isSelected,
+    onSelect,
+}: {
+    athlete: Athlete;
+    isSelected: boolean;
+    onSelect: () => void;
+}) {
+    const initials = `${athlete.first_name?.[0] || ''}${athlete.last_name?.[0] || ''}`.toUpperCase();
+    return (
+        <TouchableOpacity
+            style={[styles.athleteCard, isSelected && styles.athleteCardSelected]}
+            onPress={onSelect}
+            activeOpacity={0.7}
+        >
+            <View style={styles.athleteAvatar}>
+                <Text style={styles.athleteAvatarText}>{initials}</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+                <Text style={styles.athleteName}>
+                    {athlete.first_name} {athlete.last_name}
+                </Text>
+                <Text style={styles.athleteEmail} numberOfLines={1}>
+                    {athlete.email}
+                </Text>
+            </View>
+            {isSelected && (
+                <Ionicons name="checkmark-circle" size={22} color={Colors.primary} />
+            )}
+        </TouchableOpacity>
+    );
+}
+
+function SentOfferCard({ offer }: { offer: SentOffer }) {
+    const athleteName = offer.athlete
+        ? `${offer.athlete.first_name} ${offer.athlete.last_name}`
+        : 'Unknown Athlete';
+
+    const statusConfig = getStatusConfig(offer.status);
+    const sportColor = getSportColor(offer.sport);
+    const dateStr = new Date(offer.created_at).toLocaleDateString();
+
+    return (
+        <View style={styles.sentCard}>
+            <View style={styles.sentCardTop}>
+                <View style={{ flex: 1 }}>
+                    <Text style={styles.sentAthleteName}>{athleteName}</Text>
+                    {!!offer.sport && (
+                        <View style={styles.sentSportRow}>
+                            <View style={[styles.sportDot, { backgroundColor: sportColor }]} />
+                            <Text style={styles.sentSportText}>{offer.sport}</Text>
+                        </View>
+                    )}
+                </View>
+                <View style={styles.pricePill}>
+                    <Text style={styles.priceText}>${Number(offer.price).toFixed(0)}</Text>
+                </View>
+            </View>
+            <View style={styles.sentCardBottom}>
+                <View style={[styles.statusBadge, { backgroundColor: statusConfig.bg }]}>
+                    <View style={[styles.statusDot, { backgroundColor: statusConfig.color }]} />
+                    <Text style={[styles.statusText, { color: statusConfig.color }]}>
+                        {statusConfig.label}
+                    </Text>
+                </View>
+                <Text style={styles.sentDateText}>{dateStr}</Text>
+            </View>
         </View>
     );
 }
@@ -474,6 +951,19 @@ function getSportColor(sport: string | null): string {
     return Colors.primary;
 }
 
+function getStatusConfig(status: string): { label: string; color: string; bg: string } {
+    switch (status?.toLowerCase()) {
+        case 'accepted':
+            return { label: 'Accepted', color: Colors.success, bg: Colors.successLight };
+        case 'declined':
+        case 'rejected':
+            return { label: 'Declined', color: Colors.error, bg: Colors.errorLight };
+        case 'pending':
+        default:
+            return { label: 'Pending', color: Colors.warning, bg: Colors.warningLight };
+    }
+}
+
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
@@ -514,6 +1004,41 @@ const styles = StyleSheet.create({
         color: Colors.text,
     },
 
+    // Tabs
+    tabRow: {
+        flexDirection: 'row',
+        paddingHorizontal: Spacing.xxl,
+        paddingVertical: Spacing.md,
+        gap: Spacing.sm,
+        backgroundColor: Colors.background,
+        borderBottomWidth: 1,
+        borderBottomColor: Colors.border,
+    },
+    tab: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: Spacing.sm,
+        paddingVertical: Spacing.md,
+        borderRadius: BorderRadius.md,
+        backgroundColor: Colors.glass,
+        borderWidth: 1,
+        borderColor: Colors.glassBorder,
+    },
+    tabActive: {
+        backgroundColor: Colors.primary,
+        borderColor: Colors.primary,
+    },
+    tabText: {
+        fontSize: FontSize.sm,
+        fontWeight: FontWeight.semibold,
+        color: Colors.textSecondary,
+    },
+    tabTextActive: {
+        color: '#fff',
+    },
+
     // List
     list: {
         padding: Spacing.xxl,
@@ -534,6 +1059,225 @@ const styles = StyleSheet.create({
     hintText: {
         fontSize: FontSize.sm,
         color: Colors.primary,
+    },
+
+    // Section title
+    sectionTitle: {
+        fontSize: FontSize.lg,
+        fontWeight: FontWeight.bold,
+        color: Colors.text,
+        marginBottom: Spacing.lg,
+        marginTop: Spacing.sm,
+    },
+
+    // Athlete search
+    searchInputWrap: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: Colors.surface,
+        borderWidth: 1,
+        borderColor: Colors.border,
+        borderRadius: BorderRadius.md,
+        paddingHorizontal: Spacing.lg,
+        marginBottom: Spacing.md,
+    },
+    searchInput: {
+        flex: 1,
+        paddingVertical: Spacing.md,
+        color: Colors.text,
+        fontSize: FontSize.md,
+    },
+    searchResults: {
+        marginBottom: Spacing.md,
+        gap: Spacing.sm,
+    },
+
+    // Athlete card
+    athleteCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.md,
+        backgroundColor: Colors.card,
+        borderRadius: BorderRadius.md,
+        padding: Spacing.md,
+        borderWidth: 1,
+        borderColor: Colors.border,
+    },
+    athleteCardSelected: {
+        borderColor: Colors.primaryGlow,
+        borderWidth: 2,
+        backgroundColor: Colors.cardHover,
+    },
+    athleteAvatar: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: Colors.primaryGlow,
+        borderWidth: 1,
+        borderColor: Colors.borderActive,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    athleteAvatarText: {
+        fontSize: FontSize.sm,
+        fontWeight: FontWeight.bold,
+        color: Colors.primary,
+    },
+    athleteName: {
+        fontSize: FontSize.md,
+        fontWeight: FontWeight.semibold,
+        color: Colors.text,
+    },
+    athleteEmail: {
+        fontSize: FontSize.xs,
+        color: Colors.textTertiary,
+        marginTop: 2,
+    },
+
+    // Selected athlete badge
+    selectedBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.sm,
+        backgroundColor: Colors.primaryGlow,
+        borderRadius: BorderRadius.pill,
+        paddingHorizontal: Spacing.lg,
+        paddingVertical: Spacing.sm,
+        borderWidth: 1,
+        borderColor: Colors.borderActive,
+        marginBottom: Spacing.xl,
+        alignSelf: 'flex-start',
+    },
+    avatarSmall: {
+        width: 24,
+        height: 24,
+        borderRadius: 12,
+        backgroundColor: Colors.primary,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    avatarSmallText: {
+        fontSize: 10,
+        fontWeight: FontWeight.bold,
+        color: '#fff',
+    },
+    selectedBadgeText: {
+        fontSize: FontSize.sm,
+        fontWeight: FontWeight.semibold,
+        color: Colors.primary,
+    },
+    selectedBadgeClose: {
+        marginLeft: Spacing.xs,
+    },
+
+    // Offer form
+    offerForm: {
+        marginBottom: Spacing.xl,
+    },
+
+    // Chip row
+    chipRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: Spacing.sm,
+        marginBottom: Spacing.lg,
+    },
+    chip: {
+        paddingHorizontal: Spacing.lg,
+        paddingVertical: Spacing.sm,
+        borderRadius: BorderRadius.pill,
+        backgroundColor: Colors.surface,
+        borderWidth: 1,
+        borderColor: Colors.border,
+    },
+    chipActive: {
+        backgroundColor: Colors.primaryGlow,
+        borderColor: Colors.borderActive,
+    },
+    chipText: {
+        fontSize: FontSize.sm,
+        fontWeight: FontWeight.medium,
+        color: Colors.textSecondary,
+    },
+    chipTextActive: {
+        color: Colors.primary,
+        fontWeight: FontWeight.bold,
+    },
+
+    // Sent offers
+    sentOffersSection: {
+        marginTop: Spacing.xl,
+        paddingTop: Spacing.xl,
+        borderTopWidth: 1,
+        borderTopColor: Colors.border,
+    },
+    sentEmptyWrap: {
+        alignItems: 'center',
+        paddingVertical: Spacing.xxxl,
+        gap: Spacing.sm,
+    },
+    sentEmptyText: {
+        fontSize: FontSize.sm,
+        color: Colors.textTertiary,
+    },
+    sentCard: {
+        backgroundColor: Colors.card,
+        borderRadius: BorderRadius.lg,
+        padding: Spacing.lg,
+        marginBottom: Spacing.md,
+        borderWidth: 1,
+        borderColor: Colors.border,
+        ...Shadows.small,
+    },
+    sentCardTop: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        justifyContent: 'space-between',
+        marginBottom: Spacing.md,
+    },
+    sentAthleteName: {
+        fontSize: FontSize.md,
+        fontWeight: FontWeight.bold,
+        color: Colors.text,
+        marginBottom: 4,
+    },
+    sentSportRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.xs,
+    },
+    sentSportText: {
+        fontSize: FontSize.sm,
+        color: Colors.textSecondary,
+    },
+    sentCardBottom: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingTop: Spacing.sm,
+        borderTopWidth: 1,
+        borderTopColor: Colors.border,
+    },
+    statusBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.xs,
+        paddingHorizontal: Spacing.md,
+        paddingVertical: 4,
+        borderRadius: BorderRadius.pill,
+    },
+    statusDot: {
+        width: 6,
+        height: 6,
+        borderRadius: 3,
+    },
+    statusText: {
+        fontSize: FontSize.xs,
+        fontWeight: FontWeight.semibold,
+    },
+    sentDateText: {
+        fontSize: FontSize.xs,
+        color: Colors.textTertiary,
     },
 
     // Empty

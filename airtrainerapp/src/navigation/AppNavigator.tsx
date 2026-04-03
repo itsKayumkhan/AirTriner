@@ -16,6 +16,7 @@ import RegisterScreen from '../screens/auth/RegisterScreen';
 // Dashboard Screens
 import DiscoverScreen from '../screens/dashboard/DiscoverScreen';
 import TrainerDashboardScreen from '../screens/dashboard/TrainerDashboardScreen';
+import AthleteDashboardScreen from '../screens/dashboard/AthleteDashboardScreen';
 import BookingsScreen from '../screens/dashboard/BookingsScreen';
 import MessagesScreen from '../screens/dashboard/MessagesScreen';
 import ProfileScreen from '../screens/dashboard/ProfileScreen';
@@ -171,7 +172,9 @@ function TabNavigator() {
                             iconName = focused ? 'compass' : 'compass-outline';
                             break;
                         case 'Dashboard':
-                            iconName = focused ? 'grid' : 'grid-outline';
+                            iconName = isTrainer
+                                ? (focused ? 'grid' : 'grid-outline')
+                                : (focused ? 'home' : 'home-outline');
                             break;
                         case 'Bookings':
                             iconName = focused ? 'calendar' : 'calendar-outline';
@@ -213,11 +216,18 @@ function TabNavigator() {
                     options={{ tabBarLabel: 'Dashboard' }}
                 />
             ) : (
-                <Tab.Screen
-                    name="Discover"
-                    component={DiscoverScreen}
-                    options={{ tabBarLabel: 'Discover' }}
-                />
+                <>
+                    <Tab.Screen
+                        name="Dashboard"
+                        component={AthleteDashboardScreen}
+                        options={{ tabBarLabel: 'Dashboard' }}
+                    />
+                    <Tab.Screen
+                        name="Discover"
+                        component={DiscoverScreen}
+                        options={{ tabBarLabel: 'Discover' }}
+                    />
+                </>
             )}
             <Tab.Screen
                 name="Bookings"

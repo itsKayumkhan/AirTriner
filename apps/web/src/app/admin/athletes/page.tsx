@@ -4,6 +4,9 @@ import { useState, useEffect } from "react";
 import { Search, Users, Activity, CheckCircle, XCircle, ChevronLeft, ChevronRight } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import dynamic from "next/dynamic";
+
+const LocationMap = dynamic(() => import("@/components/admin/LocationMap"), { ssr: false });
 
 interface Athlete {
     id: string;
@@ -13,6 +16,10 @@ interface Athlete {
     status: "Active" | "Suspended";
     sessions: number;
     initials: string;
+    lat?: number | null;
+    lng?: number | null;
+    city?: string | null;
+    state?: string | null;
 }
 
 export default function AdminAthletesPage() {
@@ -52,20 +59,34 @@ export default function AdminAthletesPage() {
                         .select("athlete_id")
                         .in("athlete_id", userIds);
 
+                    // Fetch athlete profiles for location data
+                    const { data: profilesData } = await supabase
+                        .from("athlete_profiles")
+                        .select("user_id, latitude, longitude, city, state")
+                        .in("user_id", userIds);
+                    const profilesMap = new Map((profilesData || []).map((p: any) => [p.user_id, p]));
+
                     const sessionCountMap: Record<string, number> = {};
                     (bookingRows || []).forEach((b: any) => {
                         sessionCountMap[b.athlete_id] = (sessionCountMap[b.athlete_id] || 0) + 1;
                     });
 
-                    setAthletes(data.map((u: any) => ({
-                        id: u.id,
-                        name: `${u.first_name || ""} ${u.last_name || ""}`.trim() || u.email.split('@')[0],
-                        email: u.email,
-                        date: new Date(u.created_at).toLocaleDateString(),
-                        status: u.is_suspended ? "Suspended" : "Active",
-                        sessions: sessionCountMap[u.id] ?? 0,
-                        initials: `${u.first_name?.[0] || ""}${u.last_name?.[0] || ""}`.toUpperCase() || u.email[0].toUpperCase()
-                    })));
+                    setAthletes(data.map((u: any) => {
+                        const profile = profilesMap.get(u.id);
+                        return {
+                            id: u.id,
+                            name: `${u.first_name || ""} ${u.last_name || ""}`.trim() || u.email.split('@')[0],
+                            email: u.email,
+                            date: new Date(u.created_at).toLocaleDateString(),
+                            status: u.is_suspended ? "Suspended" : "Active",
+                            sessions: sessionCountMap[u.id] ?? 0,
+                            initials: `${u.first_name?.[0] || ""}${u.last_name?.[0] || ""}`.toUpperCase() || u.email[0].toUpperCase(),
+                            lat: profile?.latitude,
+                            lng: profile?.longitude,
+                            city: profile?.city,
+                            state: profile?.state,
+                        };
+                    }));
                 } else {
                     setAthletes([]);
                 }
@@ -171,6 +192,22 @@ export default function AdminAthletesPage() {
                     <div className="text-3xl sm:text-4xl font-black text-green-500 tracking-tighter">{activeAthletesCount}</div>
                 </div>
             </div>
+
+            {/* Location Map */}
+            <LocationMap
+                pins={athletes.filter(a => a.lat && a.lng).map(a => ({
+                    id: a.id,
+                    name: a.name,
+                    lat: a.lat!,
+                    lng: a.lng!,
+                    role: "athlete" as const,
+                    status: a.status,
+                    city: a.city || undefined,
+                    state: a.state || undefined,
+                }))}
+                title="Athlete Locations"
+                subtitle="Track where athletes are concentrated and where to target marketing"
+            />
 
             {/* Filters */}
             <div className="flex flex-col md:flex-row gap-4 bg-surface/50 border border-white/5 p-2 rounded-[24px]">

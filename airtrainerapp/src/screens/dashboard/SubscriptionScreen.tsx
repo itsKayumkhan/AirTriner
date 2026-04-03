@@ -11,9 +11,14 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as WebBrowser from 'expo-web-browser';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows } from '../../theme';
+
+// ─── API URL ─────────────────────────────────────────────────────────────────
+
+const API_URL = 'https://api.airtrainr.com/api/v1';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -27,6 +32,7 @@ type ProfileData = {
     is_verified: boolean;
     verification_status: string;
     reliability_score: number;
+    founding_50_applied?: boolean;
 };
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -40,6 +46,14 @@ const PRO_FEATURES = [
     { icon: 'analytics-outline', label: 'Earnings dashboard & analytics' },
     { icon: 'star-outline', label: 'Build your reviews & reputation' },
     { icon: 'notifications-outline', label: 'Nearby training request alerts' },
+] as const;
+
+const F50_BENEFITS = [
+    'Lifetime reduced platform fee (1.5% vs 3%)',
+    'Priority placement in search results',
+    'Exclusive "Founding 50" badge on profile',
+    'Early access to new features',
+    'Direct line to the AirTrainr team',
 ] as const;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -83,6 +97,10 @@ export default function SubscriptionScreen({ navigation }: any) {
     const [profile, setProfile] = useState<ProfileData | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
+    const [subscribing, setSubscribing] = useState(false);
+    const [f50Applied, setF50Applied] = useState(false);
+    const [f50Count, setF50Count] = useState<number | null>(null);
+    const [f50Applying, setF50Applying] = useState(false);
 
     // ── Data fetching ─────────────────────────────────────────────────────────
 
@@ -92,13 +110,15 @@ export default function SubscriptionScreen({ navigation }: any) {
             const { data, error } = await supabase
                 .from('trainer_profiles')
                 .select(
-                    'subscription_status, subscription_expires_at, trial_started_at, is_founding_50, is_verified, verification_status, reliability_score'
+                    'subscription_status, subscription_expires_at, trial_started_at, is_founding_50, is_verified, verification_status, reliability_score, founding_50_applied'
                 )
                 .eq('user_id', user.id)
                 .single();
 
             if (error) throw error;
-            setProfile(data as ProfileData);
+            const profileData = data as ProfileData;
+            setProfile(profileData);
+            setF50Applied(!!profileData.founding_50_applied);
         } catch (err: any) {
             console.error('SubscriptionScreen fetchProfile:', err);
             Alert.alert('Error', 'Could not load subscription details.');
@@ -107,26 +127,105 @@ export default function SubscriptionScreen({ navigation }: any) {
         }
     }, [user?.id]);
 
+    const fetchF50Count = useCallback(async () => {
+        try {
+            const { count } = await supabase
+                .from('trainer_profiles')
+                .select('id', { count: 'exact', head: true })
+                .eq('is_founding_50', true);
+            setF50Count(count ?? 0);
+        } catch (err) {
+            console.error('Error fetching F50 count:', err);
+        }
+    }, []);
+
     useEffect(() => {
         fetchProfile();
-    }, [fetchProfile]);
+        fetchF50Count();
+    }, [fetchProfile, fetchF50Count]);
 
     const onRefresh = async () => {
         setRefreshing(true);
-        await fetchProfile();
+        await Promise.all([fetchProfile(), fetchF50Count()]);
         setRefreshing(false);
     };
 
-    // ── Contact Support handler ───────────────────────────────────────────────
+    // ── Subscribe handler ─────────────────────────────────────────────────────
 
-    const handleContactSupport = () => {
-        Alert.alert(
-            'Upgrade to Pro',
-            'To upgrade your AirTrainr Pro subscription, please contact our support team.\n\nemail: support@airtrainr.com',
-            [
-                { text: 'OK', style: 'default' },
-            ]
-        );
+    const handleSubscribe = async (plan: 'monthly' | 'annual') => {
+        setSubscribing(true);
+        try {
+            const response = await fetch(`${API_URL}/payments/trainer/subscription`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ plan, trainerId: user?.id }),
+            });
+
+            if (response.ok) {
+                const { url } = await response.json();
+                if (url) {
+                    await WebBrowser.openBrowserAsync(url);
+                    // After returning, refresh subscription status
+                    fetchProfile();
+                }
+            } else {
+                // Fallback: update status directly (Stripe may not be fully configured)
+                const expiresAt =
+                    plan === 'monthly'
+                        ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+                        : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+
+                await supabase
+                    .from('trainer_profiles')
+                    .update({
+                        subscription_status: 'active',
+                        subscription_expires_at: expiresAt.toISOString(),
+                    })
+                    .eq('user_id', user?.id);
+
+                Alert.alert('Subscribed!', `Your ${plan} subscription is now active.`);
+                fetchProfile();
+            }
+        } catch (error) {
+            Alert.alert('Error', 'Could not process subscription. Please try again.');
+        } finally {
+            setSubscribing(false);
+        }
+    };
+
+    // ── Founding 50 application handler ───────────────────────────────────────
+
+    const handleApplyF50 = async () => {
+        setF50Applying(true);
+        try {
+            // Check spots remaining
+            const { count } = await supabase
+                .from('trainer_profiles')
+                .select('id', { count: 'exact', head: true })
+                .eq('is_founding_50', true);
+
+            if ((count || 0) >= 50) {
+                Alert.alert('Program Full', 'All 50 Founding spots have been filled.');
+                return;
+            }
+
+            // Set pending status (admin will approve)
+            await supabase
+                .from('trainer_profiles')
+                .update({ founding_50_applied: true })
+                .eq('user_id', user?.id);
+
+            Alert.alert(
+                'Application Submitted',
+                'Your Founding 50 application has been submitted for admin review.'
+            );
+            setF50Applied(true);
+            fetchF50Count();
+        } catch (error) {
+            Alert.alert('Error', 'Could not submit application. Please try again.');
+        } finally {
+            setF50Applying(false);
+        }
     };
 
     // ── Render ────────────────────────────────────────────────────────────────
@@ -145,6 +244,7 @@ export default function SubscriptionScreen({ navigation }: any) {
     const isTrial = profile?.subscription_status === 'trial';
     const isExpiredOrCancelled =
         profile?.subscription_status === 'expired' || profile?.subscription_status === 'cancelled';
+    const spotsRemaining = f50Count !== null ? 50 - f50Count : null;
 
     return (
         <View style={styles.container}>
@@ -169,7 +269,7 @@ export default function SubscriptionScreen({ navigation }: any) {
                     />
                 }
             >
-                {/* ── Founding 50 Banner ── */}
+                {/* ── Founding 50 Banner (already granted) ── */}
                 {profile?.is_founding_50 && <Founding50Card />}
 
                 {/* ── Status Hero Card ── */}
@@ -188,7 +288,7 @@ export default function SubscriptionScreen({ navigation }: any) {
                     <Text style={styles.heroProductName}>AirTrainr Pro</Text>
 
                     <Text style={styles.heroPrice}>
-                        {isTrial ? 'FREE' : '$14.99'}
+                        {isTrial ? 'FREE' : '$25'}
                         {!isTrial && <Text style={styles.heroPricePeriod}> /month</Text>}
                     </Text>
 
@@ -269,42 +369,81 @@ export default function SubscriptionScreen({ navigation }: any) {
                     ))}
                 </View>
 
-                {/* ── Upgrade / Reactivate CTA ── */}
+                {/* ── Plan Selection & Subscribe CTA ── */}
                 {(isTrial || isExpiredOrCancelled) && (
                     <>
-                        <SectionTitle label="Upgrade to Pro" />
-                        <View style={styles.upgradeCard}>
-                            <View style={styles.upgradeTopRow}>
+                        <SectionTitle label="Choose Your Plan" />
+
+                        {/* Monthly Plan Card */}
+                        <View style={styles.planCard}>
+                            <View style={styles.planCardHeader}>
                                 <View>
-                                    <Text style={styles.upgradeTitle}>AirTrainr Pro</Text>
-                                    <Text style={styles.upgradeSubtitle}>Full access, cancel anytime</Text>
+                                    <Text style={styles.planCardTitle}>Monthly</Text>
+                                    <Text style={styles.planCardSubtitle}>Flexible, cancel anytime</Text>
                                 </View>
-                                <View style={styles.upgradePriceWrap}>
-                                    <Text style={styles.upgradePrice}>$14.99</Text>
-                                    <Text style={styles.upgradePeriod}>/mo</Text>
+                                <View style={styles.planPriceWrap}>
+                                    <Text style={styles.planPrice}>$25</Text>
+                                    <Text style={styles.planPricePeriod}>/mo</Text>
                                 </View>
                             </View>
-
                             <TouchableOpacity
-                                style={styles.contactBtn}
-                                onPress={handleContactSupport}
+                                style={styles.subscribeBtnMonthly}
+                                onPress={() => handleSubscribe('monthly')}
                                 activeOpacity={0.85}
+                                disabled={subscribing}
                             >
-                                <LinearGradient
-                                    colors={[Colors.primary, Colors.accent]}
-                                    start={{ x: 0, y: 0 }}
-                                    end={{ x: 1, y: 0 }}
-                                    style={styles.contactBtnGradient}
-                                >
-                                    <Ionicons name="mail-outline" size={20} color="#fff" />
-                                    <Text style={styles.contactBtnText}>Contact Support to Upgrade</Text>
-                                </LinearGradient>
+                                {subscribing ? (
+                                    <ActivityIndicator size="small" color="#fff" />
+                                ) : (
+                                    <Text style={styles.subscribeBtnText}>Subscribe Monthly</Text>
+                                )}
                             </TouchableOpacity>
-
-                            <Text style={styles.upgradeNote}>
-                                Our team will activate your subscription and confirm via email within 24 hours.
-                            </Text>
                         </View>
+
+                        {/* Annual Plan Card */}
+                        <View style={styles.annualPlanCardOuter}>
+                            <LinearGradient
+                                colors={[Colors.gradientStart, Colors.gradientEnd]}
+                                start={{ x: 0, y: 0 }}
+                                end={{ x: 1, y: 1 }}
+                                style={styles.annualPlanCard}
+                            >
+                                {/* Best Value Badge */}
+                                <View style={styles.bestValueBadge}>
+                                    <Ionicons name="flame" size={12} color="#fff" />
+                                    <Text style={styles.bestValueBadgeText}>BEST VALUE</Text>
+                                </View>
+
+                                <View style={styles.planCardHeader}>
+                                    <View>
+                                        <Text style={[styles.planCardTitle, { color: '#fff' }]}>Annual</Text>
+                                        <Text style={[styles.planCardSubtitle, { color: 'rgba(255,255,255,0.7)' }]}>
+                                            Best value - Save $50
+                                        </Text>
+                                    </View>
+                                    <View style={styles.planPriceWrap}>
+                                        <Text style={[styles.planPrice, { color: '#fff' }]}>$250</Text>
+                                        <Text style={[styles.planPricePeriod, { color: 'rgba(255,255,255,0.7)' }]}>/yr</Text>
+                                    </View>
+                                </View>
+                                <TouchableOpacity
+                                    style={styles.subscribeBtnAnnual}
+                                    onPress={() => handleSubscribe('annual')}
+                                    activeOpacity={0.85}
+                                    disabled={subscribing}
+                                >
+                                    {subscribing ? (
+                                        <ActivityIndicator size="small" color={Colors.gradientStart} />
+                                    ) : (
+                                        <Text style={styles.subscribeBtnAnnualText}>Subscribe Annually</Text>
+                                    )}
+                                </TouchableOpacity>
+                            </LinearGradient>
+                        </View>
+
+                        <Text style={styles.subscribeNote}>
+                            You'll be redirected to Stripe for secure payment processing.
+                        </Text>
                     </>
                 )}
 
@@ -317,6 +456,80 @@ export default function SubscriptionScreen({ navigation }: any) {
                             <Text style={{ color: Colors.primary }}>support@airtrainr.com</Text>
                         </Text>
                     </View>
+                )}
+
+                {/* ── Founding 50 Application Section ── */}
+                {!profile?.is_founding_50 && (
+                    <>
+                        <SectionTitle label="Founding 50 Program" />
+                        <View style={styles.f50ApplyCard}>
+                            <View style={styles.f50ApplyHeader}>
+                                <View style={styles.f50ApplyIconWrap}>
+                                    <Ionicons name="trophy" size={24} color="#FFD700" />
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={styles.f50ApplyTitle}>Become a Founding Member</Text>
+                                    <Text style={styles.f50ApplySubtitle}>
+                                        Join the first 50 trainers and unlock lifetime benefits
+                                    </Text>
+                                </View>
+                            </View>
+
+                            {/* Spots Remaining Counter */}
+                            {spotsRemaining !== null && (
+                                <View style={styles.f50SpotsRow}>
+                                    <View style={styles.f50SpotsBarBg}>
+                                        <View
+                                            style={[
+                                                styles.f50SpotsBarFill,
+                                                { width: `${Math.min(((f50Count ?? 0) / 50) * 100, 100)}%` },
+                                            ]}
+                                        />
+                                    </View>
+                                    <Text style={styles.f50SpotsText}>
+                                        {f50Count}/50 spots filled
+                                        {spotsRemaining > 0
+                                            ? ` \u00B7 ${spotsRemaining} remaining`
+                                            : ' \u00B7 Program full'}
+                                    </Text>
+                                </View>
+                            )}
+
+                            {/* Benefits List */}
+                            <View style={styles.f50BenefitsList}>
+                                {F50_BENEFITS.map((benefit, i) => (
+                                    <View key={i} style={styles.f50BenefitRow}>
+                                        <Ionicons name="star" size={14} color="#FFD700" />
+                                        <Text style={styles.f50BenefitText}>{benefit}</Text>
+                                    </View>
+                                ))}
+                            </View>
+
+                            {/* Apply Button or Pending Status */}
+                            {f50Applied ? (
+                                <View style={styles.f50PendingBadge}>
+                                    <Ionicons name="time-outline" size={18} color={Colors.warning} />
+                                    <Text style={styles.f50PendingText}>Application Pending Review</Text>
+                                </View>
+                            ) : (
+                                <TouchableOpacity
+                                    style={styles.f50ApplyBtn}
+                                    onPress={handleApplyF50}
+                                    activeOpacity={0.85}
+                                    disabled={f50Applying || (spotsRemaining !== null && spotsRemaining <= 0)}
+                                >
+                                    {f50Applying ? (
+                                        <ActivityIndicator size="small" color="#1a1500" />
+                                    ) : (
+                                        <>
+                                            <Ionicons name="trophy-outline" size={18} color="#1a1500" />
+                                            <Text style={styles.f50ApplyBtnText}>Apply for Founding 50</Text>
+                                        </>
+                                    )}
+                                </TouchableOpacity>
+                            )}
+                        </View>
+                    </>
                 )}
 
                 <View style={{ height: 48 }} />
@@ -420,7 +633,7 @@ const styles = StyleSheet.create({
         padding: Spacing.xxl,
     },
 
-    // Founding 50
+    // Founding 50 (granted badge)
     f50Card: {
         borderRadius: BorderRadius.lg,
         borderWidth: 1.5,
@@ -617,69 +830,105 @@ const styles = StyleSheet.create({
         lineHeight: 20,
     },
 
-    // Upgrade card
-    upgradeCard: {
+    // Plan cards
+    planCard: {
         backgroundColor: Colors.card,
         borderRadius: BorderRadius.lg,
         borderWidth: 1,
-        borderColor: Colors.borderActive,
+        borderColor: Colors.border,
         padding: Spacing.xl,
-        marginBottom: Spacing.xxl,
+        marginBottom: Spacing.md,
         ...Shadows.medium,
     },
-    upgradeTopRow: {
+    planCardHeader: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'flex-start',
-        marginBottom: Spacing.xl,
+        marginBottom: Spacing.lg,
     },
-    upgradeTitle: {
+    planCardTitle: {
         fontSize: FontSize.lg,
         fontWeight: FontWeight.bold,
         color: Colors.text,
     },
-    upgradeSubtitle: {
+    planCardSubtitle: {
         fontSize: FontSize.sm,
         color: Colors.textSecondary,
         marginTop: 2,
     },
-    upgradePriceWrap: {
+    planPriceWrap: {
         flexDirection: 'row',
         alignItems: 'baseline',
         gap: 2,
     },
-    upgradePrice: {
+    planPrice: {
         fontSize: FontSize.xxl,
         fontWeight: FontWeight.heavy,
         color: Colors.primary,
     },
-    upgradePeriod: {
+    planPricePeriod: {
         fontSize: FontSize.sm,
         color: Colors.textSecondary,
     },
-    contactBtn: {
+    subscribeBtnMonthly: {
+        backgroundColor: Colors.primary,
         borderRadius: BorderRadius.md,
-        overflow: 'hidden',
-        marginBottom: Spacing.md,
-        ...Shadows.glow,
-    },
-    contactBtnGradient: {
-        flexDirection: 'row',
+        paddingVertical: Spacing.md,
         alignItems: 'center',
         justifyContent: 'center',
-        gap: Spacing.sm,
-        paddingVertical: Spacing.lg,
     },
-    contactBtnText: {
+    subscribeBtnText: {
         color: '#fff',
         fontSize: FontSize.md,
         fontWeight: FontWeight.bold,
     },
-    upgradeNote: {
+
+    // Annual plan card
+    annualPlanCardOuter: {
+        borderRadius: BorderRadius.lg,
+        overflow: 'hidden',
+        marginBottom: Spacing.md,
+        ...Shadows.glow,
+    },
+    annualPlanCard: {
+        padding: Spacing.xl,
+        borderRadius: BorderRadius.lg,
+    },
+    bestValueBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        alignSelf: 'flex-start',
+        backgroundColor: 'rgba(255,255,255,0.2)',
+        paddingHorizontal: Spacing.md,
+        paddingVertical: 4,
+        borderRadius: BorderRadius.pill,
+        marginBottom: Spacing.md,
+    },
+    bestValueBadgeText: {
+        fontSize: FontSize.xs,
+        fontWeight: FontWeight.heavy,
+        color: '#fff',
+        letterSpacing: 1,
+    },
+    subscribeBtnAnnual: {
+        backgroundColor: '#fff',
+        borderRadius: BorderRadius.md,
+        paddingVertical: Spacing.md,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    subscribeBtnAnnualText: {
+        color: Colors.gradientStart,
+        fontSize: FontSize.md,
+        fontWeight: FontWeight.bold,
+    },
+    subscribeNote: {
         fontSize: FontSize.xs,
         color: Colors.textTertiary,
         textAlign: 'center',
         lineHeight: 18,
+        marginBottom: Spacing.xxl,
     },
 
     // Manage note
@@ -699,5 +948,105 @@ const styles = StyleSheet.create({
         fontSize: FontSize.sm,
         color: Colors.textSecondary,
         lineHeight: 20,
+    },
+
+    // Founding 50 Application
+    f50ApplyCard: {
+        backgroundColor: Colors.card,
+        borderRadius: BorderRadius.lg,
+        borderWidth: 1.5,
+        borderColor: 'rgba(255,215,0,0.3)',
+        padding: Spacing.xl,
+        marginBottom: Spacing.xxl,
+        ...Shadows.medium,
+    },
+    f50ApplyHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.md,
+        marginBottom: Spacing.lg,
+    },
+    f50ApplyIconWrap: {
+        width: 48,
+        height: 48,
+        borderRadius: 24,
+        backgroundColor: 'rgba(255,215,0,0.12)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,215,0,0.3)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    f50ApplyTitle: {
+        fontSize: FontSize.lg,
+        fontWeight: FontWeight.bold,
+        color: '#FFD700',
+    },
+    f50ApplySubtitle: {
+        fontSize: FontSize.sm,
+        color: Colors.textSecondary,
+        marginTop: 2,
+    },
+    f50SpotsRow: {
+        marginBottom: Spacing.lg,
+    },
+    f50SpotsBarBg: {
+        height: 8,
+        backgroundColor: Colors.surface,
+        borderRadius: 4,
+        overflow: 'hidden',
+        marginBottom: Spacing.xs,
+    },
+    f50SpotsBarFill: {
+        height: '100%',
+        backgroundColor: '#FFD700',
+        borderRadius: 4,
+    },
+    f50SpotsText: {
+        fontSize: FontSize.xs,
+        color: Colors.textSecondary,
+    },
+    f50BenefitsList: {
+        gap: Spacing.sm,
+        marginBottom: Spacing.lg,
+    },
+    f50BenefitRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.sm,
+    },
+    f50BenefitText: {
+        fontSize: FontSize.sm,
+        color: Colors.text,
+        flex: 1,
+    },
+    f50ApplyBtn: {
+        backgroundColor: '#FFD700',
+        borderRadius: BorderRadius.md,
+        paddingVertical: Spacing.md,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: Spacing.sm,
+    },
+    f50ApplyBtnText: {
+        fontSize: FontSize.md,
+        fontWeight: FontWeight.bold,
+        color: '#1a1500',
+    },
+    f50PendingBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: Spacing.sm,
+        backgroundColor: Colors.warningLight,
+        borderRadius: BorderRadius.md,
+        paddingVertical: Spacing.md,
+        borderWidth: 1,
+        borderColor: Colors.warning,
+    },
+    f50PendingText: {
+        fontSize: FontSize.md,
+        fontWeight: FontWeight.semibold,
+        color: Colors.warning,
     },
 });

@@ -63,7 +63,9 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     useEffect(() => {
         const loadNotifications = async () => {
             try {
-                // Fetch recent activity from bookings, disputes as notifications
+                // Read persisted "already seen" IDs from localStorage
+                const readIds = new Set<string>(JSON.parse(localStorage.getItem('admin_notif_read') || '[]'));
+
                 const { data: recentBookings } = await supabase
                     .from("bookings")
                     .select("id, sport, status, created_at, athlete_id, users!bookings_athlete_id_fkey(first_name, last_name)")
@@ -86,7 +88,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                         title: `New ${b.sport} booking`,
                         desc: `${name} — ${b.status}`,
                         time: new Date(b.created_at),
-                        read: false,
+                        read: readIds.has(`b-${b.id}`),
                     });
                 });
 
@@ -97,7 +99,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                         title: `Dispute ${d.status.replace('_', ' ')}`,
                         desc: (d.reason || '').substring(0, 60) + '...',
                         time: new Date(d.created_at),
-                        read: d.status === 'resolved',
+                        read: d.status === 'resolved' || readIds.has(`d-${d.id}`),
                     });
                 });
 
@@ -262,17 +264,19 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
                     <div className="flex items-center gap-2 sm:gap-3">
                         <div className="relative" ref={notifRef}>
-                            <button
-                                onClick={() => setShowNotifications(!showNotifications)}
-                                className="relative w-10 h-10 rounded-full bg-surface border border-white/5 flex items-center justify-center text-text-main/60 hover:text-text-main transition-colors"
-                            >
-                                <Bell size={18} />
+                            <div style={{ position: 'relative', display: 'inline-block' }}>
+                                <button
+                                    onClick={() => setShowNotifications(!showNotifications)}
+                                    className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${showNotifications ? 'bg-primary/10 text-primary border border-primary/20' : 'bg-surface border border-white/5 text-text-main/50 hover:text-text-main hover:border-white/10'}`}
+                                >
+                                    <Bell size={17} />
+                                </button>
                                 {unreadCount > 0 && (
-                                    <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] rounded-full bg-red-500 flex items-center justify-center text-[10px] font-black text-white px-1">
-                                        {unreadCount}
+                                    <span style={{ position: 'absolute', top: '-8px', right: '-8px', minWidth: '20px', height: '20px', borderRadius: '999px', background: '#45D0FF', color: '#0A0D14', fontSize: '11px', fontWeight: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 5px', lineHeight: 1, border: '2px solid #0A0D14', zIndex: 10, pointerEvents: 'none' }}>
+                                        {unreadCount > 9 ? '9+' : unreadCount}
                                     </span>
                                 )}
-                            </button>
+                            </div>
 
                             {/* Notifications Dropdown */}
                             {showNotifications && (
@@ -294,8 +298,13 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                                                 <div
                                                     key={n.id}
                                                     onClick={() => {
-                                                        setNotifications(prev => prev.map(x => x.id === n.id ? { ...x, read: true } : x));
-                                                        setUnreadCount(prev => !n.read ? Math.max(0, prev - 1) : prev);
+                                                        if (!n.read) {
+                                                            const readIds = new Set<string>(JSON.parse(localStorage.getItem('admin_notif_read') || '[]'));
+                                                            readIds.add(n.id);
+                                                            localStorage.setItem('admin_notif_read', JSON.stringify(Array.from(readIds)));
+                                                            setNotifications(prev => prev.map(x => x.id === n.id ? { ...x, read: true } : x));
+                                                            setUnreadCount(prev => Math.max(0, prev - 1));
+                                                        }
                                                     }}
                                                     className={`flex items-start gap-3 px-5 py-4 border-b border-white/5 hover:bg-white/5 transition-colors cursor-pointer ${!n.read ? 'bg-primary/5' : ''}`}
                                                 >
@@ -324,7 +333,15 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                                             View All Activity
                                         </button>
                                         <button
-                                            onClick={() => { setNotifications([]); setUnreadCount(0); setShowNotifications(false); }}
+                                            onClick={() => {
+                                                const allIds = notifications.map(n => n.id);
+                                                const readIds = new Set<string>(JSON.parse(localStorage.getItem('admin_notif_read') || '[]'));
+                                                allIds.forEach(id => readIds.add(id));
+                                                localStorage.setItem('admin_notif_read', JSON.stringify(Array.from(readIds)));
+                                                setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+                                                setUnreadCount(0);
+                                                setShowNotifications(false);
+                                            }}
                                             className="flex-1 text-center text-xs font-black text-red-400 uppercase tracking-widest py-2 hover:bg-red-500/5 rounded-lg transition-colors"
                                         >
                                             Clear All

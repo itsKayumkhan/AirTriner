@@ -5,6 +5,9 @@ import { Download, Plus, FileText, CheckCircle, Search, XCircle, ChevronLeft, Ch
 import { supabase } from "@/lib/supabase";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { FoundingBadgeTooltip } from "@/components/ui/FoundingBadge";
+import dynamic from "next/dynamic";
+
+const LocationMap = dynamic(() => import("@/components/admin/LocationMap"), { ssr: false });
 
 type DocsModalState = {
     isOpen: boolean;
@@ -39,7 +42,7 @@ export default function AdminTrainersPage() {
             const userIds = usersData.map(u => u.id);
             const { data: profilesData } = await supabase
                 .from("trainer_profiles")
-                .select("user_id, verification_status, sports, is_founding_50, verification_documents")
+                .select("user_id, verification_status, sports, is_founding_50, verification_documents, latitude, longitude, city, state")
                 .in("user_id", userIds);
             const profilesMap = new Map((profilesData || []).map(p => [p.user_id, p]));
 
@@ -62,6 +65,10 @@ export default function AdminTrainersPage() {
                     isDeclined,
                     isFounding50: profile?.is_founding_50 ?? false,
                     docs,
+                    lat: profile?.latitude,
+                    lng: profile?.longitude,
+                    city: profile?.city,
+                    state: profile?.state,
                 };
             }));
         } catch (err) {
@@ -251,6 +258,23 @@ export default function AdminTrainersPage() {
                     </div>
                 ))}
             </div>
+
+            {/* Location Map */}
+            <LocationMap
+                pins={trainers.filter(t => t.lat && t.lng).map(t => ({
+                    id: t.id,
+                    name: t.name,
+                    lat: t.lat,
+                    lng: t.lng,
+                    role: "trainer" as const,
+                    status: t.status,
+                    sport: t.specialty,
+                    city: t.city,
+                    state: t.state,
+                }))}
+                title="Trainer Locations"
+                subtitle="Track where trainers are concentrated and where coverage is lacking"
+            />
 
             {/* Search & Tabs */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-surface/50 border border-white/5 p-2 rounded-[24px]">

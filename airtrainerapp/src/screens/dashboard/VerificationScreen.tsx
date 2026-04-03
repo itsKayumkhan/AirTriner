@@ -10,12 +10,19 @@ import {
     RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as DocumentPicker from 'expo-document-picker';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { TrainerProfileRow } from '../../lib/supabase';
 import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows } from '../../theme';
 
 type VerificationStatus = 'pending' | 'verified' | 'rejected' | 'suspended' | null;
+
+type VerificationDocument = {
+    name: string;
+    url: string;
+    uploadedAt: string;
+};
 
 type ChecklistItem = {
     id: string;
@@ -88,7 +95,7 @@ function StatusBanner({ status }: { status: VerificationStatus }) {
             text: Colors.warning,
             icon: 'time-outline' as keyof typeof Ionicons.glyphMap,
             label: 'Pending Review',
-            subtitle: 'Your profile is under review. We'll notify you within 2–3 business days.',
+            subtitle: "Your profile is under review. We'll notify you within 2-3 business days.",
         },
         verified: {
             bg: 'rgba(0,200,83,0.12)',
@@ -96,7 +103,7 @@ function StatusBanner({ status }: { status: VerificationStatus }) {
             text: Colors.success,
             icon: 'shield-checkmark-outline' as keyof typeof Ionicons.glyphMap,
             label: 'Verified Trainer',
-            subtitle: 'You're officially verified. Your badge is now visible to athletes.',
+            subtitle: "You're officially verified. Your badge is now visible to athletes.",
         },
         rejected: {
             bg: Colors.errorLight,
@@ -162,6 +169,8 @@ export default function VerificationScreen({ navigation }: any) {
     const [isLoading, setIsLoading] = useState(!user?.trainerProfile);
     const [refreshing, setRefreshing] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [documents, setDocuments] = useState<VerificationDocument[]>([]);
+    const [uploading, setUploading] = useState(false);
 
     const fetchProfile = useCallback(async () => {
         if (!user) return;
@@ -173,6 +182,7 @@ export default function VerificationScreen({ navigation }: any) {
                 .single();
             if (error) throw error;
             setProfile(data as TrainerProfileRow);
+            setDocuments((data as any)?.verification_documents || []);
         } catch (err) {
             console.error('Error fetching trainer profile:', err);
         } finally {
@@ -229,6 +239,83 @@ export default function VerificationScreen({ navigation }: any) {
         );
     };
 
+    const handleUploadDocument = async () => {
+        if (!user) return;
+        try {
+            const result = await DocumentPicker.getDocumentAsync({
+                type: ['application/pdf', 'image/*'],
+                copyToCacheDirectory: true,
+            });
+
+            if (result.canceled) return;
+
+            setUploading(true);
+            const file = result.assets[0];
+            const fileName = `verification/${user.id}/${Date.now()}_${file.name}`;
+
+            // Upload to Supabase Storage
+            const response = await fetch(file.uri);
+            const blob = await response.blob();
+
+            const { error: uploadError } = await supabase.storage
+                .from('verification-docs')
+                .upload(fileName, blob, {
+                    contentType: file.mimeType || 'application/pdf',
+                    upsert: false,
+                });
+
+            if (uploadError) {
+                Alert.alert('Upload Failed', uploadError.message);
+                setUploading(false);
+                return;
+            }
+
+            const {
+                data: { publicUrl },
+            } = supabase.storage.from('verification-docs').getPublicUrl(fileName);
+
+            // Add to verification_documents array
+            const currentDocs = documents || [];
+            const newDoc: VerificationDocument = {
+                name: file.name,
+                url: publicUrl,
+                uploadedAt: new Date().toISOString(),
+            };
+            const updatedDocs = [...currentDocs, newDoc];
+
+            await supabase
+                .from('trainer_profiles')
+                .update({ verification_documents: updatedDocs })
+                .eq('user_id', user.id);
+
+            setDocuments(updatedDocs);
+            Alert.alert('Uploaded', 'Document uploaded successfully.');
+        } catch (err: any) {
+            Alert.alert('Error', err.message || 'Failed to upload document.');
+        } finally {
+            setUploading(false);
+        }
+    };
+
+    const handleDeleteDocument = async (index: number) => {
+        if (!user) return;
+        Alert.alert('Delete Document', 'Remove this document?', [
+            { text: 'Cancel', style: 'cancel' },
+            {
+                text: 'Delete',
+                style: 'destructive',
+                onPress: async () => {
+                    const updatedDocs = documents.filter((_, i) => i !== index);
+                    await supabase
+                        .from('trainer_profiles')
+                        .update({ verification_documents: updatedDocs })
+                        .eq('user_id', user.id);
+                    setDocuments(updatedDocs);
+                },
+            },
+        ]);
+    };
+
     if (isLoading) {
         return (
             <View style={[styles.container, styles.center]}>
@@ -256,8 +343,9 @@ export default function VerificationScreen({ navigation }: any) {
         .filter((i) => i.id !== 'submit')
         .every((i) => i.done);
 
+    const hasDocuments = documents.length > 0;
     const canSubmit =
-        prereqsDone && (status === null || status === 'rejected') && !isSubmitting;
+        prereqsDone && hasDocuments && (status === null || status === 'rejected') && !isSubmitting;
 
     return (
         <View style={styles.container}>
@@ -336,6 +424,70 @@ export default function VerificationScreen({ navigation }: any) {
                     ))}
                 </View>
 
+                {/* Verification Documents */}
+                <View style={styles.documentsCard}>
+                    <Text style={styles.documentsTitle}>Verification Documents</Text>
+                    <Text style={styles.documentsSubtitle}>
+                        Upload certificates, IDs, or other supporting documents (PDF or images).
+                    </Text>
+
+                    {documents.length > 0 && (
+                        <View style={styles.documentsList}>
+                            {documents.map((doc, index) => (
+                                <View key={`${doc.name}-${index}`} style={styles.documentRow}>
+                                    <Ionicons
+                                        name="document-outline"
+                                        size={20}
+                                        color={Colors.primary}
+                                    />
+                                    <View style={styles.documentInfo}>
+                                        <Text
+                                            style={styles.documentName}
+                                            numberOfLines={1}
+                                            ellipsizeMode="middle"
+                                        >
+                                            {doc.name}
+                                        </Text>
+                                        <Text style={styles.documentDate}>
+                                            {new Date(doc.uploadedAt).toLocaleDateString()}
+                                        </Text>
+                                    </View>
+                                    <TouchableOpacity
+                                        onPress={() => handleDeleteDocument(index)}
+                                        style={styles.documentDeleteButton}
+                                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                    >
+                                        <Ionicons
+                                            name="close-circle"
+                                            size={20}
+                                            color={Colors.error}
+                                        />
+                                    </TouchableOpacity>
+                                </View>
+                            ))}
+                        </View>
+                    )}
+
+                    <TouchableOpacity
+                        style={styles.uploadButton}
+                        onPress={handleUploadDocument}
+                        disabled={uploading}
+                    >
+                        {uploading ? (
+                            <ActivityIndicator size="small" color={Colors.primary} />
+                        ) : (
+                            <>
+                                <Ionicons
+                                    name="cloud-upload-outline"
+                                    size={22}
+                                    color={Colors.primary}
+                                />
+                                <Text style={styles.uploadButtonText}>Upload Document</Text>
+                            </>
+                        )}
+                    </TouchableOpacity>
+                </View>
+
                 {/* Submit Button */}
                 {!isVerified && (
                     <TouchableOpacity
@@ -362,7 +514,11 @@ export default function VerificationScreen({ navigation }: any) {
 
                 {!canSubmit && !isVerified && status !== 'pending' && !isSubmitting && (
                     <Text style={styles.submitHint}>
-                        Complete all steps above before submitting.
+                        {!prereqsDone
+                            ? 'Complete all steps above before submitting.'
+                            : !hasDocuments
+                            ? 'Upload at least one verification document before submitting.'
+                            : 'Complete all steps above before submitting.'}
                     </Text>
                 )}
             </ScrollView>
@@ -597,6 +753,75 @@ const styles = StyleSheet.create({
     checklistDesc: {
         fontSize: FontSize.xs,
         color: Colors.textMuted,
+    },
+
+    // Documents Section
+    documentsCard: {
+        backgroundColor: Colors.card,
+        borderRadius: BorderRadius.lg,
+        padding: Spacing.lg,
+        borderWidth: 1,
+        borderColor: Colors.border,
+        gap: Spacing.sm,
+        ...Shadows.small,
+    },
+    documentsTitle: {
+        fontSize: FontSize.md,
+        fontWeight: FontWeight.bold,
+        color: Colors.text,
+    },
+    documentsSubtitle: {
+        fontSize: FontSize.sm,
+        color: Colors.textMuted,
+        lineHeight: 18,
+        marginBottom: Spacing.xs,
+    },
+    documentsList: {
+        gap: Spacing.sm,
+    },
+    documentRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.md,
+        backgroundColor: Colors.surface,
+        padding: Spacing.md,
+        borderRadius: BorderRadius.md,
+        borderWidth: 1,
+        borderColor: Colors.border,
+    },
+    documentInfo: {
+        flex: 1,
+        gap: 2,
+    },
+    documentName: {
+        fontSize: FontSize.sm,
+        fontWeight: FontWeight.medium,
+        color: Colors.text,
+    },
+    documentDate: {
+        fontSize: FontSize.xs,
+        color: Colors.textMuted,
+    },
+    documentDeleteButton: {
+        padding: 4,
+    },
+    uploadButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: Spacing.sm,
+        paddingVertical: Spacing.lg,
+        borderRadius: BorderRadius.md,
+        borderWidth: 1.5,
+        borderStyle: 'dashed',
+        borderColor: Colors.borderLight,
+        backgroundColor: Colors.glass,
+        marginTop: Spacing.xs,
+    },
+    uploadButtonText: {
+        fontSize: FontSize.md,
+        fontWeight: FontWeight.semibold,
+        color: Colors.primary,
     },
 
     // Submit button

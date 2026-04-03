@@ -189,7 +189,8 @@ export default function EarningsPage() {
     // Trainer stats — only count funds that have been released by admin
     // Coach gets full session fee — platform fee is charged to athlete separately
     const totalEarnings = releasedTransactions.reduce((s, t) => s + Number(t.trainer_payout), 0);
-    const netEarnings = totalEarnings;
+    const totalFees = releasedTransactions.reduce((s, t) => s + Number(t.platform_fee || 0), 0);
+    const netEarnings = totalEarnings - totalFees;
     // In Escrow: confirmed upcoming sessions + completed sessions awaiting admin release
     const pendingPayout = upcomingPaid.reduce((s, b) => s + Number(b.payment_transaction?.trainer_payout || 0), 0);
     const heldCompletedPayout = heldCompletedTransactions.reduce((s, t) => s + Number(t.trainer_payout), 0);

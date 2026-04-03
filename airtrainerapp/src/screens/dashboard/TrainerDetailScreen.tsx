@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
     View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator,
     Modal, TextInput,
@@ -19,6 +19,49 @@ const getDefaultDate = () => {
     return `${yyyy}-${mm}-${dd}`;
 };
 
+const DURATION_OPTIONS = [30, 45, 60, 90];
+
+type SubAccount = {
+    id: string;
+    parent_user_id: string;
+    first_name: string;
+    last_name: string;
+    avatar_url?: string | null;
+    [key: string]: any;
+};
+
+type AvailabilitySlot = {
+    id: string;
+    trainer_id: string;
+    day_of_week: number;
+    start_time: string; // "HH:MM"
+    end_time: string;   // "HH:MM"
+    is_blocked: boolean;
+};
+
+type ExistingBooking = {
+    scheduled_at: string;
+    duration_minutes: number;
+};
+
+/**
+ * Parse "HH:MM" or "HH:MM:SS" into total minutes since midnight.
+ */
+const timeToMinutes = (t: string): number => {
+    const [h, m] = t.split(':').map(Number);
+    return h * 60 + (m || 0);
+};
+
+/**
+ * Format hour (0-23) into "h:mm AM/PM".
+ */
+const formatHour = (hour: number, minute: number = 0): string => {
+    const period = hour >= 12 ? 'PM' : 'AM';
+    const h = hour % 12 || 12;
+    const mm = String(minute).padStart(2, '0');
+    return `${h}:${mm} ${period}`;
+};
+
 export default function TrainerDetailScreen({ route, navigation }: any) {
     const { user } = useAuth();
     const { trainerId, trainer } = route.params;
@@ -31,6 +74,22 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
     const [selectedSport, setSelectedSport] = useState<string>(
         trainer.sports?.length === 1 ? trainer.sports[0] : ''
     );
+
+    // New booking state
+    const [selectedTime, setSelectedTime] = useState<string>('');
+    const [selectedDuration, setSelectedDuration] = useState(60);
+    const [availableSlots, setAvailableSlots] = useState<string[]>([]);
+    const [unavailableSlots, setUnavailableSlots] = useState<Set<string>>(new Set());
+    const [loadingSlots, setLoadingSlots] = useState(false);
+    const [noAvailability, setNoAvailability] = useState(false);
+
+    // Sub-account state
+    const [subAccounts, setSubAccounts] = useState<SubAccount[]>([]);
+    const [selectedSubAccount, setSelectedSubAccount] = useState<SubAccount | null>(null);
+    const [showSubAccountPicker, setShowSubAccountPicker] = useState(false);
+
+    // Platform fee
+    const [platformFeePercent, setPlatformFeePercent] = useState(3);
 
     useEffect(() => {
         fetchReviews();
@@ -47,16 +106,159 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
         setReviews((data || []) as any);
     };
 
+    const fetchPlatformFee = async () => {
+        try {
+            const { data: settings } = await supabase
+                .from('platform_settings')
+                .select('platform_fee_percentage')
+                .single();
+            if (settings?.platform_fee_percentage != null) {
+                setPlatformFeePercent(Number(settings.platform_fee_percentage));
+            }
+        } catch {
+            // Keep default 3%
+        }
+    };
+
+    const fetchSubAccounts = async () => {
+        if (!user) return;
+        try {
+            const { data } = await supabase
+                .from('sub_accounts')
+                .select('*')
+                .eq('parent_user_id', user.id);
+            setSubAccounts((data || []) as SubAccount[]);
+        } catch {
+            setSubAccounts([]);
+        }
+    };
+
+    const fetchAvailability = useCallback(async (date: string) => {
+        if (!date.match(/^\d{4}-\d{2}-\d{2}$/)) {
+            setAvailableSlots([]);
+            setUnavailableSlots(new Set());
+            setNoAvailability(false);
+            return;
+        }
+
+        setLoadingSlots(true);
+        setSelectedTime('');
+        setNoAvailability(false);
+
+        try {
+            const dayOfWeek = new Date(date + 'T12:00:00').getDay();
+
+            // Fetch availability slots and existing bookings in parallel
+            const [slotsRes, bookingsRes] = await Promise.all([
+                supabase
+                    .from('availability_slots')
+                    .select('*')
+                    .eq('trainer_id', trainerId)
+                    .eq('day_of_week', dayOfWeek)
+                    .eq('is_blocked', false),
+                supabase
+                    .from('bookings')
+                    .select('scheduled_at, duration_minutes')
+                    .eq('trainer_id', trainerId)
+                    .in('status', ['pending', 'confirmed'])
+                    .gte('scheduled_at', `${date}T00:00:00`)
+                    .lte('scheduled_at', `${date}T23:59:59`),
+            ]);
+
+            const slots: AvailabilitySlot[] = slotsRes.data || [];
+            const existingBookings: ExistingBooking[] = bookingsRes.data || [];
+
+            if (slots.length === 0) {
+                setAvailableSlots([]);
+                setNoAvailability(true);
+                setLoadingSlots(false);
+                return;
+            }
+
+            // Generate hourly time slots from availability windows
+            const allTimeSlots: string[] = [];
+            const conflicting = new Set<string>();
+
+            for (const slot of slots) {
+                const startMin = timeToMinutes(slot.start_time);
+                const endMin = timeToMinutes(slot.end_time);
+
+                // Generate slots on the hour within the window
+                for (let min = startMin; min < endMin; min += 60) {
+                    const hour = Math.floor(min / 60);
+                    const minute = min % 60;
+                    const timeStr = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+                    if (!allTimeSlots.includes(timeStr)) {
+                        allTimeSlots.push(timeStr);
+                    }
+                }
+            }
+
+            // Sort time slots
+            allTimeSlots.sort();
+
+            // Check for conflicts with existing bookings
+            for (const timeStr of allTimeSlots) {
+                const slotStartMin = timeToMinutes(timeStr);
+
+                for (const booking of existingBookings) {
+                    const bookingDate = new Date(booking.scheduled_at);
+                    const bookingStartMin = bookingDate.getHours() * 60 + bookingDate.getMinutes();
+                    const bookingEndMin = bookingStartMin + (booking.duration_minutes || 60);
+
+                    // Check if this slot overlaps with the booking
+                    // A slot at slotStartMin with default duration would overlap if:
+                    // slotStartMin < bookingEndMin AND slotStartMin + duration > bookingStartMin
+                    if (slotStartMin < bookingEndMin && slotStartMin + 60 > bookingStartMin) {
+                        conflicting.add(timeStr);
+                        break;
+                    }
+                }
+            }
+
+            setAvailableSlots(allTimeSlots);
+            setUnavailableSlots(conflicting);
+            setNoAvailability(allTimeSlots.length === 0);
+        } catch {
+            setAvailableSlots([]);
+            setNoAvailability(true);
+        } finally {
+            setLoadingSlots(false);
+        }
+    }, [trainerId]);
+
+    // Re-fetch availability when date changes
+    useEffect(() => {
+        if (showBookingModal && selectedDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+            fetchAvailability(selectedDate);
+        }
+    }, [selectedDate, showBookingModal, fetchAvailability]);
+
     const handleBookingPress = () => {
         if (!user) {
             Alert.alert('Login Required', 'Please log in to book a session');
             return;
         }
         // Reset to defaults each time modal opens
-        setSelectedDate(getDefaultDate());
+        const defaultDate = getDefaultDate();
+        setSelectedDate(defaultDate);
         setSelectedSport(trainer.sports?.length === 1 ? trainer.sports[0] : '');
+        setSelectedTime('');
+        setSelectedDuration(60);
+        setSelectedSubAccount(null);
+        setShowSubAccountPicker(false);
         setShowBookingModal(true);
+
+        // Fetch ancillary data
+        fetchPlatformFee();
+        fetchSubAccounts();
     };
+
+    // Price calculations
+    const hourlyRate = Number(trainer.hourly_rate || 50);
+    const sessionPrice = hourlyRate * (selectedDuration / 60);
+    const platformFee = sessionPrice * (platformFeePercent / 100);
+    const totalPrice = sessionPrice + platformFee;
 
     const handleConfirmBooking = async () => {
         if (!selectedDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
@@ -67,29 +269,45 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
             Alert.alert('Select Sport', 'Please select a sport for your session.');
             return;
         }
+        if (!selectedTime) {
+            Alert.alert('Select Time', 'Please select a time slot for your session.');
+            return;
+        }
         setShowBookingModal(false);
         setIsBooking(true);
         try {
-            const scheduledAt = new Date(`${selectedDate}T10:00:00`).toISOString();
+            const scheduledAt = new Date(`${selectedDate}T${selectedTime}:00`).toISOString();
+            const price = hourlyRate * (selectedDuration / 60);
+            const fee = price * (platformFeePercent / 100);
+            const totalPaid = price + fee;
+
             const { data: booking, error } = await supabase.from('bookings').insert({
                 athlete_id: user!.id,
                 trainer_id: trainerId,
+                sub_account_id: selectedSubAccount?.id || null,
                 sport: selectedSport,
                 scheduled_at: scheduledAt,
-                duration_minutes: 60,
-                price: Number(trainer.hourly_rate || 50),
-                platform_fee: Number(trainer.hourly_rate || 50) * 0.03,
-                total_paid: Number(trainer.hourly_rate || 50) * 1.03,
+                duration_minutes: selectedDuration,
+                price,
+                platform_fee: fee,
+                total_paid: totalPaid,
                 status: 'pending',
+                status_history: [{ status: 'pending', timestamp: new Date().toISOString() }],
             }).select().single();
 
             if (error) throw error;
 
             if (booking) {
+                const bookingForLabel = selectedSubAccount
+                    ? `${selectedSubAccount.first_name}`
+                    : 'myself';
                 await supabase.from('messages').insert({
                     booking_id: booking.id,
                     sender_id: user!.id,
-                    content: `Hi! I'd like to book a ${selectedSport} session with you on ${selectedDate}.`,
+                    content: `Hi! I'd like to book a ${selectedSport} session with you on ${selectedDate} at ${formatHour(
+                        parseInt(selectedTime.split(':')[0]),
+                        parseInt(selectedTime.split(':')[1])
+                    )} for ${selectedDuration} minutes (for ${bookingForLabel}).`,
                 });
 
                 await createNotification({
@@ -297,69 +515,262 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
             >
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalCard}>
-                        <Text style={styles.modalTitle}>Book Session</Text>
+                        <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
+                            <Text style={styles.modalTitle}>Book Session</Text>
 
-                        {/* Date Input */}
-                        <Text style={styles.modalLabel}>Session Date</Text>
-                        <TextInput
-                            style={styles.modalInput}
-                            placeholder="YYYY-MM-DD"
-                            placeholderTextColor="rgba(255,255,255,0.3)"
-                            value={selectedDate}
-                            onChangeText={setSelectedDate}
-                            keyboardType="numbers-and-punctuation"
-                            maxLength={10}
-                        />
+                            {/* Date Input */}
+                            <Text style={styles.modalLabel}>Session Date</Text>
+                            <TextInput
+                                style={styles.modalInput}
+                                placeholder="YYYY-MM-DD"
+                                placeholderTextColor="rgba(255,255,255,0.3)"
+                                value={selectedDate}
+                                onChangeText={setSelectedDate}
+                                keyboardType="numbers-and-punctuation"
+                                maxLength={10}
+                            />
 
-                        {/* Sport Selector */}
-                        {sports.length > 1 && (
-                            <>
-                                <Text style={styles.modalLabel}>Select Sport</Text>
-                                <View style={styles.sportSelectorRow}>
-                                    {sports.map((sport) => (
-                                        <TouchableOpacity
-                                            key={sport}
-                                            style={[
-                                                styles.sportOption,
-                                                selectedSport === sport && styles.sportOptionSelected,
-                                            ]}
-                                            onPress={() => setSelectedSport(sport)}
-                                        >
-                                            <Text
+                            {/* Time Slot Selection */}
+                            <Text style={styles.modalLabel}>Time Slot</Text>
+                            {loadingSlots ? (
+                                <View style={styles.slotsLoadingContainer}>
+                                    <ActivityIndicator size="small" color={Colors.primary} />
+                                    <Text style={styles.slotsLoadingText}>Checking availability...</Text>
+                                </View>
+                            ) : noAvailability ? (
+                                <View style={styles.noSlotsContainer}>
+                                    <Ionicons name="calendar-outline" size={20} color={Colors.textTertiary} />
+                                    <Text style={styles.noSlotsText}>No availability on this date</Text>
+                                </View>
+                            ) : availableSlots.length > 0 ? (
+                                <View style={styles.timeSlotsGrid}>
+                                    {availableSlots.map((timeStr) => {
+                                        const isUnavailable = unavailableSlots.has(timeStr);
+                                        const isSelected = selectedTime === timeStr;
+                                        const hour = parseInt(timeStr.split(':')[0]);
+                                        const minute = parseInt(timeStr.split(':')[1]);
+
+                                        return (
+                                            <TouchableOpacity
+                                                key={timeStr}
                                                 style={[
-                                                    styles.sportOptionText,
-                                                    selectedSport === sport && styles.sportOptionTextSelected,
+                                                    styles.timeSlotButton,
+                                                    isSelected && styles.timeSlotSelected,
+                                                    isUnavailable && styles.timeSlotUnavailable,
                                                 ]}
+                                                onPress={() => {
+                                                    if (!isUnavailable) setSelectedTime(timeStr);
+                                                }}
+                                                disabled={isUnavailable}
+                                                activeOpacity={isUnavailable ? 1 : 0.7}
                                             >
-                                                {sport}
+                                                <Text
+                                                    style={[
+                                                        styles.timeSlotText,
+                                                        isSelected && styles.timeSlotTextSelected,
+                                                        isUnavailable && styles.timeSlotTextUnavailable,
+                                                    ]}
+                                                >
+                                                    {formatHour(hour, minute)}
+                                                </Text>
+                                            </TouchableOpacity>
+                                        );
+                                    })}
+                                </View>
+                            ) : (
+                                <Text style={styles.slotsHintText}>Enter a valid date to see available times</Text>
+                            )}
+
+                            {/* Duration Selector */}
+                            <Text style={styles.modalLabel}>Duration</Text>
+                            <View style={styles.durationRow}>
+                                {DURATION_OPTIONS.map((dur) => (
+                                    <TouchableOpacity
+                                        key={dur}
+                                        style={[
+                                            styles.durationChip,
+                                            selectedDuration === dur && styles.durationChipSelected,
+                                        ]}
+                                        onPress={() => setSelectedDuration(dur)}
+                                        activeOpacity={0.7}
+                                    >
+                                        <Text
+                                            style={[
+                                                styles.durationChipText,
+                                                selectedDuration === dur && styles.durationChipTextSelected,
+                                            ]}
+                                        >
+                                            {dur} min
+                                        </Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+
+                            {/* Sport Selector */}
+                            {sports.length > 1 && (
+                                <>
+                                    <Text style={styles.modalLabel}>Select Sport</Text>
+                                    <View style={styles.sportSelectorRow}>
+                                        {sports.map((sport) => (
+                                            <TouchableOpacity
+                                                key={sport}
+                                                style={[
+                                                    styles.sportOption,
+                                                    selectedSport === sport && styles.sportOptionSelected,
+                                                ]}
+                                                onPress={() => setSelectedSport(sport)}
+                                            >
+                                                <Text
+                                                    style={[
+                                                        styles.sportOptionText,
+                                                        selectedSport === sport && styles.sportOptionTextSelected,
+                                                    ]}
+                                                >
+                                                    {sport}
+                                                </Text>
+                                            </TouchableOpacity>
+                                        ))}
+                                    </View>
+                                </>
+                            )}
+                            {sports.length === 1 && (
+                                <>
+                                    <Text style={styles.modalLabel}>Sport</Text>
+                                    <View style={[styles.sportOption, styles.sportOptionSelected, { alignSelf: 'flex-start' }]}>
+                                        <Text style={styles.sportOptionTextSelected}>{sports[0]}</Text>
+                                    </View>
+                                </>
+                            )}
+
+                            {/* Sub-Account Selector */}
+                            <Text style={styles.modalLabel}>Booking For</Text>
+                            <TouchableOpacity
+                                style={styles.subAccountSelector}
+                                onPress={() => setShowSubAccountPicker(!showSubAccountPicker)}
+                                activeOpacity={0.7}
+                            >
+                                <View style={styles.subAccountSelectorLeft}>
+                                    <View style={styles.subAccountAvatar}>
+                                        <Ionicons
+                                            name={selectedSubAccount ? 'person' : 'person-circle'}
+                                            size={18}
+                                            color={Colors.primary}
+                                        />
+                                    </View>
+                                    <Text style={styles.subAccountSelectorText}>
+                                        {selectedSubAccount
+                                            ? `${selectedSubAccount.first_name} ${selectedSubAccount.last_name}`
+                                            : 'Myself'}
+                                    </Text>
+                                </View>
+                                <Ionicons
+                                    name={showSubAccountPicker ? 'chevron-up' : 'chevron-down'}
+                                    size={18}
+                                    color={Colors.textTertiary}
+                                />
+                            </TouchableOpacity>
+
+                            {showSubAccountPicker && (
+                                <View style={styles.subAccountDropdown}>
+                                    {/* Myself option */}
+                                    <TouchableOpacity
+                                        style={[
+                                            styles.subAccountOption,
+                                            !selectedSubAccount && styles.subAccountOptionActive,
+                                        ]}
+                                        onPress={() => {
+                                            setSelectedSubAccount(null);
+                                            setShowSubAccountPicker(false);
+                                        }}
+                                    >
+                                        <View style={styles.subAccountAvatar}>
+                                            <Ionicons name="person-circle" size={18} color={Colors.primary} />
+                                        </View>
+                                        <Text style={[
+                                            styles.subAccountOptionText,
+                                            !selectedSubAccount && styles.subAccountOptionTextActive,
+                                        ]}>
+                                            Myself
+                                        </Text>
+                                        {!selectedSubAccount && (
+                                            <Ionicons name="checkmark" size={16} color={Colors.primary} />
+                                        )}
+                                    </TouchableOpacity>
+
+                                    {subAccounts.map((acc) => (
+                                        <TouchableOpacity
+                                            key={acc.id}
+                                            style={[
+                                                styles.subAccountOption,
+                                                selectedSubAccount?.id === acc.id && styles.subAccountOptionActive,
+                                            ]}
+                                            onPress={() => {
+                                                setSelectedSubAccount(acc);
+                                                setShowSubAccountPicker(false);
+                                            }}
+                                        >
+                                            <View style={styles.subAccountAvatar}>
+                                                <Text style={styles.subAccountAvatarText}>
+                                                    {(acc.first_name?.[0] || '') + (acc.last_name?.[0] || '')}
+                                                </Text>
+                                            </View>
+                                            <Text style={[
+                                                styles.subAccountOptionText,
+                                                selectedSubAccount?.id === acc.id && styles.subAccountOptionTextActive,
+                                            ]}>
+                                                {acc.first_name} {acc.last_name}
                                             </Text>
+                                            {selectedSubAccount?.id === acc.id && (
+                                                <Ionicons name="checkmark" size={16} color={Colors.primary} />
+                                            )}
                                         </TouchableOpacity>
                                     ))}
-                                </View>
-                            </>
-                        )}
-                        {sports.length === 1 && (
-                            <>
-                                <Text style={styles.modalLabel}>Sport</Text>
-                                <View style={[styles.sportOption, styles.sportOptionSelected, { alignSelf: 'flex-start' }]}>
-                                    <Text style={styles.sportOptionTextSelected}>{sports[0]}</Text>
-                                </View>
-                            </>
-                        )}
 
-                        {/* Price Info */}
-                        <View style={styles.modalPriceRow}>
-                            <Ionicons name="pricetag-outline" size={16} color="#45D0FF" />
-                            <Text style={styles.modalPriceText}>${Number(trainer.hourly_rate || 50).toFixed(0)}/hr</Text>
-                        </View>
+                                    {subAccounts.length === 0 && (
+                                        <Text style={styles.noSubAccountsText}>No sub-accounts added</Text>
+                                    )}
+                                </View>
+                            )}
 
-                        {/* Actions */}
-                        <TouchableOpacity style={styles.confirmButton} onPress={handleConfirmBooking} activeOpacity={0.85}>
-                            <Text style={styles.confirmButtonText}>Confirm Booking</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.cancelButton} onPress={() => setShowBookingModal(false)} activeOpacity={0.7}>
-                            <Text style={styles.cancelButtonText}>Cancel</Text>
-                        </TouchableOpacity>
+                            {/* Price Breakdown */}
+                            <Text style={styles.modalLabel}>Price Breakdown</Text>
+                            <View style={styles.priceBreakdownCard}>
+                                <View style={styles.priceRow}>
+                                    <Text style={styles.priceRowLabel}>
+                                        Session ({selectedDuration} min)
+                                    </Text>
+                                    <Text style={styles.priceRowValue}>
+                                        ${sessionPrice.toFixed(2)}
+                                    </Text>
+                                </View>
+                                <View style={styles.priceRow}>
+                                    <Text style={styles.priceRowLabel}>
+                                        Platform Fee ({platformFeePercent}%)
+                                    </Text>
+                                    <Text style={styles.priceRowValue}>
+                                        ${platformFee.toFixed(2)}
+                                    </Text>
+                                </View>
+                                <View style={styles.priceDivider} />
+                                <View style={styles.priceRow}>
+                                    <Text style={styles.priceTotalLabel}>Total</Text>
+                                    <Text style={styles.priceTotalValue}>
+                                        ${totalPrice.toFixed(2)}
+                                    </Text>
+                                </View>
+                            </View>
+
+                            {/* Actions */}
+                            <TouchableOpacity style={styles.confirmButton} onPress={handleConfirmBooking} activeOpacity={0.85}>
+                                <Text style={styles.confirmButtonText}>Confirm Booking</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={styles.cancelButton} onPress={() => setShowBookingModal(false)} activeOpacity={0.7}>
+                                <Text style={styles.cancelButtonText}>Cancel</Text>
+                            </TouchableOpacity>
+
+                            {/* Bottom padding for scroll */}
+                            <View style={{ height: 20 }} />
+                        </ScrollView>
                     </View>
                 </View>
             </Modal>
@@ -414,7 +825,7 @@ const styles = StyleSheet.create({
     bookButtonText: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: '#0A0D14' },
     // Modal styles
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
-    modalCard: { backgroundColor: '#161B22', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: Spacing.xxl, paddingBottom: 48, borderTopWidth: 1, borderTopColor: 'rgba(69,208,255,0.15)' },
+    modalCard: { backgroundColor: '#161B22', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: Spacing.xxl, paddingBottom: 48, borderTopWidth: 1, borderTopColor: 'rgba(69,208,255,0.15)', maxHeight: '90%' },
     modalTitle: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: '#FFFFFF', marginBottom: Spacing.xl, textAlign: 'center' },
     modalLabel: { fontSize: FontSize.sm, fontWeight: FontWeight.semibold, color: Colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: Spacing.sm, marginTop: Spacing.lg },
     modalInput: { backgroundColor: '#0A0D14', borderRadius: BorderRadius.md, borderWidth: 1, borderColor: 'rgba(69,208,255,0.25)', paddingHorizontal: Spacing.lg, paddingVertical: 14, fontSize: FontSize.md, color: '#FFFFFF', marginBottom: Spacing.sm },
@@ -429,4 +840,210 @@ const styles = StyleSheet.create({
     confirmButtonText: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: '#0A0D14' },
     cancelButton: { marginTop: Spacing.md, height: 48, borderRadius: BorderRadius.md, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)' },
     cancelButtonText: { fontSize: FontSize.md, fontWeight: FontWeight.medium, color: Colors.textSecondary },
+
+    // Time slots
+    timeSlotsGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: Spacing.sm,
+    },
+    timeSlotButton: {
+        width: '31%',
+        paddingVertical: Spacing.md,
+        borderRadius: BorderRadius.md,
+        backgroundColor: Colors.glass,
+        borderWidth: 1,
+        borderColor: Colors.glassBorder,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    timeSlotSelected: {
+        backgroundColor: Colors.primary,
+        borderColor: Colors.primary,
+    },
+    timeSlotUnavailable: {
+        backgroundColor: Colors.surface,
+        borderColor: 'rgba(255,255,255,0.04)',
+        opacity: 0.45,
+    },
+    timeSlotText: {
+        fontSize: FontSize.sm,
+        fontWeight: FontWeight.medium,
+        color: Colors.text,
+    },
+    timeSlotTextSelected: {
+        color: '#0A0D14',
+        fontWeight: FontWeight.bold,
+    },
+    timeSlotTextUnavailable: {
+        color: Colors.textTertiary,
+    },
+    slotsLoadingContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.sm,
+        paddingVertical: Spacing.lg,
+    },
+    slotsLoadingText: {
+        fontSize: FontSize.sm,
+        color: Colors.textSecondary,
+    },
+    noSlotsContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.sm,
+        paddingVertical: Spacing.lg,
+        paddingHorizontal: Spacing.md,
+        backgroundColor: Colors.glass,
+        borderRadius: BorderRadius.md,
+    },
+    noSlotsText: {
+        fontSize: FontSize.sm,
+        color: Colors.textTertiary,
+    },
+    slotsHintText: {
+        fontSize: FontSize.sm,
+        color: Colors.textTertiary,
+        paddingVertical: Spacing.sm,
+    },
+
+    // Duration chips
+    durationRow: {
+        flexDirection: 'row',
+        gap: Spacing.sm,
+    },
+    durationChip: {
+        flex: 1,
+        paddingVertical: Spacing.md,
+        borderRadius: BorderRadius.pill,
+        borderWidth: 1.5,
+        borderColor: 'rgba(255,255,255,0.15)',
+        backgroundColor: 'transparent',
+        alignItems: 'center',
+    },
+    durationChipSelected: {
+        backgroundColor: Colors.primary,
+        borderColor: Colors.primary,
+    },
+    durationChipText: {
+        fontSize: FontSize.sm,
+        fontWeight: FontWeight.medium,
+        color: Colors.textSecondary,
+    },
+    durationChipTextSelected: {
+        color: '#0A0D14',
+        fontWeight: FontWeight.bold,
+    },
+
+    // Sub-account selector
+    subAccountSelector: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        backgroundColor: '#0A0D14',
+        borderRadius: BorderRadius.md,
+        borderWidth: 1,
+        borderColor: 'rgba(69,208,255,0.25)',
+        paddingHorizontal: Spacing.lg,
+        paddingVertical: Spacing.md,
+    },
+    subAccountSelectorLeft: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.md,
+    },
+    subAccountSelectorText: {
+        fontSize: FontSize.md,
+        color: Colors.text,
+        fontWeight: FontWeight.medium,
+    },
+    subAccountAvatar: {
+        width: 32,
+        height: 32,
+        borderRadius: 10,
+        backgroundColor: Colors.primaryGlow,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    subAccountAvatarText: {
+        fontSize: FontSize.xs,
+        fontWeight: FontWeight.bold,
+        color: Colors.primary,
+    },
+    subAccountDropdown: {
+        marginTop: Spacing.sm,
+        backgroundColor: '#0A0D14',
+        borderRadius: BorderRadius.md,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+        overflow: 'hidden',
+    },
+    subAccountOption: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.md,
+        paddingHorizontal: Spacing.lg,
+        paddingVertical: Spacing.md,
+        borderBottomWidth: 1,
+        borderBottomColor: 'rgba(255,255,255,0.04)',
+    },
+    subAccountOptionActive: {
+        backgroundColor: Colors.primaryGlow,
+    },
+    subAccountOptionText: {
+        flex: 1,
+        fontSize: FontSize.sm,
+        color: Colors.textSecondary,
+        fontWeight: FontWeight.medium,
+    },
+    subAccountOptionTextActive: {
+        color: Colors.primary,
+        fontWeight: FontWeight.semibold,
+    },
+    noSubAccountsText: {
+        fontSize: FontSize.sm,
+        color: Colors.textTertiary,
+        paddingHorizontal: Spacing.lg,
+        paddingVertical: Spacing.md,
+        textAlign: 'center',
+    },
+
+    // Price breakdown
+    priceBreakdownCard: {
+        backgroundColor: '#0A0D14',
+        borderRadius: BorderRadius.md,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+        padding: Spacing.lg,
+    },
+    priceRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingVertical: Spacing.xs,
+    },
+    priceRowLabel: {
+        fontSize: FontSize.sm,
+        color: Colors.textSecondary,
+    },
+    priceRowValue: {
+        fontSize: FontSize.sm,
+        color: Colors.text,
+        fontWeight: FontWeight.medium,
+    },
+    priceDivider: {
+        height: 1,
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        marginVertical: Spacing.sm,
+    },
+    priceTotalLabel: {
+        fontSize: FontSize.md,
+        color: Colors.text,
+        fontWeight: FontWeight.bold,
+    },
+    priceTotalValue: {
+        fontSize: FontSize.lg,
+        color: Colors.primary,
+        fontWeight: FontWeight.bold,
+    },
 });

@@ -70,13 +70,30 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: txError.message }, { status: 500 });
         }
 
+        // Update booking status to confirmed after successful payment
+        const { error: bookingError } = await supabase
+            .from('bookings')
+            .update({
+                status: 'confirmed',
+                status_history: [
+                    { status: 'pending', timestamp: new Date().toISOString(), note: 'Booking created' },
+                    { status: 'confirmed', timestamp: new Date().toISOString(), note: 'Payment verified via Stripe' }
+                ],
+                updated_at: new Date().toISOString(),
+            })
+            .eq('id', bookingId);
+
+        if (bookingError) {
+            console.error('[verify-booking-payment] Failed to confirm booking:', bookingError);
+        }
+
         // Notify trainer
         if (trainerId && amount) {
             await supabase.from('notifications').insert({
                 user_id: trainerId,
                 type: 'PAYMENT_RECEIVED',
                 title: 'Payment Received',
-                body: `Athlete has paid for your upcoming session. Funds are held in escrow.`,
+                body: `Payment received and booking confirmed! Funds are held in escrow until session completion.`,
                 data: { booking_id: bookingId },
                 read: false,
             });

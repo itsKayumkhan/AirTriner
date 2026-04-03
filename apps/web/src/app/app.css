@@ -136,6 +136,44 @@ body {
   box-shadow: 0 0 0 1px rgba(69, 208, 255, 0.3), var(--glow-primary-sm);
 }
 
+/* ─── Global Button Hover: Black gradient overlay ─── */
+button,
+a[role="button"],
+.btn-primary,
+[class*="rounded"][class*="px-"][class*="py-"] {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+button::after,
+a[role="button"]::after,
+.btn-primary::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  background: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.35) 100%);
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  pointer-events: none;
+}
+
+button:hover::after,
+a[role="button"]:hover::after,
+.btn-primary:hover::after {
+  opacity: 1;
+}
+
+/* Make sure button text stays above the overlay */
+button > *,
+a[role="button"] > *,
+.btn-primary > * {
+  position: relative;
+  z-index: 2;
+}
+
 /* Buttons with glow — only exact bg-primary, not bg-primary/10 etc. */
 button.bg-primary,
 a.bg-primary,
@@ -148,4 +186,12 @@ button.bg-primary:hover,
 a.bg-primary:hover,
 .btn-primary:hover {
   box-shadow: var(--glow-primary);
+}
+
+/* Exclude transparent/ghost buttons from the gradient effect */
+button.bg-transparent::after,
+button[class*="bg-white/5"]::after,
+button[class*="bg-white/[0.0"]::after,
+button[class*="bg-surface"]::after {
+  display: none;
 }

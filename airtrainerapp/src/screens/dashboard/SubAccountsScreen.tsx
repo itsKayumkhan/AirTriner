@@ -21,10 +21,31 @@ import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows } from '..
 
 const MAX_SUB_ACCOUNTS = 6;
 
+const SPORTS_LIST = [
+    { label: 'Hockey', emoji: '\u{1F3D2}' },
+    { label: 'Baseball', emoji: '\u{26BE}' },
+    { label: 'Basketball', emoji: '\u{1F3C0}' },
+    { label: 'Soccer', emoji: '\u{26BD}' },
+    { label: 'Football', emoji: '\u{1F3C8}' },
+    { label: 'Tennis', emoji: '\u{1F3BE}' },
+    { label: 'Golf', emoji: '\u{26F3}' },
+    { label: 'Swimming', emoji: '\u{1F3CA}' },
+    { label: 'Boxing', emoji: '\u{1F94A}' },
+    { label: 'Lacrosse', emoji: '\u{1F94D}' },
+] as const;
+
+const SKILL_LEVELS = ['Beginner', 'Intermediate', 'Advanced', 'Pro'] as const;
+type SkillLevel = (typeof SKILL_LEVELS)[number];
+
 type SubAccountProfileData = {
     name?: string;
     email?: string | null;
     role?: 'athlete' | 'trainer';
+    age?: number | null;
+    sport?: string | null;
+    skill_level?: SkillLevel | null;
+    notes?: string | null;
+    max_bookings_per_month?: number | null;
 };
 
 type SubAccount = {
@@ -38,6 +59,11 @@ type SubAccount = {
 };
 
 type Role = 'athlete' | 'trainer';
+
+function getSportEmoji(sportLabel: string): string {
+    const found = SPORTS_LIST.find((s) => s.label === sportLabel);
+    return found ? found.emoji : '\u{1F3C5}';
+}
 
 function getInitials(name: string): string {
     const parts = name.trim().split(' ');
@@ -82,6 +108,11 @@ export default function SubAccountsScreen({ navigation }: any) {
     const [lastName, setLastName] = useState('');
     const [email, setEmail] = useState('');
     const [role, setRole] = useState<Role>('athlete');
+    const [age, setAge] = useState('');
+    const [sport, setSport] = useState<string | null>(null);
+    const [skillLevel, setSkillLevel] = useState<SkillLevel | null>(null);
+    const [notes, setNotes] = useState('');
+    const [maxBookings, setMaxBookings] = useState('');
 
     const fetchAccounts = useCallback(async () => {
         if (!user) return;
@@ -117,6 +148,11 @@ export default function SubAccountsScreen({ navigation }: any) {
         setLastName('');
         setEmail('');
         setRole('athlete');
+        setAge('');
+        setSport(null);
+        setSkillLevel(null);
+        setNotes('');
+        setMaxBookings('');
     };
 
     const handleOpenModal = () => {
@@ -136,18 +172,38 @@ export default function SubAccountsScreen({ navigation }: any) {
             return;
         }
 
+        // Validate age if provided
+        const ageNum = age.trim() ? parseInt(age.trim(), 10) : null;
+        if (ageNum !== null && (isNaN(ageNum) || ageNum < 3 || ageNum > 99)) {
+            Alert.alert('Invalid Age', 'Age must be a number between 3 and 99.');
+            return;
+        }
+
+        const maxBookingsNum = maxBookings.trim() ? parseInt(maxBookings.trim(), 10) : null;
+        if (maxBookingsNum !== null && (isNaN(maxBookingsNum) || maxBookingsNum < 1)) {
+            Alert.alert('Invalid Value', 'Max bookings must be a positive number.');
+            return;
+        }
+
         setIsSaving(true);
         try {
             const fullName = [firstName.trim(), lastName.trim()].filter(Boolean).join(' ');
+            const profileData: SubAccountProfileData = {
+                name: fullName,
+                email: email.trim() || null,
+                role,
+                age: ageNum,
+                sport: sport || null,
+                skill_level: skillLevel || null,
+                notes: notes.trim() || null,
+                max_bookings_per_month: maxBookingsNum,
+            };
+
             const { data, error } = await supabase
                 .from('sub_accounts')
                 .insert({
                     parent_user_id: user.id,
-                    profile_data: {
-                        name: fullName,
-                        email: email.trim() || null,
-                        role,
-                    },
+                    profile_data: profileData,
                     is_active: true,
                 })
                 .select()
@@ -267,26 +323,62 @@ export default function SubAccountsScreen({ navigation }: any) {
                 ) : (
                     <View style={styles.listContainer}>
                         <Text style={styles.sectionLabel}>ACCOUNTS</Text>
-                        {accounts.map((acc) => (
-                            <TouchableWithoutFeedback
-                                key={acc.id}
-                                onLongPress={() => handleLongPress(acc)}
-                                delayLongPress={500}
-                            >
-                                <View style={styles.accountCard}>
-                                    <AvatarGradient initials={getInitials(acc.profile_data?.name || '?')} />
-                                    <View style={styles.accountInfo}>
-                                        <Text style={styles.accountName}>{acc.profile_data?.name}</Text>
-                                        {acc.profile_data?.email ? (
-                                            <Text style={styles.accountEmail}>{acc.profile_data?.email}</Text>
-                                        ) : (
-                                            <Text style={styles.accountEmailMuted}>No email set</Text>
-                                        )}
+                        {accounts.map((acc) => {
+                            const pd = acc.profile_data;
+                            return (
+                                <TouchableWithoutFeedback
+                                    key={acc.id}
+                                    onLongPress={() => handleLongPress(acc)}
+                                    delayLongPress={500}
+                                >
+                                    <View style={styles.accountCard}>
+                                        <AvatarGradient initials={getInitials(pd?.name || '?')} />
+                                        <View style={styles.accountInfo}>
+                                            <View style={styles.accountNameRow}>
+                                                <Text style={styles.accountName}>{pd?.name}</Text>
+                                                <RoleBadge role={pd?.role ?? 'athlete'} />
+                                            </View>
+                                            {pd?.email ? (
+                                                <Text style={styles.accountEmail}>{pd.email}</Text>
+                                            ) : (
+                                                <Text style={styles.accountEmailMuted}>No email set</Text>
+                                            )}
+                                            {/* Extra info row */}
+                                            {(pd?.age || pd?.sport || pd?.skill_level) && (
+                                                <View style={styles.cardMetaRow}>
+                                                    {pd?.age != null && (
+                                                        <View style={styles.cardMetaBadge}>
+                                                            <Text style={styles.cardMetaBadgeText}>
+                                                                Age {pd.age}
+                                                            </Text>
+                                                        </View>
+                                                    )}
+                                                    {pd?.sport && (
+                                                        <View style={styles.cardSportChip}>
+                                                            <Text style={styles.cardSportChipText}>
+                                                                {getSportEmoji(pd.sport)} {pd.sport}
+                                                            </Text>
+                                                        </View>
+                                                    )}
+                                                    {pd?.skill_level && (
+                                                        <View style={styles.cardSkillBadge}>
+                                                            <Text style={styles.cardSkillBadgeText}>
+                                                                {pd.skill_level}
+                                                            </Text>
+                                                        </View>
+                                                    )}
+                                                </View>
+                                            )}
+                                            {pd?.notes ? (
+                                                <Text style={styles.cardNotesPreview} numberOfLines={1}>
+                                                    {pd.notes}
+                                                </Text>
+                                            ) : null}
+                                        </View>
                                     </View>
-                                    <RoleBadge role={acc.profile_data?.role ?? 'athlete'} />
-                                </View>
-                            </TouchableWithoutFeedback>
-                        ))}
+                                </TouchableWithoutFeedback>
+                            );
+                        })}
                         <Text style={styles.longPressHint}>Long press an account to remove it</Text>
                     </View>
                 )}
@@ -314,104 +406,203 @@ export default function SubAccountsScreen({ navigation }: any) {
                         {/* Modal handle */}
                         <View style={styles.modalHandle} />
 
-                        <View style={styles.modalHeader}>
-                            <Text style={styles.modalTitle}>New Sub-Account</Text>
-                            <TouchableOpacity onPress={handleCloseModal} style={styles.closeButton}>
-                                <Ionicons name="close" size={20} color={Colors.textSecondary} />
-                            </TouchableOpacity>
-                        </View>
+                        <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
+                            <View style={styles.modalHeader}>
+                                <Text style={styles.modalTitle}>New Sub-Account</Text>
+                                <TouchableOpacity onPress={handleCloseModal} style={styles.closeButton}>
+                                    <Ionicons name="close" size={20} color={Colors.textSecondary} />
+                                </TouchableOpacity>
+                            </View>
 
-                        {/* First Name */}
-                        <Text style={styles.inputLabel}>First Name *</Text>
-                        <TextInput
-                            style={styles.input}
-                            placeholder="e.g. Alex"
-                            placeholderTextColor={Colors.textTertiary}
-                            value={firstName}
-                            onChangeText={setFirstName}
-                            autoFocus
-                            autoCapitalize="words"
-                        />
+                            {/* First Name */}
+                            <Text style={styles.inputLabel}>First Name *</Text>
+                            <TextInput
+                                style={styles.input}
+                                placeholder="e.g. Alex"
+                                placeholderTextColor={Colors.textTertiary}
+                                value={firstName}
+                                onChangeText={setFirstName}
+                                autoFocus
+                                autoCapitalize="words"
+                            />
 
-                        {/* Last Name */}
-                        <Text style={styles.inputLabel}>Last Name</Text>
-                        <TextInput
-                            style={styles.input}
-                            placeholder="e.g. Johnson"
-                            placeholderTextColor={Colors.textTertiary}
-                            value={lastName}
-                            onChangeText={setLastName}
-                            autoCapitalize="words"
-                        />
+                            {/* Last Name */}
+                            <Text style={styles.inputLabel}>Last Name</Text>
+                            <TextInput
+                                style={styles.input}
+                                placeholder="e.g. Johnson"
+                                placeholderTextColor={Colors.textTertiary}
+                                value={lastName}
+                                onChangeText={setLastName}
+                                autoCapitalize="words"
+                            />
 
-                        {/* Email */}
-                        <Text style={styles.inputLabel}>Email</Text>
-                        <TextInput
-                            style={styles.input}
-                            placeholder="e.g. alex@example.com"
-                            placeholderTextColor={Colors.textTertiary}
-                            value={email}
-                            onChangeText={setEmail}
-                            keyboardType="email-address"
-                            autoCapitalize="none"
-                        />
+                            {/* Email */}
+                            <Text style={styles.inputLabel}>Email</Text>
+                            <TextInput
+                                style={styles.input}
+                                placeholder="e.g. alex@example.com"
+                                placeholderTextColor={Colors.textTertiary}
+                                value={email}
+                                onChangeText={setEmail}
+                                keyboardType="email-address"
+                                autoCapitalize="none"
+                            />
 
-                        {/* Role Picker */}
-                        <Text style={styles.inputLabel}>Role</Text>
-                        <View style={styles.rolePicker}>
-                            <TouchableOpacity
-                                style={[styles.roleOption, role === 'athlete' && styles.roleOptionActive]}
-                                onPress={() => setRole('athlete')}
-                            >
-                                <Ionicons
-                                    name="fitness-outline"
-                                    size={18}
-                                    color={role === 'athlete' ? Colors.background : Colors.textSecondary}
-                                />
-                                <Text
-                                    style={[
-                                        styles.roleOptionText,
-                                        role === 'athlete' && styles.roleOptionTextActive,
-                                    ]}
+                            {/* Role Picker */}
+                            <Text style={styles.inputLabel}>Role</Text>
+                            <View style={styles.rolePicker}>
+                                <TouchableOpacity
+                                    style={[styles.roleOption, role === 'athlete' && styles.roleOptionActive]}
+                                    onPress={() => setRole('athlete')}
                                 >
-                                    Athlete
-                                </Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                                style={[styles.roleOption, role === 'trainer' && styles.roleOptionActive]}
-                                onPress={() => setRole('trainer')}
-                            >
-                                <Ionicons
-                                    name="ribbon-outline"
-                                    size={18}
-                                    color={role === 'trainer' ? Colors.background : Colors.textSecondary}
-                                />
-                                <Text
-                                    style={[
-                                        styles.roleOptionText,
-                                        role === 'trainer' && styles.roleOptionTextActive,
-                                    ]}
+                                    <Ionicons
+                                        name="fitness-outline"
+                                        size={18}
+                                        color={role === 'athlete' ? Colors.background : Colors.textSecondary}
+                                    />
+                                    <Text
+                                        style={[
+                                            styles.roleOptionText,
+                                            role === 'athlete' && styles.roleOptionTextActive,
+                                        ]}
+                                    >
+                                        Athlete
+                                    </Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={[styles.roleOption, role === 'trainer' && styles.roleOptionActive]}
+                                    onPress={() => setRole('trainer')}
                                 >
-                                    Trainer
-                                </Text>
-                            </TouchableOpacity>
-                        </View>
+                                    <Ionicons
+                                        name="ribbon-outline"
+                                        size={18}
+                                        color={role === 'trainer' ? Colors.background : Colors.textSecondary}
+                                    />
+                                    <Text
+                                        style={[
+                                            styles.roleOptionText,
+                                            role === 'trainer' && styles.roleOptionTextActive,
+                                        ]}
+                                    >
+                                        Trainer
+                                    </Text>
+                                </TouchableOpacity>
+                            </View>
 
-                        {/* Save Button */}
-                        <TouchableOpacity
-                            style={[styles.saveButton, (!firstName.trim() || isSaving) && styles.saveButtonDisabled]}
-                            onPress={handleAddAccount}
-                            disabled={!firstName.trim() || isSaving}
-                        >
-                            {isSaving ? (
-                                <ActivityIndicator color={Colors.background} size="small" />
-                            ) : (
-                                <>
-                                    <Ionicons name="checkmark-circle-outline" size={20} color={Colors.background} />
-                                    <Text style={styles.saveButtonText}>Create Account</Text>
-                                </>
-                            )}
-                        </TouchableOpacity>
+                            {/* Age */}
+                            <Text style={styles.inputLabel}>Age</Text>
+                            <TextInput
+                                style={styles.input}
+                                placeholder="e.g. 12"
+                                placeholderTextColor={Colors.textTertiary}
+                                value={age}
+                                onChangeText={(text) => setAge(text.replace(/[^0-9]/g, ''))}
+                                keyboardType="number-pad"
+                                maxLength={2}
+                            />
+
+                            {/* Primary Sport */}
+                            <Text style={styles.inputLabel}>Primary Sport</Text>
+                            <ScrollView
+                                horizontal
+                                showsHorizontalScrollIndicator={false}
+                                style={styles.sportScrollContainer}
+                                contentContainerStyle={styles.sportScrollContent}
+                            >
+                                {SPORTS_LIST.map((s) => {
+                                    const isActive = sport === s.label;
+                                    return (
+                                        <TouchableOpacity
+                                            key={s.label}
+                                            style={[
+                                                styles.sportChip,
+                                                isActive && styles.sportChipActive,
+                                            ]}
+                                            onPress={() => setSport(isActive ? null : s.label)}
+                                        >
+                                            <Text style={styles.sportChipEmoji}>{s.emoji}</Text>
+                                            <Text
+                                                style={[
+                                                    styles.sportChipText,
+                                                    isActive && styles.sportChipTextActive,
+                                                ]}
+                                            >
+                                                {s.label}
+                                            </Text>
+                                        </TouchableOpacity>
+                                    );
+                                })}
+                            </ScrollView>
+
+                            {/* Skill Level */}
+                            <Text style={styles.inputLabel}>Skill Level</Text>
+                            <View style={styles.skillLevelRow}>
+                                {SKILL_LEVELS.map((level) => {
+                                    const isActive = skillLevel === level;
+                                    return (
+                                        <TouchableOpacity
+                                            key={level}
+                                            style={[
+                                                styles.skillLevelButton,
+                                                isActive && styles.skillLevelButtonActive,
+                                            ]}
+                                            onPress={() => setSkillLevel(isActive ? null : level)}
+                                        >
+                                            <Text
+                                                style={[
+                                                    styles.skillLevelText,
+                                                    isActive && styles.skillLevelTextActive,
+                                                ]}
+                                            >
+                                                {level}
+                                            </Text>
+                                        </TouchableOpacity>
+                                    );
+                                })}
+                            </View>
+
+                            {/* Notes */}
+                            <Text style={styles.inputLabel}>Notes</Text>
+                            <TextInput
+                                style={[styles.input, styles.inputMultiline]}
+                                placeholder="Any injuries, allergies, or preferences..."
+                                placeholderTextColor={Colors.textTertiary}
+                                value={notes}
+                                onChangeText={setNotes}
+                                multiline
+                                numberOfLines={3}
+                                textAlignVertical="top"
+                            />
+
+                            {/* Max Bookings/Month */}
+                            <Text style={styles.inputLabel}>Max Bookings / Month</Text>
+                            <TextInput
+                                style={styles.input}
+                                placeholder="e.g. 4 (optional)"
+                                placeholderTextColor={Colors.textTertiary}
+                                value={maxBookings}
+                                onChangeText={(text) => setMaxBookings(text.replace(/[^0-9]/g, ''))}
+                                keyboardType="number-pad"
+                                maxLength={3}
+                            />
+
+                            {/* Save Button */}
+                            <TouchableOpacity
+                                style={[styles.saveButton, (!firstName.trim() || isSaving) && styles.saveButtonDisabled]}
+                                onPress={handleAddAccount}
+                                disabled={!firstName.trim() || isSaving}
+                            >
+                                {isSaving ? (
+                                    <ActivityIndicator color={Colors.background} size="small" />
+                                ) : (
+                                    <>
+                                        <Ionicons name="checkmark-circle-outline" size={20} color={Colors.background} />
+                                        <Text style={styles.saveButtonText}>Create Account</Text>
+                                    </>
+                                )}
+                            </TouchableOpacity>
+                        </ScrollView>
                     </View>
                 </KeyboardAvoidingView>
             </Modal>
@@ -564,7 +755,7 @@ const styles = StyleSheet.create({
     },
     accountCard: {
         flexDirection: 'row',
-        alignItems: 'center',
+        alignItems: 'flex-start',
         backgroundColor: Colors.card,
         padding: Spacing.lg,
         borderRadius: BorderRadius.lg,
@@ -605,10 +796,17 @@ const styles = StyleSheet.create({
         flex: 1,
         gap: 3,
     },
+    accountNameRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: Spacing.sm,
+    },
     accountName: {
         fontSize: FontSize.md,
         fontWeight: FontWeight.semibold,
         color: Colors.text,
+        flex: 1,
     },
     accountEmail: {
         fontSize: FontSize.sm,
@@ -618,6 +816,57 @@ const styles = StyleSheet.create({
         fontSize: FontSize.sm,
         color: Colors.textTertiary,
         fontStyle: 'italic',
+    },
+
+    // Card meta badges
+    cardMetaRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: Spacing.xs,
+        marginTop: Spacing.xs,
+    },
+    cardMetaBadge: {
+        backgroundColor: Colors.glass,
+        paddingHorizontal: Spacing.sm,
+        paddingVertical: 2,
+        borderRadius: BorderRadius.pill,
+        borderWidth: 1,
+        borderColor: Colors.glassBorder,
+    },
+    cardMetaBadgeText: {
+        fontSize: FontSize.xs,
+        color: Colors.textSecondary,
+        fontWeight: FontWeight.medium,
+    },
+    cardSportChip: {
+        backgroundColor: Colors.primaryGlow,
+        paddingHorizontal: Spacing.sm,
+        paddingVertical: 2,
+        borderRadius: BorderRadius.pill,
+        borderWidth: 1,
+        borderColor: Colors.borderActive,
+    },
+    cardSportChipText: {
+        fontSize: FontSize.xs,
+        color: Colors.primary,
+        fontWeight: FontWeight.medium,
+    },
+    cardSkillBadge: {
+        backgroundColor: 'rgba(0, 71, 171, 0.2)',
+        paddingHorizontal: Spacing.sm,
+        paddingVertical: 2,
+        borderRadius: BorderRadius.pill,
+    },
+    cardSkillBadgeText: {
+        fontSize: FontSize.xs,
+        color: '#7eb4ff',
+        fontWeight: FontWeight.medium,
+    },
+    cardNotesPreview: {
+        fontSize: FontSize.xs,
+        color: Colors.textTertiary,
+        fontStyle: 'italic',
+        marginTop: Spacing.xs,
     },
 
     // Role badge
@@ -684,6 +933,7 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderBottomWidth: 0,
         borderColor: Colors.border,
+        maxHeight: '90%',
         ...Shadows.large,
     },
     modalHandle: {
@@ -731,6 +981,10 @@ const styles = StyleSheet.create({
         fontSize: FontSize.md,
         marginBottom: Spacing.lg,
     },
+    inputMultiline: {
+        minHeight: 80,
+        paddingTop: Spacing.md,
+    },
 
     // Role picker
     rolePicker: {
@@ -764,6 +1018,72 @@ const styles = StyleSheet.create({
         fontWeight: FontWeight.semibold,
     },
 
+    // Sport selector
+    sportScrollContainer: {
+        marginBottom: Spacing.lg,
+    },
+    sportScrollContent: {
+        gap: Spacing.sm,
+        paddingVertical: Spacing.xs,
+    },
+    sportChip: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.xs,
+        paddingHorizontal: Spacing.md,
+        paddingVertical: Spacing.sm,
+        borderRadius: BorderRadius.pill,
+        backgroundColor: Colors.glass,
+        borderWidth: 1,
+        borderColor: Colors.glassBorder,
+    },
+    sportChipActive: {
+        backgroundColor: Colors.primaryGlow,
+        borderColor: Colors.primary,
+    },
+    sportChipEmoji: {
+        fontSize: 16,
+    },
+    sportChipText: {
+        fontSize: FontSize.sm,
+        color: Colors.textSecondary,
+        fontWeight: FontWeight.medium,
+    },
+    sportChipTextActive: {
+        color: Colors.primary,
+        fontWeight: FontWeight.semibold,
+    },
+
+    // Skill level selector
+    skillLevelRow: {
+        flexDirection: 'row',
+        gap: Spacing.sm,
+        marginBottom: Spacing.xl,
+    },
+    skillLevelButton: {
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: Spacing.sm,
+        borderRadius: BorderRadius.md,
+        borderWidth: 1.5,
+        borderColor: Colors.border,
+        backgroundColor: Colors.surface,
+    },
+    skillLevelButtonActive: {
+        backgroundColor: Colors.primary,
+        borderColor: Colors.primary,
+    },
+    skillLevelText: {
+        fontSize: FontSize.xs,
+        fontWeight: FontWeight.medium,
+        color: Colors.textSecondary,
+    },
+    skillLevelTextActive: {
+        color: Colors.background,
+        fontWeight: FontWeight.semibold,
+    },
+
     // Save button
     saveButton: {
         flexDirection: 'row',
@@ -773,6 +1093,7 @@ const styles = StyleSheet.create({
         backgroundColor: Colors.primary,
         padding: Spacing.lg,
         borderRadius: BorderRadius.md,
+        marginTop: Spacing.sm,
     },
     saveButtonDisabled: {
         opacity: 0.45,
