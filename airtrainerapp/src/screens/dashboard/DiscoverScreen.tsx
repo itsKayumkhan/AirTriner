@@ -28,6 +28,9 @@ const RATING_OPTIONS = [
 
 const SKILL_LEVELS = ['Beginner', 'Intermediate', 'Advanced', 'Pro'];
 
+const DURATION_OPTIONS_FILTER = [30, 45, 60, 90];
+const TRAINING_TIME_OPTIONS = ['Morning', 'Afternoon', 'Evening'];
+
 const SORT_OPTIONS = [
     { label: 'Recommended', value: 'recommended' },
     { label: 'Price: Low to High', value: 'price_low' },
@@ -46,6 +49,8 @@ interface Filters {
     maxPrice: string;
     minRating: number;
     skillLevels: string[];
+    duration: number | null;
+    trainingTimes: string[];
     sortBy: string;
 }
 
@@ -54,6 +59,8 @@ const DEFAULT_FILTERS: Filters = {
     maxPrice: '',
     minRating: 0,
     skillLevels: [],
+    duration: null,
+    trainingTimes: [],
     sortBy: 'recommended',
 };
 
@@ -77,6 +84,8 @@ export default function DiscoverScreen({ navigation }: any) {
         if (appliedFilters.maxPrice) count++;
         if (appliedFilters.minRating > 0) count++;
         if (appliedFilters.skillLevels.length > 0) count++;
+        if (appliedFilters.duration !== null) count++;
+        if (appliedFilters.trainingTimes.length > 0) count++;
         if (appliedFilters.sortBy !== 'recommended') count++;
         return count;
     }, [appliedFilters]);
@@ -87,6 +96,8 @@ export default function DiscoverScreen({ navigation }: any) {
         if (appliedFilters.maxPrice) chips.push({ label: `Max $${appliedFilters.maxPrice}/hr`, key: 'maxPrice' });
         if (appliedFilters.minRating > 0) chips.push({ label: `${appliedFilters.minRating}+ rating`, key: 'minRating' });
         if (appliedFilters.skillLevels.length > 0) chips.push({ label: appliedFilters.skillLevels.join(', '), key: 'skillLevels' });
+        if (appliedFilters.duration !== null) chips.push({ label: `${appliedFilters.duration}m session`, key: 'duration' });
+        if (appliedFilters.trainingTimes.length > 0) chips.push({ label: appliedFilters.trainingTimes.join(', '), key: 'trainingTimes' });
         if (appliedFilters.sortBy !== 'recommended') {
             const sortLabel = SORT_OPTIONS.find(o => o.value === appliedFilters.sortBy)?.label || '';
             chips.push({ label: sortLabel, key: 'sortBy' });
@@ -101,6 +112,8 @@ export default function DiscoverScreen({ navigation }: any) {
             else if (key === 'maxPrice') next.maxPrice = '';
             else if (key === 'minRating') next.minRating = 0;
             else if (key === 'skillLevels') next.skillLevels = [];
+            else if (key === 'duration') next.duration = null;
+            else if (key === 'trainingTimes') next.trainingTimes = [];
             else if (key === 'sortBy') next.sortBy = 'recommended';
             return next;
         });
@@ -166,6 +179,18 @@ export default function DiscoverScreen({ navigation }: any) {
                 if (!levels) return false;
                 return appliedFilters.skillLevels.some(sl => levels.map(l => l.toLowerCase()).includes(sl.toLowerCase()));
             });
+        }
+
+        // Duration filter
+        if (appliedFilters.duration !== null) {
+            filtered = filtered.filter(t => (t as any).session_lengths?.includes(appliedFilters.duration));
+        }
+
+        // Training time filter
+        if (appliedFilters.trainingTimes.length > 0) {
+            filtered = filtered.filter(t =>
+                (t as any).preferred_training_times?.some((tt: string) => appliedFilters.trainingTimes.includes(tt))
+            );
         }
 
         // Sort
@@ -505,6 +530,65 @@ export default function DiscoverScreen({ navigation }: any) {
                                                 draftFilters.skillLevels.includes(level) && styles.optionButtonTextActive,
                                             ]}>
                                                 {level}
+                                            </Text>
+                                        </TouchableOpacity>
+                                    ))}
+                                </View>
+                            </View>
+
+                            {/* Session Duration */}
+                            <View style={styles.filterSection}>
+                                <Text style={styles.filterSectionTitle}>Session Duration</Text>
+                                <View style={styles.optionRow}>
+                                    {DURATION_OPTIONS_FILTER.map(dur => (
+                                        <TouchableOpacity
+                                            key={dur}
+                                            style={[
+                                                styles.optionButton,
+                                                draftFilters.duration === dur && styles.optionButtonActive,
+                                            ]}
+                                            onPress={() => setDraftFilters(prev => ({
+                                                ...prev,
+                                                duration: prev.duration === dur ? null : dur,
+                                            }))}
+                                        >
+                                            <Text style={[
+                                                styles.optionButtonText,
+                                                draftFilters.duration === dur && styles.optionButtonTextActive,
+                                            ]}>
+                                                {dur}m
+                                            </Text>
+                                        </TouchableOpacity>
+                                    ))}
+                                </View>
+                            </View>
+
+                            {/* Training Time */}
+                            <View style={styles.filterSection}>
+                                <Text style={styles.filterSectionTitle}>Training Time</Text>
+                                <View style={styles.optionRow}>
+                                    {TRAINING_TIME_OPTIONS.map(time => (
+                                        <TouchableOpacity
+                                            key={time}
+                                            style={[
+                                                styles.optionButton,
+                                                draftFilters.trainingTimes.includes(time) && styles.optionButtonActive,
+                                            ]}
+                                            onPress={() => setDraftFilters(prev => {
+                                                const exists = prev.trainingTimes.includes(time);
+                                                return {
+                                                    ...prev,
+                                                    trainingTimes: exists
+                                                        ? prev.trainingTimes.filter(t => t !== time)
+                                                        : [...prev.trainingTimes, time],
+                                                };
+                                            })}
+                                        >
+                                            <Text style={[
+                                                styles.optionButtonText,
+                                                draftFilters.trainingTimes.includes(time) && styles.optionButtonTextActive,
+                                            ]}>
+                                                {time}
                                             </Text>
                                         </TouchableOpacity>
                                     ))}

@@ -1,7 +1,6 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
-    View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, KeyboardAvoidingView,
-    Platform, ActivityIndicator,
+    View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -16,6 +15,7 @@ type ConversationItem = {
     otherUser: UserRow;
     lastMessage: MessageRow | null;
     unreadCount: number;
+    allBookingIds: string[];
 };
 
 export default function MessagesScreen({ navigation }: any) {
@@ -60,6 +60,7 @@ export default function MessagesScreen({ navigation }: any) {
                     otherUser,
                     lastMessage: messages?.[0] || null,
                     unreadCount: count || 0,
+                    allBookingIds: [booking.id],
                 });
             }
 
@@ -70,7 +71,29 @@ export default function MessagesScreen({ navigation }: any) {
                 return new Date(bTime).getTime() - new Date(aTime).getTime();
             });
 
-            setConversations(convos);
+            // Merge conversations by otherUser (same user across multiple bookings)
+            const merged = new Map<string, ConversationItem>();
+            for (const convo of convos) {
+                if (!convo.otherUser) continue;
+                const key = convo.otherUser.id;
+                const existing = merged.get(key);
+                if (!existing) {
+                    merged.set(key, { ...convo, allBookingIds: [convo.booking_id] });
+                } else {
+                    existing.allBookingIds.push(convo.booking_id);
+                    existing.unreadCount += convo.unreadCount;
+                    // Keep the one with the most recent message
+                    const existingTime = existing.lastMessage?.created_at || existing.booking.created_at;
+                    const newTime = convo.lastMessage?.created_at || convo.booking.created_at;
+                    if (new Date(newTime) > new Date(existingTime)) {
+                        existing.booking_id = convo.booking_id;
+                        existing.booking = convo.booking;
+                        existing.lastMessage = convo.lastMessage;
+                    }
+                }
+            }
+
+            setConversations(Array.from(merged.values()));
         } catch (error) {
             console.error('Error fetching conversations:', error);
         } finally {
@@ -115,7 +138,9 @@ export default function MessagesScreen({ navigation }: any) {
                         {item.lastMessage ? formatTime(item.lastMessage.created_at) : ''}
                     </Text>
                 </View>
-                <Text style={styles.convSport}>{item.booking.sport}</Text>
+                <Text style={styles.convSport}>
+                    {item.booking.sport}{item.allBookingIds.length > 1 ? ` · ${item.allBookingIds.length} bookings` : ''}
+                </Text>
                 <Text style={[styles.convMessage, item.unreadCount > 0 && styles.convMessageUnread]} numberOfLines={1}>
                     {item.lastMessage
                         ? (item.lastMessage.sender_id === user?.id ? 'You: ' : '') + item.lastMessage.content
@@ -145,7 +170,7 @@ export default function MessagesScreen({ navigation }: any) {
             <FlatList
                 data={conversations}
                 renderItem={renderConversation}
-                keyExtractor={(item) => item.booking_id}
+                keyExtractor={(item) => item.otherUser?.id || item.booking_id}
                 contentContainerStyle={styles.listContent}
                 showsVerticalScrollIndicator={false}
                 ListEmptyComponent={

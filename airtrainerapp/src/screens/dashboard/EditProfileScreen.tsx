@@ -19,6 +19,8 @@ const TRAINING_TYPES = [
     { key: 'in_season', label: 'In-Season' },
 ];
 const TRAINING_TIMES = ['Morning', 'Afternoon', 'Evening'];
+const SESSION_LENGTH_OPTIONS = [30, 45, 60, 90];
+const GENDER_OPTIONS = ['Male', 'Female', 'Other', 'Prefer not to say'];
 
 export default function EditProfileScreen({ navigation }: any) {
     const { user, refreshUser } = useAuth();
@@ -40,12 +42,20 @@ export default function EditProfileScreen({ navigation }: any) {
     const [city, setCity] = useState(tp?.city || user?.athleteProfile?.city || '');
     const [stateVal, setStateVal] = useState(tp?.state || user?.athleteProfile?.state || '');
     const [isSaving, setIsSaving] = useState(false);
+    // Training Locations (trainer)
+    const [trainingLocations, setTrainingLocations] = useState<string[]>((tp as any)?.training_locations || []);
+    const [locationInput, setLocationInput] = useState('');
+    // Session Lengths (trainer)
+    const [sessionLengths, setSessionLengths] = useState<number[]>((tp as any)?.session_lengths || [60]);
     // Location (athlete)
     const [locationLoading, setLocationLoading] = useState(false);
     // Preferred training times (athlete)
     const [selectedTrainingTimes, setSelectedTrainingTimes] = useState<string[]>(
         user?.athleteProfile?.preferredTrainingTimes || []
     );
+    const [phone, setPhone] = useState((user as any)?.phone || (user as any)?.athleteProfile?.phone || '');
+    const [gender, setGender] = useState((user as any)?.athleteProfile?.gender || '');
+    const [athleteBio, setAthleteBio] = useState((user as any)?.athleteProfile?.bio || '');
 
     const getInitials = () => {
         const f = (firstName || user?.firstName || '').charAt(0).toUpperCase();
@@ -148,6 +158,24 @@ export default function EditProfileScreen({ navigation }: any) {
         );
     };
 
+    const toggleSessionLength = (len: number) => {
+        setSessionLengths((prev) =>
+            prev.includes(len) ? prev.filter((l) => l !== len) : [...prev, len]
+        );
+    };
+
+    const addTrainingLocation = () => {
+        const trimmed = locationInput.trim();
+        if (trimmed && !trainingLocations.includes(trimmed)) {
+            setTrainingLocations((prev) => [...prev, trimmed]);
+        }
+        setLocationInput('');
+    };
+
+    const removeTrainingLocation = (loc: string) => {
+        setTrainingLocations((prev) => prev.filter((l) => l !== loc));
+    };
+
     const handleSave = async () => {
         if (!user || !firstName.trim()) return;
         setIsSaving(true);
@@ -155,7 +183,7 @@ export default function EditProfileScreen({ navigation }: any) {
             // Update users table
             const { error: userError } = await supabase
                 .from('users')
-                .update({ first_name: firstName.trim(), last_name: lastName.trim(), updated_at: new Date().toISOString() })
+                .update({ first_name: firstName.trim(), last_name: lastName.trim(), phone: phone.trim(), updated_at: new Date().toISOString() })
                 .eq('id', user.id);
             if (userError) throw userError;
 
@@ -172,6 +200,8 @@ export default function EditProfileScreen({ navigation }: any) {
                         trainingTypes: selectedTrainingTypes,
                         city: city.trim(),
                         state: stateVal.trim(),
+                        training_locations: trainingLocations,
+                        session_lengths: sessionLengths,
                     })
                     .eq('user_id', user.id);
                 if (trainerError) throw trainerError;
@@ -185,6 +215,9 @@ export default function EditProfileScreen({ navigation }: any) {
                         preferred_training_times: selectedTrainingTimes,
                         city: city.trim(),
                         state: stateVal.trim(),
+                        phone: phone.trim(),
+                        gender,
+                        bio: athleteBio.trim(),
                     })
                     .eq('user_id', user.id);
                 if (athleteError) throw athleteError;
@@ -270,6 +303,40 @@ export default function EditProfileScreen({ navigation }: any) {
                     </View>
                 </View>
 
+                {/* Training Locations (trainer only) */}
+                {isTrainer && (
+                    <>
+                        <Text style={styles.sectionTitle}>Training Locations</Text>
+                        <View style={styles.tagInputRow}>
+                            <TextInput
+                                style={[styles.input, styles.tagInput]}
+                                value={locationInput}
+                                onChangeText={setLocationInput}
+                                placeholderTextColor={Colors.textTertiary}
+                                placeholder="e.g. Downtown Rink, City Gym"
+                                onSubmitEditing={addTrainingLocation}
+                                returnKeyType="done"
+                            />
+                            <TouchableOpacity style={styles.addTagButton} onPress={addTrainingLocation}>
+                                <Ionicons name="add" size={20} color="#fff" />
+                                <Text style={styles.addTagButtonText}>Add</Text>
+                            </TouchableOpacity>
+                        </View>
+                        {trainingLocations.length > 0 && (
+                            <View style={styles.chipContainer}>
+                                {trainingLocations.map((loc) => (
+                                    <View key={loc} style={styles.tagChip}>
+                                        <Text style={styles.tagChipText}>{loc}</Text>
+                                        <TouchableOpacity style={styles.removeTagButton} onPress={() => removeTrainingLocation(loc)}>
+                                            <Ionicons name="close" size={14} color={Colors.textSecondary} />
+                                        </TouchableOpacity>
+                                    </View>
+                                ))}
+                            </View>
+                        )}
+                    </>
+                )}
+
                 {/* GPS Location Button (athlete only) */}
                 {!isTrainer && (
                     <TouchableOpacity style={styles.locationButton} onPress={handleSetLocation} disabled={locationLoading}>
@@ -326,6 +393,62 @@ export default function EditProfileScreen({ navigation }: any) {
                                     <Text style={[styles.chipText, selectedTrainingTypes.includes(tt.key) && styles.chipTextActive]}>{tt.label}</Text>
                                 </TouchableOpacity>
                             ))}
+                        </View>
+
+                        {/* Session Lengths */}
+                        <Text style={styles.sectionTitle}>Session Lengths</Text>
+                        <View style={styles.chipContainer}>
+                            {SESSION_LENGTH_OPTIONS.map((len) => (
+                                <TouchableOpacity key={len} style={[styles.chip, sessionLengths.includes(len) && styles.chipActive]} onPress={() => toggleSessionLength(len)}>
+                                    <Text style={[styles.chipText, sessionLengths.includes(len) && styles.chipTextActive]}>{len}m</Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+                    </>
+                )}
+
+                {/* Athlete-only: Phone, Gender, Bio */}
+                {!isTrainer && (
+                    <>
+                        <View style={styles.formGroup}>
+                            <Text style={styles.label}>Phone Number</Text>
+                            <TextInput
+                                style={styles.input}
+                                value={phone}
+                                onChangeText={setPhone}
+                                placeholderTextColor={Colors.textTertiary}
+                                placeholder="Your phone number"
+                                keyboardType="phone-pad"
+                            />
+                        </View>
+
+                        <Text style={styles.sectionTitle}>Gender</Text>
+                        <View style={styles.chipContainer}>
+                            {GENDER_OPTIONS.map((option) => (
+                                <TouchableOpacity
+                                    key={option}
+                                    style={[styles.chip, gender === option && styles.chipActive]}
+                                    onPress={() => setGender(gender === option ? '' : option)}
+                                >
+                                    <Text style={[styles.chipText, gender === option && styles.chipTextActive]}>{option}</Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+
+                        <View style={styles.formGroup}>
+                            <Text style={styles.label}>Bio</Text>
+                            <TextInput
+                                style={[styles.input, styles.textArea]}
+                                value={athleteBio}
+                                onChangeText={setAthleteBio}
+                                placeholderTextColor={Colors.textTertiary}
+                                placeholder="Tell trainers about yourself, your goals, and experience..."
+                                multiline
+                                numberOfLines={5}
+                                textAlignVertical="top"
+                                maxLength={1000}
+                            />
+                            <Text style={styles.charCount}>{athleteBio.length}/1000</Text>
                         </View>
                     </>
                 )}
@@ -417,6 +540,28 @@ const styles = StyleSheet.create({
     chipActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
     chipText: { fontSize: FontSize.sm, fontWeight: FontWeight.medium, color: Colors.textSecondary },
     chipTextActive: { color: '#fff' },
+    // Training Locations tag input
+    tagInputRow: { flexDirection: 'row', gap: Spacing.sm, marginBottom: Spacing.md },
+    tagInput: { flex: 1 },
+    addTagButton: {
+        flexDirection: 'row', alignItems: 'center', gap: 4,
+        backgroundColor: Colors.primary,
+        paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md,
+        borderRadius: BorderRadius.md,
+    },
+    addTagButtonText: { color: '#fff', fontSize: FontSize.sm, fontWeight: FontWeight.bold },
+    tagChip: {
+        flexDirection: 'row', alignItems: 'center', gap: 6,
+        paddingLeft: Spacing.lg, paddingRight: Spacing.sm, paddingVertical: Spacing.sm,
+        borderRadius: BorderRadius.pill,
+        backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border,
+    },
+    tagChipText: { fontSize: FontSize.sm, fontWeight: FontWeight.medium, color: Colors.text },
+    removeTagButton: {
+        width: 20, height: 20, borderRadius: 10,
+        backgroundColor: Colors.border,
+        justifyContent: 'center', alignItems: 'center',
+    },
     saveButton: { backgroundColor: Colors.primary, padding: Spacing.lg, borderRadius: BorderRadius.md, alignItems: 'center', marginTop: Spacing.xxl },
     saveButtonDisabled: { opacity: 0.5 },
     saveButtonText: { color: '#fff', fontSize: FontSize.md, fontWeight: FontWeight.bold },

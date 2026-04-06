@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-    View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator,
+    View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator, Share,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -49,6 +49,31 @@ export default function ReviewsScreen({ navigation }: any) {
 
     const avgRating = reviews.length > 0 ? (reviews.reduce((s, r) => s + r.rating, 0) / reviews.length).toFixed(1) : '0.0';
 
+    const distribution = [5, 4, 3, 2, 1].map(star => ({ star, count: reviews.filter(r => r.rating === star).length }));
+    const maxCount = Math.max(...distribution.map(d => d.count), 1);
+
+    const getBarColor = (star: number) => {
+        if (star >= 4) return '#10B981';
+        if (star === 3) return '#F59E0B';
+        return '#EF4444';
+    };
+
+    const handleExportCSV = async () => {
+        try {
+            const header = 'Date,Reviewer,Rating,Review';
+            const rows = reviews.map(r => {
+                const date = new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                const reviewer = `${r.reviewer?.first_name || ''} ${r.reviewer?.last_name || ''}`.trim();
+                const reviewText = (r.review_text || '').replace(/"/g, '""');
+                return `${date},"${reviewer}",${r.rating},"${reviewText}"`;
+            });
+            const csv = [header, ...rows].join('\n');
+            await Share.share({ message: csv, title: 'Reviews Export' });
+        } catch (error) {
+            console.error('Error exporting reviews:', error);
+        }
+    };
+
     const renderReview = ({ item }: { item: ReviewWithUser }) => {
         const displayUser = isTrainer ? item.reviewer : item.reviewee;
         return (
@@ -93,7 +118,9 @@ export default function ReviewsScreen({ navigation }: any) {
                     <Ionicons name="arrow-back" size={24} color={Colors.text} />
                 </TouchableOpacity>
                 <Text style={styles.headerTitle}>{isTrainer ? 'My Reviews' : 'Reviews Written'}</Text>
-                <View style={{ width: 44 }} />
+                <TouchableOpacity onPress={handleExportCSV} style={styles.backButton}>
+                    <Ionicons name="download-outline" size={22} color={Colors.text} />
+                </TouchableOpacity>
             </View>
 
             {reviews.length > 0 && (
@@ -101,6 +128,18 @@ export default function ReviewsScreen({ navigation }: any) {
                     <Text style={styles.summaryRating}>{avgRating}</Text>
                     {renderStars(Math.round(Number(avgRating)))}
                     <Text style={styles.summaryCount}>{reviews.length} review{reviews.length !== 1 ? 's' : ''}</Text>
+
+                    <View style={styles.distributionContainer}>
+                        {distribution.map(({ star, count }) => (
+                            <View key={star} style={styles.distributionRow}>
+                                <Text style={styles.distributionStar}>{star}★</Text>
+                                <View style={styles.distributionBarBg}>
+                                    <View style={[styles.distributionBarFill, { width: `${(count / maxCount) * 100}%`, backgroundColor: getBarColor(star) }]} />
+                                </View>
+                                <Text style={styles.distributionCount}>{count}</Text>
+                            </View>
+                        ))}
+                    </View>
                 </View>
             )}
 
@@ -132,6 +171,12 @@ const styles = StyleSheet.create({
     summaryCard: { alignItems: 'center', padding: Spacing.xl, marginHorizontal: Spacing.xxl, marginTop: Spacing.lg, backgroundColor: '#161B22', borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', gap: Spacing.xs },
     summaryRating: { fontSize: 40, fontWeight: FontWeight.bold, color: '#45D0FF' },
     summaryCount: { fontSize: FontSize.sm, color: Colors.textSecondary },
+    distributionContainer: { marginTop: Spacing.md, gap: Spacing.xs, width: '100%' },
+    distributionRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+    distributionStar: { width: 20, fontSize: FontSize.xs, color: Colors.textSecondary },
+    distributionBarBg: { flex: 1, height: 8, borderRadius: 4, backgroundColor: Colors.surface },
+    distributionBarFill: { height: 8, borderRadius: 4, minWidth: 4 },
+    distributionCount: { width: 30, textAlign: 'right', fontSize: FontSize.xs, color: Colors.textSecondary },
     listContent: { paddingHorizontal: Spacing.xxl, paddingTop: Spacing.lg, paddingBottom: 100 },
     reviewCard: { backgroundColor: '#161B22', borderRadius: BorderRadius.lg, padding: Spacing.lg, marginBottom: Spacing.md, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
     reviewHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.sm },

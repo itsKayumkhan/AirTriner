@@ -16,6 +16,7 @@ interface MonthlyEntry {
 
 export default function EarningsScreen({ navigation }: any) {
     const { user } = useAuth();
+    const isTrainer = user?.role === 'trainer';
     const [isLoading, setIsLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [completedBookings, setCompletedBookings] = useState<any[]>([]);
@@ -33,6 +34,35 @@ export default function EarningsScreen({ navigation }: any) {
     const fetchEarnings = useCallback(async () => {
         if (!user) return;
         try {
+            // --- Athlete path ---
+            if (!isTrainer) {
+                const { data: athleteBookings } = await supabase
+                    .from('bookings')
+                    .select('price, platform_fee, total_paid, scheduled_at, sport, status, duration_minutes, trainer:users!bookings_trainer_id_fkey(first_name, last_name)')
+                    .eq('athlete_id', user.id)
+                    .order('scheduled_at', { ascending: false });
+
+                const allBookings = athleteBookings || [];
+                const completed = allBookings.filter(b => b.status === 'completed');
+                const confirmed = allBookings.filter(b => b.status === 'confirmed');
+
+                const totalPaid = completed.reduce((s, b) => s + Number(b.total_paid || b.price), 0);
+                const inEscrow = confirmed.reduce((s, b) => s + Number(b.total_paid || b.price), 0);
+
+                setStats({
+                    grossEarnings: totalPaid,       // reuse as "Total Paid"
+                    platformFees: completed.reduce((s, b) => s + Number(b.platform_fee || b.price * 0.03), 0),
+                    netEarnings: 0,
+                    inEscrow,
+                    completedSessions: completed.length,
+                });
+                setRecentPayments(allBookings.slice(0, 10));
+                setCompletedBookings(allBookings);
+                setIsLoading(false);
+                return;
+            }
+
+            // --- Trainer path ---
             // Completed bookings with athlete info
             const { data: completed } = await supabase
                 .from('bookings')
@@ -136,23 +166,37 @@ export default function EarningsScreen({ navigation }: any) {
 
     const handleExportCSV = async () => {
         try {
-            const header = 'Date,Sport,Athlete,Duration,Price,Fee,Net\n';
-            const rows = completedBookings.map(b => {
-                const date = new Date(b.scheduled_at).toLocaleDateString();
-                const fee = Number(b.platform_fee || b.price * 0.03);
-                const net = Number(b.price) - fee;
-                const athleteName = `${b.athlete?.first_name || ''} ${b.athlete?.last_name || ''}`.trim();
-                return `${date},${b.sport},${athleteName},${b.duration_minutes || ''},${b.price},${fee.toFixed(2)},${net.toFixed(2)}`;
-            }).join('\n');
+            let header: string;
+            let rows: string;
+
+            if (isTrainer) {
+                header = 'Date,Sport,Athlete,Duration,Price,Fee,Net\n';
+                rows = completedBookings.map(b => {
+                    const date = new Date(b.scheduled_at).toLocaleDateString();
+                    const fee = Number(b.platform_fee || b.price * 0.03);
+                    const net = Number(b.price) - fee;
+                    const athleteName = `${b.athlete?.first_name || ''} ${b.athlete?.last_name || ''}`.trim();
+                    return `${date},${b.sport},${athleteName},${b.duration_minutes || ''},${b.price},${fee.toFixed(2)},${net.toFixed(2)}`;
+                }).join('\n');
+            } else {
+                header = 'Date,Sport,Trainer,Duration,Status,Amount Paid,Fee\n';
+                rows = completedBookings.map(b => {
+                    const date = new Date(b.scheduled_at).toLocaleDateString();
+                    const fee = Number(b.platform_fee || b.price * 0.03);
+                    const trainerName = `${b.trainer?.first_name || ''} ${b.trainer?.last_name || ''}`.trim();
+                    const amountPaid = Number(b.total_paid || b.price);
+                    return `${date},${b.sport},${trainerName},${b.duration_minutes || ''},${b.status},${amountPaid.toFixed(2)},${fee.toFixed(2)}`;
+                }).join('\n');
+            }
 
             const csv = header + rows;
             await Share.share({
                 message: csv,
-                title: 'Earnings Export',
+                title: isTrainer ? 'Earnings Export' : 'Payments Export',
             });
         } catch (error) {
             console.error('Error exporting CSV:', error);
-            Alert.alert('Export Error', 'Could not export earnings data.');
+            Alert.alert('Export Error', 'Could not export data.');
         }
     };
 
@@ -168,7 +212,7 @@ export default function EarningsScreen({ navigation }: any) {
                 <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
                     <Ionicons name="arrow-back" size={24} color={Colors.text} />
                 </TouchableOpacity>
-                <Text style={styles.headerTitle}>Earnings</Text>
+                <Text style={styles.headerTitle}>{isTrainer ? 'Earnings' : 'Payments'}</Text>
                 <TouchableOpacity onPress={handleExportCSV} style={styles.exportButton}>
                     <Ionicons name="share-outline" size={22} color={Colors.text} />
                 </TouchableOpacity>
@@ -180,36 +224,66 @@ export default function EarningsScreen({ navigation }: any) {
                 refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
             >
                 {/* Stats Grid - 2x2 */}
-                <View style={styles.statsGrid}>
-                    <View style={styles.statCard}>
-                        <Ionicons name="trending-up-outline" size={22} color={Colors.primary} />
-                        <Text style={styles.statValue}>${stats.grossEarnings.toFixed(2)}</Text>
-                        <Text style={styles.statLabel}>Gross Earnings</Text>
+                {isTrainer ? (
+                    <View style={styles.statsGrid}>
+                        <View style={styles.statCard}>
+                            <Ionicons name="trending-up-outline" size={22} color={Colors.primary} />
+                            <Text style={styles.statValue}>${stats.grossEarnings.toFixed(2)}</Text>
+                            <Text style={styles.statLabel}>Gross Earnings</Text>
+                        </View>
+                        <View style={styles.statCard}>
+                            <Ionicons name="cut-outline" size={22} color={Colors.error} />
+                            <Text style={[styles.statValue, { color: Colors.error }]}>-${stats.platformFees.toFixed(2)}</Text>
+                            <Text style={styles.statLabel}>Platform Fees</Text>
+                        </View>
+                        <LinearGradient
+                            colors={[Colors.gradientStart, Colors.gradientEnd]}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 1 }}
+                            style={styles.statCardGradient}
+                        >
+                            <Ionicons name="wallet-outline" size={22} color="#fff" />
+                            <Text style={[styles.statValue, { color: '#fff' }]}>${stats.netEarnings.toFixed(2)}</Text>
+                            <Text style={[styles.statLabel, { color: 'rgba(255,255,255,0.7)' }]}>Net Earnings</Text>
+                        </LinearGradient>
+                        <View style={styles.statCard}>
+                            <Ionicons name="lock-closed-outline" size={22} color={Colors.warning} />
+                            <Text style={[styles.statValue, { color: Colors.warning }]}>${stats.inEscrow.toFixed(2)}</Text>
+                            <Text style={styles.statLabel}>In Escrow</Text>
+                        </View>
                     </View>
-                    <View style={styles.statCard}>
-                        <Ionicons name="cut-outline" size={22} color={Colors.error} />
-                        <Text style={[styles.statValue, { color: Colors.error }]}>-${stats.platformFees.toFixed(2)}</Text>
-                        <Text style={styles.statLabel}>Platform Fees</Text>
+                ) : (
+                    <View style={styles.statsGrid}>
+                        <LinearGradient
+                            colors={[Colors.gradientStart, Colors.gradientEnd]}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 1 }}
+                            style={styles.statCardGradient}
+                        >
+                            <Ionicons name="card-outline" size={22} color="#fff" />
+                            <Text style={[styles.statValue, { color: '#fff' }]}>${stats.grossEarnings.toFixed(2)}</Text>
+                            <Text style={[styles.statLabel, { color: 'rgba(255,255,255,0.7)' }]}>Total Paid</Text>
+                        </LinearGradient>
+                        <View style={styles.statCard}>
+                            <Ionicons name="lock-closed-outline" size={22} color={Colors.warning} />
+                            <Text style={[styles.statValue, { color: Colors.warning }]}>${stats.inEscrow.toFixed(2)}</Text>
+                            <Text style={styles.statLabel}>In Escrow</Text>
+                        </View>
+                        <View style={styles.statCard}>
+                            <Ionicons name="cut-outline" size={22} color={Colors.error} />
+                            <Text style={[styles.statValue, { color: Colors.error }]}>-${stats.platformFees.toFixed(2)}</Text>
+                            <Text style={styles.statLabel}>Platform Fees</Text>
+                        </View>
+                        <View style={styles.statCard}>
+                            <Ionicons name="checkmark-circle-outline" size={22} color={Colors.success} />
+                            <Text style={styles.statValue}>{stats.completedSessions}</Text>
+                            <Text style={styles.statLabel}>Completed Sessions</Text>
+                        </View>
                     </View>
-                    <LinearGradient
-                        colors={[Colors.gradientStart, Colors.gradientEnd]}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 1 }}
-                        style={styles.statCardGradient}
-                    >
-                        <Ionicons name="wallet-outline" size={22} color="#fff" />
-                        <Text style={[styles.statValue, { color: '#fff' }]}>${stats.netEarnings.toFixed(2)}</Text>
-                        <Text style={[styles.statLabel, { color: 'rgba(255,255,255,0.7)' }]}>Net Earnings</Text>
-                    </LinearGradient>
-                    <View style={styles.statCard}>
-                        <Ionicons name="lock-closed-outline" size={22} color={Colors.warning} />
-                        <Text style={[styles.statValue, { color: Colors.warning }]}>${stats.inEscrow.toFixed(2)}</Text>
-                        <Text style={styles.statLabel}>In Escrow</Text>
-                    </View>
-                </View>
+                )}
 
-                {/* Upcoming Payouts */}
-                {upcomingPayouts.length > 0 && (
+                {/* Upcoming Payouts (trainer only) */}
+                {isTrainer && upcomingPayouts.length > 0 && (
                     <>
                         <Text style={styles.sectionTitle}>Upcoming Payouts</Text>
                         {upcomingPayouts.map((payout, i) => (
@@ -235,8 +309,8 @@ export default function EarningsScreen({ navigation }: any) {
                     </>
                 )}
 
-                {/* Monthly Breakdown */}
-                {monthlyEntries.length > 0 && (
+                {/* Monthly Breakdown (trainer only) */}
+                {isTrainer && monthlyEntries.length > 0 && (
                     <>
                         <Text style={[styles.sectionTitle, { marginTop: Spacing.xl }]}>Monthly Breakdown</Text>
                         <View style={styles.monthlyHeader}>
@@ -256,26 +330,43 @@ export default function EarningsScreen({ navigation }: any) {
                     </>
                 )}
 
-                {/* Recent Sessions */}
-                <Text style={[styles.sectionTitle, { marginTop: Spacing.xl }]}>Recent Sessions</Text>
+                {/* Recent Sessions / Payment History */}
+                <Text style={[styles.sectionTitle, { marginTop: Spacing.xl }]}>{isTrainer ? 'Recent Sessions' : 'Payment History'}</Text>
                 {recentPayments.length === 0 ? (
                     <View style={styles.emptyCard}>
                         <Ionicons name="receipt-outline" size={32} color={Colors.textTertiary} />
-                        <Text style={styles.emptyText}>No completed sessions yet</Text>
+                        <Text style={styles.emptyText}>{isTrainer ? 'No completed sessions yet' : 'No payments yet'}</Text>
                     </View>
                 ) : (
-                    recentPayments.map((item, i) => (
-                        <View key={i} style={styles.paymentRow}>
-                            <View style={styles.paymentIcon}>
-                                <Ionicons name="checkmark-circle" size={20} color={Colors.success} />
+                    recentPayments.map((item, i) => {
+                        const statusColor = item.status === 'confirmed' ? Colors.warning : Colors.success;
+                        const statusIcon = item.status === 'confirmed' ? 'time-outline' : 'checkmark-circle';
+                        const personName = isTrainer
+                            ? `${item.athlete?.first_name || ''} ${item.athlete?.last_name || ''}`.trim()
+                            : `${item.trainer?.first_name || ''} ${item.trainer?.last_name || ''}`.trim();
+
+                        return (
+                            <View key={i} style={styles.paymentRow}>
+                                <View style={[styles.paymentIcon, !isTrainer && item.status === 'confirmed' && { backgroundColor: 'rgba(255,193,7,0.12)' }]}>
+                                    <Ionicons name={statusIcon as any} size={20} color={statusColor} />
+                                </View>
+                                <View style={styles.paymentInfo}>
+                                    <Text style={styles.paymentSport}>{item.sport} Session</Text>
+                                    <Text style={styles.paymentDate}>
+                                        {personName ? `${personName} · ` : ''}{new Date(item.scheduled_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                        {!isTrainer && item.status === 'confirmed' ? ' · In Escrow' : ''}
+                                    </Text>
+                                </View>
+                                {isTrainer ? (
+                                    <Text style={styles.paymentAmount}>+${(Number(item.price) - Number(item.platform_fee || item.price * 0.03)).toFixed(2)}</Text>
+                                ) : (
+                                    <Text style={[styles.paymentAmount, item.status === 'confirmed' && { color: Colors.warning }]}>
+                                        ${Number(item.total_paid || item.price).toFixed(2)}
+                                    </Text>
+                                )}
                             </View>
-                            <View style={styles.paymentInfo}>
-                                <Text style={styles.paymentSport}>{item.sport} Session</Text>
-                                <Text style={styles.paymentDate}>{new Date(item.scheduled_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</Text>
-                            </View>
-                            <Text style={styles.paymentAmount}>+${(Number(item.price) - Number(item.platform_fee || item.price * 0.03)).toFixed(2)}</Text>
-                        </View>
-                    ))
+                        );
+                    })
                 )}
                 <View style={{ height: 40 }} />
             </ScrollView>
@@ -295,8 +386,8 @@ const styles = StyleSheet.create({
     // Stats 2x2 Grid
     statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.md, marginBottom: Spacing.xxl },
     statCard: {
-        width: '48%' as any,
         flexGrow: 1,
+        flexShrink: 1,
         flexBasis: '45%' as any,
         backgroundColor: Colors.card,
         borderRadius: BorderRadius.lg,
@@ -307,8 +398,8 @@ const styles = StyleSheet.create({
         gap: Spacing.xs,
     },
     statCardGradient: {
-        width: '48%' as any,
         flexGrow: 1,
+        flexShrink: 1,
         flexBasis: '45%' as any,
         borderRadius: BorderRadius.lg,
         padding: Spacing.lg,

@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, Platform } from 'react-native';
+import { View, Text, StyleSheet, Platform, TouchableOpacity } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createDrawerNavigator } from '@react-navigation/drawer';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 import { Colors, FontSize, FontWeight } from '../theme';
 import { supabase } from '../lib/supabase';
 import { registerForPushNotifications, getUnreadMessageCount, sendLocalNotification } from '../lib/notifications';
+import CustomDrawerContent from '../components/CustomDrawerContent';
 
 // Auth Screens
 import LoginScreen from '../screens/auth/LoginScreen';
@@ -43,6 +45,7 @@ import BookingDetailScreen from '../screens/dashboard/BookingDetailScreen';
 const AuthStack = createNativeStackNavigator();
 const MainStack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
+const Drawer = createDrawerNavigator();
 
 function AuthNavigator() {
     return (
@@ -250,7 +253,7 @@ function TabNavigator() {
     );
 }
 
-function MainNavigator() {
+function MainStackNavigator() {
     return (
         <MainStack.Navigator screenOptions={{ headerShown: false }}>
             <MainStack.Screen name="Tabs" component={TabNavigator} />
@@ -274,6 +277,27 @@ function MainNavigator() {
             <MainStack.Screen name="TrainingOffers" component={TrainingOffersScreen} options={{ animation: 'slide_from_right' }} />
             <MainStack.Screen name="BookingDetail" component={BookingDetailScreen} options={{ animation: 'slide_from_right' }} />
         </MainStack.Navigator>
+    );
+}
+
+function MainNavigator() {
+    return (
+        <Drawer.Navigator
+            drawerContent={(props) => <CustomDrawerContent {...props} />}
+            screenOptions={{
+                headerShown: false,
+                drawerType: 'front',
+                drawerStyle: {
+                    width: 300,
+                    backgroundColor: Colors.background,
+                },
+                overlayColor: 'rgba(0, 0, 0, 0.6)',
+                swipeEnabled: true,
+                swipeEdgeWidth: 50,
+            }}
+        >
+            <Drawer.Screen name="Main" component={MainStackNavigator} />
+        </Drawer.Navigator>
     );
 }
 

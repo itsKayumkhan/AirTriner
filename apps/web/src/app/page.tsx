@@ -229,6 +229,10 @@ function Navbar() {
             )}
 
             <style>{`
+        @media (min-width: 969px) {
+          .desktop-nav { display: flex !important; }
+          .mobile-menu-btn { display: none !important; }
+        }
         @media (max-width: 968px) {
           .desktop-nav { display: none !important; }
           .mobile-menu-btn { display: block !important; }

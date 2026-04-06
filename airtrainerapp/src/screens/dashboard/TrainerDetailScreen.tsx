@@ -341,6 +341,14 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
 
     const sports: string[] = trainer.sports || [];
 
+    // Verification badge logic
+    const totalSessions = trainer.total_sessions || 0;
+    const completionRate = trainer.completion_rate || 0;
+    const reliabilityScore = trainer.reliability_score || 0;
+    const isPerformanceVerified = totalSessions >= 3 && completionRate >= 95 && reliabilityScore >= 4.5;
+    const isProCoach = totalSessions > 0 && !isPerformanceVerified;
+    const isNew = totalSessions === 0;
+
     return (
         <View style={styles.container}>
             <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -382,6 +390,24 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
                             <View style={[styles.badge, { backgroundColor: '#45D0FF' }]}>
                                 <Ionicons name="shield-checkmark" size={14} color="#0A0D14" />
                                 <Text style={[styles.badgeText, { color: '#0A0D14' }]}>Verified</Text>
+                            </View>
+                        )}
+                        {isPerformanceVerified && (
+                            <View style={[styles.badge, styles.badgePillGreen]}>
+                                <Ionicons name="shield-checkmark" size={14} color="#10B981" />
+                                <Text style={[styles.badgeText, { color: '#10B981' }]}>Performance Verified</Text>
+                            </View>
+                        )}
+                        {isProCoach && (
+                            <View style={[styles.badge, styles.badgePillBlue]}>
+                                <Ionicons name="ribbon" size={14} color="#45D0FF" />
+                                <Text style={[styles.badgeText, { color: '#45D0FF' }]}>Pro Coach</Text>
+                            </View>
+                        )}
+                        {isNew && (
+                            <View style={[styles.badge, styles.badgePillGray]}>
+                                <Ionicons name="sparkles" size={14} color="#9CA3AF" />
+                                <Text style={[styles.badgeText, { color: '#9CA3AF' }]}>New</Text>
                             </View>
                         )}
                         <View style={[styles.badge, { backgroundColor: Colors.infoLight }]}>
@@ -789,11 +815,14 @@ const styles = StyleSheet.create({
     nameRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: 4 },
     trainerName: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: '#FFFFFF' },
     headline: { fontSize: FontSize.md, color: Colors.textSecondary, textAlign: 'center', marginBottom: Spacing.lg },
-    badgeRow: { flexDirection: 'row', gap: Spacing.sm },
+    badgeRow: { flexDirection: 'row', gap: Spacing.sm, flexWrap: 'wrap', marginTop: Spacing.sm },
     badge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: Spacing.md, paddingVertical: 4, borderRadius: BorderRadius.pill },
     badgeText: { fontSize: FontSize.xs, fontWeight: FontWeight.semibold },
+    badgePillGreen: { backgroundColor: 'rgba(16, 185, 129, 0.15)' },
+    badgePillBlue: { backgroundColor: 'rgba(69, 208, 255, 0.15)' },
+    badgePillGray: { backgroundColor: 'rgba(156, 163, 175, 0.15)' },
     statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.md, marginBottom: Spacing.xxxl },
-    statCard: { flex: 1, minWidth: '45%', backgroundColor: '#161B22', borderRadius: BorderRadius.lg, padding: Spacing.lg, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
+    statCard: { flex: 1, minWidth: 140, backgroundColor: '#161B22', borderRadius: BorderRadius.lg, padding: Spacing.lg, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
     statValue: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: '#45D0FF' },
     statLabel: { fontSize: FontSize.xs, color: Colors.textTertiary, marginTop: 2 },
     section: { marginBottom: Spacing.xxl },

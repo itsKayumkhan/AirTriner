@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Download, Wallet, Percent, TrendingUp, TrendingDown, Info, MoreHorizontal, ArrowUpRight, CheckCircle, Clock, AlertTriangle, Loader2, Zap, ShieldAlert, UserX, RefreshCw, Timer } from "lucide-react";
+import { Download, Wallet, Percent, TrendingUp, TrendingDown, Info, MoreHorizontal, ArrowUpRight, CheckCircle, Clock, AlertTriangle, Loader2, Zap, ShieldAlert, UserX, RefreshCw, Timer, X, CreditCard, Calendar, DollarSign } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import PopupModal from "@/components/common/PopupModal";
 
@@ -34,6 +34,13 @@ export default function AdminPaymentsPage() {
         message: string;
         onConfirm?: () => void;
     } | null>(null);
+
+    // Payment Detail Modal
+    const [paymentDetail, setPaymentDetail] = useState<{ isOpen: boolean; data: any }>({ isOpen: false, data: null });
+
+    const openPaymentDetail = (txn: any) => {
+        setPaymentDetail({ isOpen: true, data: txn });
+    };
 
     const showAlert = (type: "success" | "error" | "info", title: string, message: string) => {
         setPopup({ type, title, message });
@@ -512,7 +519,7 @@ export default function AdminPaymentsPage() {
                                 </tr>
                             ) : (
                                 transactions.map((t) => (
-                                    <tr key={t.id} className="border-b border-white/[0.04] hover:bg-white/5 transition-colors group">
+                                    <tr key={t.id} onClick={() => openPaymentDetail(t)} className="border-b border-white/[0.04] hover:bg-white/5 transition-colors group cursor-pointer">
                                         <td className="px-6 py-5 pl-8 text-center">
                                             <div className="flex items-center justify-center gap-2 text-text-main/60 font-black text-xs tracking-wider uppercase">
                                                 {t.displayId}
@@ -553,7 +560,7 @@ export default function AdminPaymentsPage() {
                                                 {t.status}
                                             </span>
                                         </td>
-                                        <td className="px-6 py-5 pr-8 text-center relative">
+                                        <td className="px-6 py-5 pr-8 text-center relative" onClick={e => e.stopPropagation()}>
                                             {t.status === "held" ? (
                                                 <div className="flex flex-col items-end gap-1.5">
                                                     {/* Edge case badges */}
@@ -616,6 +623,108 @@ export default function AdminPaymentsPage() {
                     </table>
                 </div>
             </div>
+
+            {/* Payment Detail Modal */}
+            {paymentDetail.isOpen && paymentDetail.data && (() => {
+                const t = paymentDetail.data;
+                return (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+                        <div className="bg-[#1A1C23] border border-white/10 rounded-[24px] shadow-2xl w-full max-w-lg animate-in fade-in zoom-in-95 duration-200">
+                            {/* Header */}
+                            <div className="flex items-center justify-between p-6 border-b border-white/5">
+                                <div>
+                                    <h3 className="text-lg font-black text-white uppercase tracking-wider">Transaction Details</h3>
+                                    <p className="text-xs text-text-main/50 font-bold mt-0.5">{t.displayId}</p>
+                                </div>
+                                <button onClick={() => setPaymentDetail({ isOpen: false, data: null })} className="p-2 rounded-xl text-text-main/50 hover:text-white hover:bg-white/5 transition-all">
+                                    <X size={18} />
+                                </button>
+                            </div>
+
+                            <div className="p-6 space-y-5">
+                                {/* Status Badge */}
+                                <div className="flex items-center justify-center">
+                                    <span className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-xs font-black uppercase tracking-widest border ${
+                                        t.status === "released" ? "bg-primary/10 text-primary border-primary/20" :
+                                        t.status === "held" ? "bg-yellow-500/10 text-yellow-500 border-yellow-500/20" :
+                                        t.status === "refunded" ? "bg-red-500/10 text-red-500 border-red-500/20" :
+                                        "bg-white/5 text-text-main/80 border-white/10"
+                                    }`}>
+                                        {t.status === "released" ? <CheckCircle size={14} /> : t.status === "held" ? <Clock size={14} /> : <AlertTriangle size={14} />}
+                                        {t.status}
+                                    </span>
+                                </div>
+
+                                {/* Amount Breakdown */}
+                                <div className="bg-[#12141A] border border-white/5 rounded-xl p-5">
+                                    <div className="flex items-center justify-between mb-4">
+                                        <span className="text-[10px] font-black uppercase tracking-widest text-text-main/40">Total Amount</span>
+                                        <span className="text-2xl font-black text-text-main">{t.amount}</span>
+                                    </div>
+                                    <div className="space-y-2 border-t border-white/5 pt-3">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-xs text-text-main/60 font-medium flex items-center gap-1.5"><DollarSign size={11} /> Trainer Payout</span>
+                                            <span className="text-sm font-black text-green-500">{t.trainerPayout}</span>
+                                        </div>
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-xs text-text-main/60 font-medium flex items-center gap-1.5"><Percent size={11} /> Platform Fee</span>
+                                            <span className="text-sm font-black text-orange-400">{t.platformFee}</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* People */}
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="bg-[#12141A] border border-white/5 rounded-xl p-4">
+                                        <p className="text-[9px] font-black uppercase tracking-widest text-text-main/40 mb-2">Customer (Athlete)</p>
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-8 h-8 rounded-full bg-white/5 text-text-main flex items-center justify-center font-black text-xs border border-white/[0.04]">{t.initials}</div>
+                                            <span className="text-sm font-bold text-text-main">{t.customer}</span>
+                                        </div>
+                                    </div>
+                                    <div className="bg-[#12141A] border border-white/5 rounded-xl p-4">
+                                        <p className="text-[9px] font-black uppercase tracking-widest text-text-main/40 mb-2">Trainer</p>
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-8 h-8 rounded-full bg-[#1e3a8a]/30 text-text-main/80 flex items-center justify-center font-bold text-xs border border-[#2563eb]/20">{t.trainerInitials}</div>
+                                            <span className="text-sm font-bold text-text-main">{t.trainer}</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Other Info */}
+                                <div className="space-y-3">
+                                    <div className="flex items-center justify-between bg-[#12141A] border border-white/5 rounded-xl px-4 py-3">
+                                        <span className="text-xs text-text-main/60 font-medium flex items-center gap-1.5"><Calendar size={12} /> Processed Date</span>
+                                        <span className="text-sm font-bold text-text-main">{t.date}</span>
+                                    </div>
+                                    {t.holdUntil && (
+                                        <div className="flex items-center justify-between bg-[#12141A] border border-yellow-500/20 rounded-xl px-4 py-3">
+                                            <span className="text-xs text-yellow-500/80 font-medium flex items-center gap-1.5"><Timer size={12} /> Hold Until</span>
+                                            <span className="text-sm font-bold text-yellow-500">{t.holdUntil} {t.holdLabel && <span className="text-[10px] ml-1">({t.holdLabel} left)</span>}</span>
+                                        </div>
+                                    )}
+                                    {t.hasDispute && (
+                                        <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
+                                            <ShieldAlert size={14} className="text-red-400" />
+                                            <span className="text-xs font-black text-red-400 uppercase tracking-widest">Dispute Active</span>
+                                        </div>
+                                    )}
+                                    {!t.hasStripe && t.status === "held" && (
+                                        <div className="flex items-center gap-2 bg-white/5 border border-white/[0.06] rounded-xl px-4 py-3">
+                                            <UserX size={14} className="text-text-main/40" />
+                                            <span className="text-xs font-bold text-text-main/40 uppercase tracking-widest">Trainer has no Stripe connected</span>
+                                        </div>
+                                    )}
+                                    <div className="flex items-center justify-between bg-[#12141A] border border-white/5 rounded-xl px-4 py-3">
+                                        <span className="text-xs text-text-main/60 font-medium flex items-center gap-1.5"><CreditCard size={12} /> Booking Completed</span>
+                                        <span className={`text-sm font-bold ${t.bookingCompleted ? "text-green-500" : "text-text-main/40"}`}>{t.bookingCompleted ? "Yes" : "No"}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
 
             <PopupModal
                 isOpen={!!popup}

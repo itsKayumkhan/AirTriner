@@ -10,12 +10,12 @@ export async function GET(req: NextRequest) {
         const userId = req.nextUrl.searchParams.get("userId");
         if (!userId) return NextResponse.json({ error: "Missing userId" }, { status: 400 });
 
-        // Fetch trainer profile
-        const { data: profile } = await adminSupabase
+        // Fetch trainer profile (select * to avoid missing column errors)
+        const { data: profileRows } = await adminSupabase
             .from("trainer_profiles")
-            .select("id, user_id, subscription_status, subscription_expires_at, trial_started_at, sports, is_founding_50, stripe_account_id, created_at, bio, hourly_rate, session_count")
-            .eq("user_id", userId)
-            .single();
+            .select("*")
+            .eq("user_id", userId);
+        const profile = profileRows && profileRows.length > 0 ? profileRows[0] : null;
 
         // Fetch user info
         const { data: user } = await adminSupabase

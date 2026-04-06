@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { DrawerActions } from '@react-navigation/native';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows } from '../../theme';
@@ -148,9 +149,14 @@ export default function AthleteDashboardScreen({ navigation }: any) {
         >
             {/* Header */}
             <View style={styles.header}>
-                <View>
-                    <Text style={styles.greeting}>{getGreeting()} 👋</Text>
-                    <Text style={styles.headerTitle}>{user?.firstName}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.md }}>
+                    <TouchableOpacity style={styles.menuButton} onPress={() => navigation.dispatch(DrawerActions.openDrawer())}>
+                        <Ionicons name="menu-outline" size={24} color={Colors.text} />
+                    </TouchableOpacity>
+                    <View>
+                        <Text style={styles.greeting}>{getGreeting()} 👋</Text>
+                        <Text style={styles.headerTitle}>{user?.firstName}</Text>
+                    </View>
                 </View>
                 <TouchableOpacity style={styles.notifButton} onPress={() => navigation.navigate('Notifications')}>
                     <Ionicons name="notifications-outline" size={24} color={Colors.text} />
@@ -275,27 +281,35 @@ export default function AthleteDashboardScreen({ navigation }: any) {
             <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Quick Actions</Text>
                 <View style={styles.quickActionsGrid}>
-                    <TouchableOpacity style={styles.quickAction} onPress={() => navigation.navigate('Discover')}>
-                        <View style={[styles.quickActionIcon, { backgroundColor: 'rgba(69,208,255,0.15)' }]}>
-                            <Ionicons name="compass" size={22} color="#45D0FF" />
+                    <TouchableOpacity style={styles.quickAction} activeOpacity={0.7} onPress={() => navigation.navigate('Discover')}>
+                        <View style={styles.quickActionCard}>
+                            <View style={styles.quickActionIconWrap}>
+                                <Ionicons name="compass" size={24} color="#45D0FF" />
+                            </View>
                         </View>
                         <Text style={styles.quickActionLabel}>Find Trainer</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.quickAction} onPress={() => navigation.navigate('Bookings')}>
-                        <View style={[styles.quickActionIcon, { backgroundColor: 'rgba(69,208,255,0.15)' }]}>
-                            <Ionicons name="calendar" size={22} color="#45D0FF" />
+                    <TouchableOpacity style={styles.quickAction} activeOpacity={0.7} onPress={() => navigation.navigate('Bookings')}>
+                        <View style={styles.quickActionCard}>
+                            <View style={styles.quickActionIconWrap}>
+                                <Ionicons name="calendar" size={24} color="#45D0FF" />
+                            </View>
                         </View>
                         <Text style={styles.quickActionLabel}>My Bookings</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.quickAction} onPress={() => navigation.navigate('Messages')}>
-                        <View style={[styles.quickActionIcon, { backgroundColor: 'rgba(69,208,255,0.15)' }]}>
-                            <Ionicons name="chatbubbles" size={22} color="#45D0FF" />
+                    <TouchableOpacity style={styles.quickAction} activeOpacity={0.7} onPress={() => navigation.navigate('Messages')}>
+                        <View style={styles.quickActionCard}>
+                            <View style={styles.quickActionIconWrap}>
+                                <Ionicons name="chatbubbles" size={24} color="#45D0FF" />
+                            </View>
                         </View>
                         <Text style={styles.quickActionLabel}>Messages</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.quickAction} onPress={() => navigation.navigate('SubAccounts')}>
-                        <View style={[styles.quickActionIcon, { backgroundColor: 'rgba(69,208,255,0.15)' }]}>
-                            <Ionicons name="people" size={22} color="#45D0FF" />
+                    <TouchableOpacity style={styles.quickAction} activeOpacity={0.7} onPress={() => navigation.navigate('SubAccounts')}>
+                        <View style={styles.quickActionCard}>
+                            <View style={styles.quickActionIconWrap}>
+                                <Ionicons name="people" size={24} color="#45D0FF" />
+                            </View>
                         </View>
                         <Text style={styles.quickActionLabel}>Family</Text>
                     </TouchableOpacity>
@@ -314,6 +328,7 @@ const styles = StyleSheet.create({
     header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.xxl },
     greeting: { fontSize: FontSize.sm, color: Colors.textSecondary, marginBottom: 2 },
     headerTitle: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: '#FFFFFF' },
+    menuButton: { width: 44, height: 44, borderRadius: 14, backgroundColor: Colors.surface, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: Colors.border },
     notifButton: { width: 44, height: 44, borderRadius: 14, backgroundColor: Colors.surface, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: Colors.border },
     statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.md, marginBottom: Spacing.xxl },
     statCardPrimary: { width: '100%', padding: Spacing.xl, borderRadius: BorderRadius.lg, alignItems: 'center', ...Shadows.glow },
@@ -352,8 +367,28 @@ const styles = StyleSheet.create({
     emptyCard: { backgroundColor: '#161B22', borderRadius: BorderRadius.lg, padding: Spacing.xxl, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)', gap: Spacing.sm },
     emptyText: { fontSize: FontSize.md, color: Colors.textTertiary },
     // Quick Actions
-    quickActionsGrid: { flexDirection: 'row', gap: Spacing.md },
-    quickAction: { flex: 1, backgroundColor: '#161B22', borderRadius: BorderRadius.lg, padding: Spacing.lg, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)', gap: Spacing.sm },
-    quickActionIcon: { width: 48, height: 48, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
-    quickActionLabel: { fontSize: FontSize.xs, fontWeight: FontWeight.medium, color: '#FFFFFF' },
+    quickActionsGrid: { flexDirection: 'row', gap: 12 },
+    quickAction: { flex: 1, alignItems: 'center', gap: 8 },
+    quickActionCard: {
+        width: '100%',
+        aspectRatio: 1,
+        borderRadius: 20,
+        backgroundColor: '#161B22',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        ...Shadows.medium,
+    },
+    quickActionIconWrap: {
+        width: 48,
+        height: 48,
+        borderRadius: 16,
+        backgroundColor: 'rgba(69,208,255,0.1)',
+        borderWidth: 1,
+        borderColor: 'rgba(69,208,255,0.15)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    quickActionLabel: { fontSize: 11, fontWeight: FontWeight.semibold, color: 'rgba(255,255,255,0.6)', textAlign: 'center' },
 });

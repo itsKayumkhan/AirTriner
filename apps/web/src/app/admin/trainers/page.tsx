@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Download, Plus, FileText, CheckCircle, Search, XCircle, ChevronLeft, ChevronRight, UserCheck, Clock, Award, ExternalLink, ShieldCheck, ShieldX, X } from "lucide-react";
+import { Download, Plus, FileText, CheckCircle, Search, XCircle, ChevronLeft, ChevronRight, UserCheck, Clock, Award, ExternalLink, ShieldCheck, ShieldX, X, Mail, Phone, MapPin, Calendar, CreditCard, Loader2, Activity, DollarSign } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { FoundingBadgeTooltip } from "@/components/ui/FoundingBadge";
@@ -29,6 +29,22 @@ export default function AdminTrainersPage() {
         isOpen: false, trainerId: null, trainerName: "", docs: [], isVerified: false, isDeclined: false
     });
     const [docsActionLoading, setDocsActionLoading] = useState(false);
+
+    // Trainer Detail Modal
+    const [trainerDetail, setTrainerDetail] = useState<{ isOpen: boolean; loading: boolean; data: any }>({ isOpen: false, loading: false, data: null });
+
+    const openTrainerDetail = async (trainerId: string) => {
+        setTrainerDetail({ isOpen: true, loading: true, data: null });
+        try {
+            const res = await fetch(`/api/admin/trainer-detail?userId=${trainerId}`);
+            const json = await res.json();
+            if (!res.ok) throw new Error(json.error);
+            setTrainerDetail({ isOpen: true, loading: false, data: json });
+        } catch (err) {
+            console.error(err);
+            setTrainerDetail({ isOpen: true, loading: false, data: null });
+        }
+    };
 
     // Pagination states
     const [currentPage, setCurrentPage] = useState(1);
@@ -327,6 +343,7 @@ export default function AdminTrainersPage() {
                         <thead>
                             <tr className="border-b border-white/5 text-[10px] uppercase font-black tracking-widest text-text-main/40 bg-white/5">
                                 <th className="px-6 py-5 pl-8">Trainer Name</th>
+                                <th className="px-6 py-5">Location</th>
                                 <th className="px-6 py-5">Specialty</th>
                                 <th className="px-6 py-5">Status</th>
                                 <th className="px-6 py-5">Founding 50</th>
@@ -337,13 +354,13 @@ export default function AdminTrainersPage() {
                         <tbody className="text-sm">
                             {loading ? (
                                 <tr>
-                                    <td colSpan={5} className="py-10 text-center text-text-main/50 font-bold">
+                                    <td colSpan={7} className="py-10 text-center text-text-main/50 font-bold">
                                         Loading trainers...
                                     </td>
                                 </tr>
                             ) : paginatedTrainers.length === 0 ? (
                                 <tr>
-                                    <td colSpan={5} className="py-10 text-center text-text-main/50 font-bold">
+                                    <td colSpan={7} className="py-10 text-center text-text-main/50 font-bold">
                                         No trainers found matching your filters.
                                         {searchQuery && (
                                             <button onClick={clearFilters} className="ml-2 text-primary hover:underline">Clear Search</button>
@@ -351,7 +368,7 @@ export default function AdminTrainersPage() {
                                     </td>
                                 </tr>
                             ) : paginatedTrainers.map((t, i) => (
-                                <tr key={t.id} className="border-b border-white/[0.04] hover:bg-white/5 transition-colors group">
+                                <tr key={t.id} onClick={() => openTrainerDetail(t.id)} className="border-b border-white/[0.04] hover:bg-white/5 transition-colors group cursor-pointer">
                                     <td className="px-6 py-5 pl-8">
                                         <div className="flex items-center gap-3">
                                             <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-black flex-shrink-0 border border-primary/20">
@@ -372,11 +389,37 @@ export default function AdminTrainersPage() {
                                         </div>
                                     </td>
                                     <td className="px-6 py-5">
+                                        <div className="text-text-main/80 font-medium text-xs tracking-wide flex items-center gap-1">
+                                            {t.city || t.state ? (
+                                                <><MapPin size={11} className="text-primary/60" /> {[t.city, t.state].filter(Boolean).join(", ")}</>
+                                            ) : (
+                                                <span className="text-text-main/30">—</span>
+                                            )}
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-5">
                                         <div className="bg-white/5 text-text-main/90 font-bold text-[10px] uppercase tracking-wider px-3 py-1.5 rounded-lg inline-flex border border-white/[0.04]">
                                             {t.specialty}
                                         </div>
                                     </td>
                                     <td className="px-6 py-5">
+                                        <div className="flex items-center gap-2">
+                                            {t.isVerified ? (
+                                                <span className="flex items-center justify-center px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border bg-green-500/10 text-green-500 border-green-500/20">
+                                                    Verified
+                                                </span>
+                                            ) : t.isDeclined ? (
+                                                <span className="flex items-center justify-center px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border bg-red-500/10 text-red-500 border-red-500/20">
+                                                    Declined
+                                                </span>
+                                            ) : (
+                                                <span className="flex items-center justify-center px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border bg-orange-500/10 text-orange-500 border-orange-500/20">
+                                                    Pending
+                                                </span>
+                                            )}
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-5" onClick={e => e.stopPropagation()}>
                                         {t.isVerified ? (
                                             t.isFounding50 ? (
                                                 <div className="flex items-center gap-2">
@@ -402,24 +445,7 @@ export default function AdminTrainersPage() {
                                             <span className="text-text-main/30 text-[10px] font-bold uppercase tracking-wider">Verify First</span>
                                         )}
                                     </td>
-                                    <td className="px-6 py-5">
-                                        <div className="flex items-center gap-2">
-                                            {t.isVerified ? (
-                                                <span className="flex items-center justify-center px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border bg-green-500/10 text-green-500 border-green-500/20">
-                                                    Verified
-                                                </span>
-                                            ) : t.isDeclined ? (
-                                                <span className="flex items-center justify-center px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border bg-red-500/10 text-red-500 border-red-500/20">
-                                                    Declined
-                                                </span>
-                                            ) : (
-                                                <span className="flex items-center justify-center px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border bg-orange-500/10 text-orange-500 border-orange-500/20">
-                                                    Pending
-                                                </span>
-                                            )}
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-5">
+                                    <td className="px-6 py-5" onClick={e => e.stopPropagation()}>
                                         <button
                                             onClick={() => openDocsModal(t)}
                                             className="flex items-center gap-2 text-primary text-xs font-black uppercase tracking-widest hover:text-white transition-colors bg-white/5 px-3 py-1.5 rounded-lg hover:bg-white/10"
@@ -428,7 +454,7 @@ export default function AdminTrainersPage() {
                                             {t.docs.length > 0 ? `${t.docs.length} Doc${t.docs.length > 1 ? "s" : ""}` : "No Docs"}
                                         </button>
                                     </td>
-                                    <td className="px-6 py-5 pr-8 text-right">
+                                    <td className="px-6 py-5 pr-8 text-right" onClick={e => e.stopPropagation()}>
                                         {t.isVerified || t.isDeclined ? (
                                             <span className="text-text-main/40 italic text-[10px] font-bold uppercase tracking-wider">Action completed</span>
                                         ) : (
@@ -501,6 +527,172 @@ export default function AdminTrainersPage() {
                 onConfirm={confirmUpdateStatus}
                 isLoading={actionLoading}
             />
+
+            {/* Trainer Detail Modal */}
+            {trainerDetail.isOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+                    <div className="bg-[#1A1C23] border border-white/10 rounded-[24px] shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-200">
+                        <div className="flex items-center justify-between p-6 border-b border-white/5 sticky top-0 bg-[#1A1C23] z-10 rounded-t-[24px]">
+                            <h3 className="text-lg font-black text-white uppercase tracking-wider">Trainer Details</h3>
+                            <button onClick={() => setTrainerDetail({ isOpen: false, loading: false, data: null })} className="p-2 rounded-xl text-text-main/50 hover:text-white hover:bg-white/5 transition-all">
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        {trainerDetail.loading ? (
+                            <div className="flex flex-col items-center justify-center py-20">
+                                <Loader2 size={32} className="animate-spin text-primary mb-3" />
+                                <p className="text-text-main/40 text-sm font-bold uppercase tracking-widest">Loading Details...</p>
+                            </div>
+                        ) : !trainerDetail.data ? (
+                            <div className="flex flex-col items-center justify-center py-20">
+                                <p className="text-text-main/40 text-sm font-bold">Failed to load trainer details</p>
+                            </div>
+                        ) : (() => {
+                            const { user, profile, stats, recentPayments } = trainerDetail.data;
+                            const name = `${user?.first_name || ""} ${user?.last_name || ""}`.trim() || user?.email?.split("@")[0] || "Unknown";
+                            const initials = `${user?.first_name?.[0] || ""}${user?.last_name?.[0] || ""}`.toUpperCase() || "?";
+                            return (
+                                <div className="p-6 space-y-6">
+                                    {/* Profile Header */}
+                                    <div className="flex items-center gap-4">
+                                        <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center text-primary font-black text-2xl border-2 border-primary/20 flex-shrink-0">
+                                            {initials}
+                                        </div>
+                                        <div className="flex-1">
+                                            <h4 className="text-xl font-black text-white tracking-wide">{name}</h4>
+                                            <div className="flex flex-wrap items-center gap-3 mt-1">
+                                                <span className="flex items-center gap-1 text-text-main/60 text-xs font-medium"><Mail size={12} /> {user?.email}</span>
+                                                {user?.phone && <span className="flex items-center gap-1 text-text-main/60 text-xs font-medium"><Phone size={12} /> {user.phone}</span>}
+                                            </div>
+                                            <div className="flex flex-wrap items-center gap-2 mt-2">
+                                                <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${
+                                                    profile?.verification_status === "verified" ? "bg-green-500/10 text-green-500 border-green-500/20" :
+                                                    profile?.verification_status === "rejected" ? "bg-red-500/10 text-red-500 border-red-500/20" :
+                                                    "bg-orange-500/10 text-orange-500 border-orange-500/20"
+                                                }`}>
+                                                    {profile?.verification_status || "Pending"}
+                                                </span>
+                                                {profile?.is_founding_50 && (
+                                                    <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-yellow-500/10 text-yellow-500 border border-yellow-500/20">Founding 50</span>
+                                                )}
+                                                <span className="text-text-main/40 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
+                                                    <Calendar size={10} /> Joined {new Date(user?.created_at).toLocaleDateString()}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Bio */}
+                                    {profile?.bio && (
+                                        <div className="bg-white/5 border border-white/[0.04] rounded-xl px-4 py-3">
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-text-main/40 mb-1">Bio</p>
+                                            <p className="text-text-main/80 text-sm font-medium">{profile.bio}</p>
+                                        </div>
+                                    )}
+
+                                    {/* Sports & Rate */}
+                                    <div className="flex flex-wrap gap-3">
+                                        {(profile?.sports || []).map((s: string) => (
+                                            <span key={s} className="px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-[10px] font-black uppercase tracking-widest border border-primary/20">{s}</span>
+                                        ))}
+                                        {profile?.hourly_rate && (
+                                            <span className="px-3 py-1.5 rounded-lg bg-green-500/10 text-green-500 text-[10px] font-black uppercase tracking-widest border border-green-500/20 flex items-center gap-1">
+                                                <DollarSign size={10} /> ${profile.hourly_rate}/hr
+                                            </span>
+                                        )}
+                                    </div>
+
+                                    {/* Booking Stats */}
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                        <div className="bg-[#12141A] border border-white/5 rounded-xl p-4 text-center">
+                                            <p className="text-[9px] font-black uppercase tracking-widest text-text-main/40 mb-1">Total Bookings</p>
+                                            <p className="text-2xl font-black text-text-main">{stats?.totalBookings ?? 0}</p>
+                                        </div>
+                                        <div className="bg-[#12141A] border border-white/5 rounded-xl p-4 text-center">
+                                            <p className="text-[9px] font-black uppercase tracking-widest text-green-500/60 mb-1">Completed</p>
+                                            <p className="text-2xl font-black text-green-500">{stats?.completedBookings ?? 0}</p>
+                                        </div>
+                                        <div className="bg-[#12141A] border border-white/5 rounded-xl p-4 text-center">
+                                            <p className="text-[9px] font-black uppercase tracking-widest text-yellow-500/60 mb-1">Pending</p>
+                                            <p className="text-2xl font-black text-yellow-500">{stats?.pendingBookings ?? 0}</p>
+                                        </div>
+                                        <div className="bg-[#12141A] border border-white/5 rounded-xl p-4 text-center">
+                                            <p className="text-[9px] font-black uppercase tracking-widest text-red-500/60 mb-1">Cancelled</p>
+                                            <p className="text-2xl font-black text-red-500">{stats?.cancelledBookings ?? 0}</p>
+                                        </div>
+                                    </div>
+
+                                    {/* Financial Stats */}
+                                    <div className="grid grid-cols-3 gap-3">
+                                        <div className="bg-[#12141A] border border-primary/20 rounded-xl p-4 text-center">
+                                            <p className="text-[9px] font-black uppercase tracking-widest text-primary/60 mb-1">Total Revenue</p>
+                                            <p className="text-xl font-black text-primary">${(stats?.totalRevenue ?? 0).toFixed(2)}</p>
+                                        </div>
+                                        <div className="bg-[#12141A] border border-white/5 rounded-xl p-4 text-center">
+                                            <p className="text-[9px] font-black uppercase tracking-widest text-text-main/40 mb-1">Platform Fees</p>
+                                            <p className="text-xl font-black text-text-main">${(stats?.totalPlatformFee ?? 0).toFixed(2)}</p>
+                                        </div>
+                                        <div className="bg-[#12141A] border border-white/5 rounded-xl p-4 text-center">
+                                            <p className="text-[9px] font-black uppercase tracking-widest text-text-main/40 mb-1">Total Volume</p>
+                                            <p className="text-xl font-black text-text-main">${(stats?.totalVolume ?? 0).toFixed(2)}</p>
+                                        </div>
+                                    </div>
+
+                                    {/* Subscription Info */}
+                                    <div className="bg-white/5 border border-white/[0.04] rounded-xl px-4 py-3 flex flex-wrap items-center gap-4">
+                                        <div>
+                                            <p className="text-[9px] font-black uppercase tracking-widest text-text-main/40">Subscription</p>
+                                            <p className="text-sm font-bold text-text-main capitalize">{profile?.subscription_status || "None"}</p>
+                                        </div>
+                                        {profile?.subscription_expires_at && (
+                                            <div>
+                                                <p className="text-[9px] font-black uppercase tracking-widest text-text-main/40">Expires</p>
+                                                <p className="text-sm font-bold text-text-main">{new Date(profile.subscription_expires_at).toLocaleDateString()}</p>
+                                            </div>
+                                        )}
+                                        {profile?.stripe_account_id && (
+                                            <div>
+                                                <p className="text-[9px] font-black uppercase tracking-widest text-text-main/40">Stripe</p>
+                                                <p className="text-sm font-bold text-green-500">Connected</p>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Recent Payments */}
+                                    {recentPayments && recentPayments.length > 0 && (
+                                        <div>
+                                            <h5 className="text-xs font-black uppercase tracking-widest text-text-main/40 mb-3">Recent Payments</h5>
+                                            <div className="space-y-2">
+                                                {recentPayments.map((p: any) => (
+                                                    <div key={p.id} className="flex items-center justify-between bg-[#12141A] border border-white/5 rounded-xl px-4 py-3">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center">
+                                                                <CreditCard size={14} className="text-text-main/40" />
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-sm font-bold text-text-main">${p.trainerPayout.toFixed(2)}</p>
+                                                                <p className="text-[10px] text-text-main/40 font-medium">{new Date(p.date).toLocaleDateString()}</p>
+                                                            </div>
+                                                        </div>
+                                                        <span className={`px-2 py-1 rounded-full text-[8px] font-black uppercase tracking-widest border ${
+                                                            p.status === "released" ? "bg-primary/10 text-primary border-primary/20" :
+                                                            p.status === "held" ? "bg-yellow-500/10 text-yellow-500 border-yellow-500/20" :
+                                                            "bg-red-500/10 text-red-500 border-red-500/20"
+                                                        }`}>
+                                                            {p.status}
+                                                        </span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })()}
+                    </div>
+                </div>
+            )}
 
             {/* Documents Modal */}
             {docsModal.isOpen && (

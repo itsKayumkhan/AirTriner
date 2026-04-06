@@ -1,3 +1,5 @@
+import { Platform } from 'react-native';
+
 export const Colors = {
     // Primary
     primary: '#45D0FF',
@@ -105,33 +107,24 @@ export const FontWeight = {
     heavy: '800' as const,
 };
 
+const makeShadow = (native: any, webBoxShadow: string) =>
+    Platform.OS === 'web' ? { boxShadow: webBoxShadow } : native;
+
 export const Shadows = {
-    small: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.15,
-        shadowRadius: 4,
-        elevation: 3,
-    },
-    medium: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.2,
-        shadowRadius: 8,
-        elevation: 5,
-    },
-    large: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.3,
-        shadowRadius: 16,
-        elevation: 8,
-    },
-    glow: {
-        shadowColor: '#45D0FF',
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 0.3,
-        shadowRadius: 12,
-        elevation: 5,
-    },
+    small: makeShadow(
+        { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 4, elevation: 3 },
+        '0 2px 4px rgba(0,0,0,0.15)'
+    ),
+    medium: makeShadow(
+        { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 5 },
+        '0 4px 8px rgba(0,0,0,0.2)'
+    ),
+    large: makeShadow(
+        { shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 16, elevation: 8 },
+        '0 8px 16px rgba(0,0,0,0.3)'
+    ),
+    glow: makeShadow(
+        { shadowColor: '#45D0FF', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.3, shadowRadius: 12, elevation: 5 },
+        '0 0 12px rgba(69,208,255,0.3)'
+    ),
 };

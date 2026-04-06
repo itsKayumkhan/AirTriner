@@ -33,7 +33,9 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     storage: NativeStorageAdapter,
     autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: false,
+    detectSessionInUrl: Platform.OS === 'web',
+    flowType: 'implicit',
+    ...(Platform.OS === 'web' ? { lock: false as any } : {}),
   },
 });
 

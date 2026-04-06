@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-    View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator, Alert,
+    View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator, Alert, Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
@@ -80,6 +80,26 @@ export default function BookingsScreen({ navigation }: any) {
         return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
     };
 
+    const handleCalendarExport = (booking: BookingWithUsers) => {
+        const otherUser = user?.role === 'trainer' ? booking.athlete : booking.trainer;
+        const otherUserName = `${otherUser?.first_name || ''} ${otherUser?.last_name || ''}`.trim();
+
+        const start = new Date(booking.scheduled_at);
+        const end = new Date(start.getTime() + (booking.duration_minutes || 60) * 60 * 1000);
+
+        const formatGCalDate = (d: Date) =>
+            d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+
+        const startStr = formatGCalDate(start);
+        const endStr = formatGCalDate(end);
+
+        const title = encodeURIComponent(`${booking.sport} Training Session`);
+        const details = encodeURIComponent(`Training with ${otherUserName}`);
+
+        const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${startStr}/${endStr}&details=${details}`;
+        Linking.openURL(url);
+    };
+
     const renderBookingCard = ({ item }: { item: BookingWithUsers }) => {
         const config = STATUS_CONFIG[item.status] || STATUS_CONFIG.pending;
         const otherUser = user?.role === 'trainer' ? item.athlete : item.trainer;
@@ -121,6 +141,16 @@ export default function BookingsScreen({ navigation }: any) {
                     </View>
                 </View>
 
+                {/* Calendar export for completed bookings */}
+                {item.status === 'completed' && (
+                    <View style={styles.actionRow}>
+                        <TouchableOpacity style={styles.actionBtnSecondary} onPress={() => handleCalendarExport(item)}>
+                            <Ionicons name="calendar-outline" size={16} color={Colors.primary} />
+                            <Text style={styles.actionBtnSecondaryText}>Calendar</Text>
+                        </TouchableOpacity>
+                    </View>
+                )}
+
                 {/* Action buttons for pending/confirmed */}
                 {(item.status === 'pending' || item.status === 'confirmed') && (
                     <View style={styles.actionRow}>
@@ -134,6 +164,12 @@ export default function BookingsScreen({ navigation }: any) {
                             <Ionicons name="chatbubble-outline" size={16} color={Colors.primary} />
                             <Text style={styles.actionBtnSecondaryText}>Message</Text>
                         </TouchableOpacity>
+                        {item.status === 'confirmed' && (
+                            <TouchableOpacity style={styles.actionBtnSecondary} onPress={() => handleCalendarExport(item)}>
+                                <Ionicons name="calendar-outline" size={16} color={Colors.primary} />
+                                <Text style={styles.actionBtnSecondaryText}>Calendar</Text>
+                            </TouchableOpacity>
+                        )}
                         {item.status === 'pending' && user?.role === 'trainer' && (
                             <TouchableOpacity
                                 style={styles.actionBtnPrimary}

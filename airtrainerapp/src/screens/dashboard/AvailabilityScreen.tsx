@@ -17,15 +17,31 @@ import { Colors, Spacing, BorderRadius, FontSize, FontWeight } from '../../theme
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const DAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const DURATIONS = [30, 45, 60] as const;
+
+// Helper: add minutes to a HH:MM time string
+function addMinutes(time: string, mins: number): string {
+    const [h, m] = time.split(':').map(Number);
+    const total = h * 60 + m + mins;
+    const newH = Math.floor(total / 60) % 24;
+    const newM = total % 60;
+    return `${String(newH).padStart(2, '0')}:${String(newM).padStart(2, '0')}`;
+}
+
+// Detect duration from existing slot's start/end
+function slotDurationMinutes(start: string, end: string): number {
+    const [sh, sm] = start.split(':').map(Number);
+    const [eh, em] = end.split(':').map(Number);
+    return eh * 60 + em - (sh * 60 + sm);
+}
 
 // Hourly slots 06:00–20:00
-const TIME_SLOTS: { label: string; start: string; end: string }[] = [];
+const TIME_SLOTS: { label: string; start: string }[] = [];
 for (let h = 6; h <= 20; h++) {
     const start = `${String(h).padStart(2, '0')}:00`;
-    const end = `${String(h + 1).padStart(2, '0')}:00`;
     const period = h < 12 ? 'AM' : 'PM';
     const display12 = h === 12 ? 12 : h > 12 ? h - 12 : h;
-    TIME_SLOTS.push({ label: `${display12}:00 ${period}`, start, end });
+    TIME_SLOTS.push({ label: `${display12}:00 ${period}`, start });
 }
 
 // selectedSlots shape: { [dayIndex: number]: Set<startTime> }
@@ -39,11 +55,13 @@ export default function AvailabilityScreen({ navigation }: any) {
     const [selectedDay, setSelectedDay] = useState(new Date().getDay());
     const [selectedSlots, setSelectedSlots] = useState<SelectedSlots>({});
     const [trainerProfileId, setTrainerProfileId] = useState<string | null>(null);
+    const [slotDuration, setSlotDuration] = useState(60);
+    const [bookedSlots, setBookedSlots] = useState<Set<string>>(new Set());
 
     const fetchAvailability = useCallback(async () => {
         if (!user) return;
         try {
-            // Resolve trainer profile id – prefer trainerProfile from context, fallback to query
+            // Resolve trainer profile id
             let profileId: string | null =
                 (user.trainerProfile as any)?.id ?? null;
 
@@ -61,18 +79,51 @@ export default function AvailabilityScreen({ navigation }: any) {
 
             const { data, error } = await supabase
                 .from('availability_slots')
-                .select('day_of_week, start_time')
+                .select('day_of_week, start_time, end_time')
                 .eq('trainer_id', profileId);
 
             if (error) throw error;
 
             const built: SelectedSlots = {};
+            let detectedDuration: number | null = null;
             for (const slot of data || []) {
                 const d = slot.day_of_week as number;
                 if (!built[d]) built[d] = new Set();
                 built[d].add(slot.start_time as string);
+
+                // Detect duration from first slot that has both start and end
+                if (detectedDuration === null && slot.start_time && slot.end_time) {
+                    const dur = slotDurationMinutes(slot.start_time, slot.end_time);
+                    if (dur === 30 || dur === 45 || dur === 60) {
+                        detectedDuration = dur;
+                    }
+                }
             }
             setSelectedSlots(built);
+            if (detectedDuration !== null) {
+                setSlotDuration(detectedDuration);
+            }
+
+            // Fetch bookings for conflict detection
+            const { data: bookings } = await supabase
+                .from('bookings')
+                .select('scheduled_at, duration_minutes, status')
+                .eq('trainer_id', profileId)
+                .in('status', ['confirmed', 'pending']);
+
+            if (bookings?.length) {
+                const booked = new Set<string>();
+                for (const b of bookings) {
+                    const bDate = new Date(b.scheduled_at);
+                    const bDay = bDate.getDay();
+                    const bTime = `${String(bDate.getHours()).padStart(2, '0')}:${String(bDate.getMinutes()).padStart(2, '0')}`;
+                    // Key: "dayIndex-startTime"
+                    booked.add(`${bDay}-${bTime}`);
+                }
+                setBookedSlots(booked);
+            } else {
+                setBookedSlots(new Set());
+            }
         } catch (err) {
             console.error('Error fetching availability:', err);
         } finally {
@@ -91,6 +142,9 @@ export default function AvailabilityScreen({ navigation }: any) {
     };
 
     const toggleSlot = (startTime: string) => {
+        // Do not toggle booked slots
+        if (bookedSlots.has(`${selectedDay}-${startTime}`)) return;
+
         setSelectedSlots((prev) => {
             const next = { ...prev };
             const daySet = new Set(next[selectedDay] || []);
@@ -119,7 +173,7 @@ export default function AvailabilityScreen({ navigation }: any) {
 
             if (deleteError) throw deleteError;
 
-            // 2. Build insert array from selectedSlots
+            // 2. Build insert array from selectedSlots using selected duration
             const toInsert: {
                 trainer_id: string;
                 day_of_week: number;
@@ -131,8 +185,7 @@ export default function AvailabilityScreen({ navigation }: any) {
             for (const [dayStr, times] of Object.entries(selectedSlots)) {
                 const day = Number(dayStr);
                 for (const startTime of Array.from(times)) {
-                    const slot = TIME_SLOTS.find((s) => s.start === startTime);
-                    const endTime = slot ? slot.end : '21:00';
+                    const endTime = addMinutes(startTime, slotDuration);
                     toInsert.push({
                         trainer_id: trainerProfileId,
                         day_of_week: day,
@@ -206,6 +259,35 @@ export default function AvailabilityScreen({ navigation }: any) {
                     windows.
                 </Text>
 
+                {/* Duration selector pills */}
+                <View style={styles.durationRow}>
+                    <Ionicons name="time-outline" size={16} color={Colors.textSecondary} />
+                    <Text style={styles.durationLabel}>Session length:</Text>
+                    {DURATIONS.map((dur) => {
+                        const isActive = slotDuration === dur;
+                        return (
+                            <TouchableOpacity
+                                key={dur}
+                                style={[
+                                    styles.durationPill,
+                                    isActive && styles.durationPillActive,
+                                ]}
+                                onPress={() => setSlotDuration(dur)}
+                                activeOpacity={0.7}
+                            >
+                                <Text
+                                    style={[
+                                        styles.durationPillText,
+                                        isActive && styles.durationPillTextActive,
+                                    ]}
+                                >
+                                    {dur}min
+                                </Text>
+                            </TouchableOpacity>
+                        );
+                    })}
+                </View>
+
                 {/* Day tabs */}
                 <ScrollView
                     horizontal
@@ -264,6 +346,29 @@ export default function AvailabilityScreen({ navigation }: any) {
                 <View style={styles.slotsGrid}>
                     {TIME_SLOTS.map((slot) => {
                         const active = selectedSlots[selectedDay]?.has(slot.start) ?? false;
+                        const isBooked = bookedSlots.has(`${selectedDay}-${slot.start}`);
+
+                        if (isBooked) {
+                            return (
+                                <View
+                                    key={slot.start}
+                                    style={[styles.slotButton, styles.slotButtonBooked]}
+                                >
+                                    <View>
+                                        <Text style={styles.slotTextBooked}>
+                                            {slot.label}
+                                        </Text>
+                                        <Text style={styles.bookedLabel}>BOOKED</Text>
+                                    </View>
+                                    <Ionicons
+                                        name="lock-closed"
+                                        size={18}
+                                        color="#92400E"
+                                    />
+                                </View>
+                            );
+                        }
+
                         return (
                             <TouchableOpacity
                                 key={slot.start}
@@ -380,7 +485,40 @@ const styles = StyleSheet.create({
         fontSize: FontSize.sm,
         color: Colors.textSecondary,
         lineHeight: 20,
+        marginBottom: Spacing.lg,
+    },
+
+    // Duration selector
+    durationRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.sm,
         marginBottom: Spacing.xl,
+    },
+    durationLabel: {
+        fontSize: FontSize.sm,
+        color: Colors.textSecondary,
+        marginRight: Spacing.xs,
+    },
+    durationPill: {
+        paddingHorizontal: Spacing.lg,
+        paddingVertical: Spacing.sm,
+        borderRadius: BorderRadius.pill,
+        backgroundColor: Colors.surface,
+        borderWidth: 1,
+        borderColor: Colors.border,
+    },
+    durationPillActive: {
+        backgroundColor: Colors.primary,
+        borderColor: Colors.primary,
+    },
+    durationPillText: {
+        fontSize: FontSize.sm,
+        fontWeight: FontWeight.semibold,
+        color: Colors.textSecondary,
+    },
+    durationPillTextActive: {
+        color: Colors.background,
     },
 
     // Day tabs
@@ -469,6 +607,10 @@ const styles = StyleSheet.create({
         backgroundColor: Colors.primary,
         borderColor: Colors.primary,
     },
+    slotButtonBooked: {
+        backgroundColor: '#FEF3C7',
+        borderColor: '#F59E0B',
+    },
     slotText: {
         fontSize: FontSize.md,
         fontWeight: FontWeight.medium,
@@ -477,6 +619,17 @@ const styles = StyleSheet.create({
     slotTextActive: {
         color: Colors.background,
         fontWeight: FontWeight.bold,
+    },
+    slotTextBooked: {
+        fontSize: FontSize.md,
+        fontWeight: FontWeight.medium,
+        color: '#92400E',
+    },
+    bookedLabel: {
+        fontSize: FontSize.xs,
+        fontWeight: FontWeight.bold,
+        color: '#D97706',
+        marginTop: 2,
     },
 
     // Summary

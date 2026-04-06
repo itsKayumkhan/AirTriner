@@ -321,7 +321,7 @@ export default function LocationMap({ pins, title = "Location Heatmap", subtitle
                 </div>
 
                 {/* ─── Map ─── */}
-                <div className="relative h-[280px]">
+                <div className="relative h-[450px]">
                     <div className="absolute top-0 left-0 right-0 h-6 bg-gradient-to-b from-[#0c0e14] to-transparent z-[500] pointer-events-none" />
                     <div ref={mapRef} className="absolute inset-0" />
                     <div className="absolute bottom-0 left-0 right-0 h-10 bg-gradient-to-t from-[#0c0e14] to-transparent z-[500] pointer-events-none" />

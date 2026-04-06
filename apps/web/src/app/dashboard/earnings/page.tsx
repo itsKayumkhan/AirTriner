@@ -186,10 +186,10 @@ export default function EarningsPage() {
         URL.revokeObjectURL(url)
     }
 
-    // Trainer stats — only count funds that have been released by admin
-    // Coach gets full session fee — platform fee is charged to athlete separately
-    const totalEarnings = releasedTransactions.reduce((s, t) => s + Number(t.trainer_payout), 0);
-    const totalFees = releasedTransactions.reduce((s, t) => s + Number(t.platform_fee || 0), 0);
+    // Trainer stats — use completed bookings as source of truth (matches monthly breakdown & session history)
+    // Fall back to released transactions when available, otherwise use booking price
+    const totalEarnings = completedBookings.reduce((s, b) => s + Number(b.price), 0);
+    const totalFees = completedBookings.reduce((s, b) => s + Number((b as any).platform_fee || b.price * 0.03), 0);
     const netEarnings = totalEarnings - totalFees;
     // In Escrow: confirmed upcoming sessions + completed sessions awaiting admin release
     const pendingPayout = upcomingPaid.reduce((s, b) => s + Number(b.payment_transaction?.trainer_payout || 0), 0);
@@ -197,8 +197,8 @@ export default function EarningsPage() {
     const totalEscrow = pendingPayout + heldCompletedPayout;
     const totalEscrowSessions = upcomingPaid.length + heldCompletedTransactions.length;
 
-    // Athlete stats (from payment_transactions)
-    const athleteTotalPaid = athleteTransactions.filter((t) => t.status !== "refunded").reduce((s, t) => s + Number(t.amount), 0);
+    // Athlete stats — use completed bookings as source of truth (matches dashboard "Total Spent")
+    const athleteTotalPaid = completedBookings.reduce((s, b) => s + Number(b.total_paid || b.price), 0);
     const athleteRefunded = athleteTransactions.filter((t) => t.status === "refunded").reduce((s, t) => s + Number(t.amount), 0);
     const athleteInEscrow = athleteTransactions.filter((t) => t.status === "held").reduce((s, t) => s + Number(t.amount), 0);
 
