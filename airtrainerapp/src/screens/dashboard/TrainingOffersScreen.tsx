@@ -110,6 +110,25 @@ export default function TrainingOffersScreen({ navigation }: any) {
     const [sentOffers, setSentOffers] = useState<SentOffer[]>([]);
     const [isSentLoading, setIsSentLoading] = useState(false);
 
+    // ── Subscription check ──────────────────────────────────────────────────
+    const [subscriptionStatus, setSubscriptionStatus] = useState<string | null>(null);
+
+    const fetchSubscriptionStatus = useCallback(async () => {
+        if (!user?.id) return;
+        try {
+            const { data } = await supabase
+                .from('trainer_profiles')
+                .select('subscription_status')
+                .eq('user_id', user.id)
+                .single();
+            setSubscriptionStatus(data?.subscription_status ?? null);
+        } catch (err) {
+            console.error('Error fetching subscription status:', err);
+        }
+    }, [user?.id]);
+
+    const isSubscriptionActive = subscriptionStatus === 'active' || subscriptionStatus === 'trial';
+
     // ── Data fetching ─────────────────────────────────────────────────────────
 
     const fetchOffers = useCallback(async () => {
@@ -153,7 +172,8 @@ export default function TrainingOffersScreen({ navigation }: any) {
 
     useEffect(() => {
         fetchOffers();
-    }, [fetchOffers]);
+        fetchSubscriptionStatus();
+    }, [fetchOffers, fetchSubscriptionStatus]);
 
     useEffect(() => {
         if (activeTab === 'send') {
@@ -351,6 +371,41 @@ export default function TrainingOffersScreen({ navigation }: any) {
         return (
             <View style={[styles.container, styles.centered]}>
                 <ActivityIndicator size="large" color={Colors.primary} />
+            </View>
+        );
+    }
+
+    // Locked state when subscription is not active
+    if (subscriptionStatus !== null && !isSubscriptionActive) {
+        return (
+            <View style={styles.container}>
+                <View style={styles.header}>
+                    <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerBtn}>
+                        <Ionicons name="arrow-back" size={22} color={Colors.text} />
+                    </TouchableOpacity>
+                    <Text style={styles.headerTitle}>Training Offers</Text>
+                    <View style={{ width: 44 }} />
+                </View>
+                <View style={styles.lockedContainer}>
+                    <View style={styles.lockedIconWrap}>
+                        <Ionicons name="lock-closed" size={32} color={Colors.warning} />
+                    </View>
+                    <Text style={styles.lockedTitle}>Subscription Required</Text>
+                    <Text style={styles.lockedText}>
+                        Your subscription has expired or been cancelled.
+                    </Text>
+                    <Text style={styles.lockedSubtext}>
+                        Renew your subscription to send training offers and grow your client base.
+                    </Text>
+                    <TouchableOpacity
+                        style={styles.lockedButton}
+                        onPress={() => navigation.navigate('Subscription')}
+                        activeOpacity={0.85}
+                    >
+                        <Ionicons name="trophy-outline" size={18} color="#000" />
+                        <Text style={styles.lockedButtonText}>Upgrade Subscription</Text>
+                    </TouchableOpacity>
+                </View>
             </View>
         );
     }
@@ -971,6 +1026,60 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: Colors.background,
     },
+
+    // Locked state
+    lockedContainer: {
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingHorizontal: Spacing.xxl,
+    },
+    lockedIconWrap: {
+        width: 64,
+        height: 64,
+        borderRadius: BorderRadius.lg,
+        backgroundColor: Colors.warningLight,
+        borderWidth: 1,
+        borderColor: 'rgba(255,171,0,0.2)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: Spacing.xl,
+    },
+    lockedTitle: {
+        fontSize: FontSize.xl,
+        fontWeight: FontWeight.bold,
+        color: Colors.text,
+        marginBottom: Spacing.sm,
+    },
+    lockedText: {
+        fontSize: FontSize.sm,
+        color: Colors.textSecondary,
+        textAlign: 'center',
+        marginBottom: Spacing.xs,
+    },
+    lockedSubtext: {
+        fontSize: FontSize.sm,
+        color: Colors.textTertiary,
+        textAlign: 'center',
+        marginBottom: Spacing.xxl,
+        paddingHorizontal: Spacing.xxl,
+    },
+    lockedButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: Spacing.sm,
+        backgroundColor: Colors.warning,
+        paddingHorizontal: Spacing.xxl,
+        paddingVertical: Spacing.md,
+        borderRadius: BorderRadius.md,
+    },
+    lockedButtonText: {
+        fontSize: FontSize.md,
+        fontWeight: FontWeight.bold,
+        color: '#000',
+    },
+
     centered: {
         justifyContent: 'center',
         alignItems: 'center',

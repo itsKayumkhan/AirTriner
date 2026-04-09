@@ -14,6 +14,7 @@ import CustomDrawerContent from '../components/CustomDrawerContent';
 // Auth Screens
 import LoginScreen from '../screens/auth/LoginScreen';
 import RegisterScreen from '../screens/auth/RegisterScreen';
+import ForgotPasswordScreen from '../screens/auth/ForgotPasswordScreen';
 
 // Dashboard Screens
 import DiscoverScreen from '../screens/dashboard/DiscoverScreen';
@@ -52,6 +53,7 @@ function AuthNavigator() {
         <AuthStack.Navigator screenOptions={{ headerShown: false }}>
             <AuthStack.Screen name="Login" component={LoginScreen} />
             <AuthStack.Screen name="Register" component={RegisterScreen} />
+            <AuthStack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
         </AuthStack.Navigator>
     );
 }

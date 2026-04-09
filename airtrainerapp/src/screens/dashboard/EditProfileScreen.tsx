@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Alert, ActivityIndicator, Image,
 } from 'react-native';
@@ -9,7 +9,7 @@ import { Colors, Spacing, BorderRadius, FontSize, FontWeight } from '../../theme
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 
-const ALL_SPORTS = ['Hockey', 'Baseball', 'Basketball', 'Soccer', 'Football', 'Tennis', 'Golf', 'Swimming', 'Boxing', 'Lacrosse', 'Volleyball', 'Track & Field'];
+const FALLBACK_SPORTS = ['Hockey', 'Baseball', 'Basketball', 'Soccer', 'Football', 'Tennis', 'Golf', 'Swimming', 'Boxing', 'Lacrosse', 'Volleyball', 'Track & Field'];
 const TRAINING_TYPES = [
     { key: 'one_on_one', label: '1-on-1' },
     { key: 'group', label: 'Group' },
@@ -20,7 +20,8 @@ const TRAINING_TYPES = [
 ];
 const TRAINING_TIMES = ['Morning', 'Afternoon', 'Evening'];
 const SESSION_LENGTH_OPTIONS = [30, 45, 60, 90];
-const GENDER_OPTIONS = ['Male', 'Female', 'Other', 'Prefer not to say'];
+const SEX_OPTIONS = ['Male', 'Female', 'Other', 'Prefer not to say'];
+const SKILL_LEVELS = ['beginner', 'intermediate', 'advanced', 'pro'];
 
 export default function EditProfileScreen({ navigation }: any) {
     const { user, refreshUser } = useAuth();
@@ -53,9 +54,39 @@ export default function EditProfileScreen({ navigation }: any) {
     const [selectedTrainingTimes, setSelectedTrainingTimes] = useState<string[]>(
         user?.athleteProfile?.preferredTrainingTimes || []
     );
-    const [phone, setPhone] = useState((user as any)?.phone || (user as any)?.athleteProfile?.phone || '');
-    const [gender, setGender] = useState((user as any)?.athleteProfile?.gender || '');
-    const [athleteBio, setAthleteBio] = useState((user as any)?.athleteProfile?.bio || '');
+    const [phone, setPhone] = useState((user as any)?.phone || '');
+    const [dateOfBirth, setDateOfBirth] = useState((user as any)?.dateOfBirth || '');
+    const [sex, setSex] = useState((user as any)?.sex || '');
+    // Athlete-specific
+    const [skillLevel, setSkillLevel] = useState(user?.athleteProfile?.skill_level || 'beginner');
+    const [addressLine1, setAddressLine1] = useState(user?.athleteProfile?.address_line1 || '');
+    const [zipCode, setZipCode] = useState(user?.athleteProfile?.zip_code || '');
+    const [travelRadius, setTravelRadius] = useState(
+        String(tp?.travel_radius_miles || user?.athleteProfile?.travel_radius_miles || 25)
+    );
+    // Sports from DB
+    const [sportsList, setSportsList] = useState<string[]>(FALLBACK_SPORTS);
+    const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
+    useEffect(() => {
+        // Load sports from database
+        (async () => {
+            const { data } = await supabase.from('sports').select('name').eq('is_active', true).order('name');
+            if (data && data.length > 0) {
+                setSportsList(data.map((s: any) => s.name));
+            }
+        })();
+        // Load full user data from DB
+        (async () => {
+            if (!user) return;
+            const { data: userData } = await supabase.from('users').select('phone, date_of_birth, sex').eq('id', user.id).single();
+            if (userData) {
+                setPhone(userData.phone || '');
+                setDateOfBirth(userData.date_of_birth || '');
+                setSex(userData.sex || '');
+            }
+        })();
+    }, [user]);
 
     const getInitials = () => {
         const f = (firstName || user?.firstName || '').charAt(0).toUpperCase();
@@ -176,50 +207,82 @@ export default function EditProfileScreen({ navigation }: any) {
         setTrainingLocations((prev) => prev.filter((l) => l !== loc));
     };
 
+    const validate = (): boolean => {
+        const errors: Record<string, string> = {};
+        if (!firstName.trim()) errors.firstName = 'First name is required';
+        if (!lastName.trim()) errors.lastName = 'Last name is required';
+        if (phone && !/^\+?[\d\s\-()\/.]{7,15}$/.test(phone)) errors.phone = 'Enter a valid phone number';
+        if (isTrainer) {
+            if (!headline.trim()) errors.headline = 'Headline is required';
+            if (selectedSports.length === 0) errors.sports = 'Select at least one sport';
+            const rate = parseFloat(hourlyRate);
+            if (!rate || rate < 10) errors.hourlyRate = 'Minimum rate is $10/hr';
+        } else {
+            if (selectedSports.length === 0) errors.sports = 'Select at least one sport';
+        }
+        setFieldErrors(errors);
+        return Object.keys(errors).length === 0;
+    };
+
     const handleSave = async () => {
-        if (!user || !firstName.trim()) return;
+        if (!user) return;
+        if (!validate()) {
+            Alert.alert('Validation Error', 'Please fix the highlighted fields.');
+            return;
+        }
         setIsSaving(true);
         try {
-            // Update users table
+            // Update users table (matching web: first_name, last_name, phone, date_of_birth, sex)
             const { error: userError } = await supabase
                 .from('users')
-                .update({ first_name: firstName.trim(), last_name: lastName.trim(), phone: phone.trim(), updated_at: new Date().toISOString() })
+                .update({
+                    first_name: firstName.trim(),
+                    last_name: lastName.trim(),
+                    phone: phone.trim() || null,
+                    date_of_birth: dateOfBirth || null,
+                    sex: sex || null,
+                    updated_at: new Date().toISOString(),
+                })
                 .eq('id', user.id);
             if (userError) throw userError;
 
-            // Update trainer profile
-            if (isTrainer && tp) {
+            // Update trainer profile (matching web's upsert)
+            if (isTrainer) {
                 const { error: trainerError } = await supabase
                     .from('trainer_profiles')
-                    .update({
-                        headline: headline.trim(),
-                        bio: bio.trim(),
+                    .upsert({
+                        user_id: user.id,
+                        headline: headline.trim() || null,
+                        bio: bio.trim() || null,
                         hourly_rate: parseFloat(hourlyRate) || 50,
                         years_experience: parseInt(yearsExp) || 0,
                         sports: selectedSports,
                         trainingTypes: selectedTrainingTypes,
+                        preferredTrainingTimes: selectedTrainingTimes,
                         city: city.trim(),
                         state: stateVal.trim(),
+                        travel_radius_miles: parseInt(travelRadius) || 25,
                         training_locations: trainingLocations,
                         session_lengths: sessionLengths,
-                    })
-                    .eq('user_id', user.id);
+                    }, { onConflict: 'user_id' });
                 if (trainerError) throw trainerError;
             }
 
-            // Update athlete profile (training times + location)
+            // Update athlete profile (matching web's upsert)
             if (!isTrainer) {
                 const { error: athleteError } = await supabase
                     .from('athlete_profiles')
-                    .update({
-                        preferred_training_times: selectedTrainingTimes,
-                        city: city.trim(),
-                        state: stateVal.trim(),
-                        phone: phone.trim(),
-                        gender,
-                        bio: athleteBio.trim(),
-                    })
-                    .eq('user_id', user.id);
+                    .upsert({
+                        user_id: user.id,
+                        sports: selectedSports,
+                        skill_level: skillLevel,
+                        address_line1: addressLine1.trim() || null,
+                        city: city.trim() || null,
+                        state: stateVal.trim() || null,
+                        zip_code: zipCode.trim() || null,
+                        travel_radius_miles: parseInt(travelRadius) || 25,
+                        preferredTrainingTimes: selectedTrainingTimes,
+                    }, { onConflict: 'user_id' });
                 if (athleteError) throw athleteError;
             }
 
@@ -290,6 +353,29 @@ export default function EditProfileScreen({ navigation }: any) {
                     </View>
                 </View>
 
+                <View style={styles.formGroup}>
+                    <Text style={styles.label}>Phone</Text>
+                    <TextInput style={[styles.input, fieldErrors.phone ? styles.inputError : null]} value={phone} onChangeText={setPhone} placeholderTextColor={Colors.textTertiary} placeholder="+1 (555) 000-0000" keyboardType="phone-pad" />
+                    {fieldErrors.phone ? <Text style={styles.errorText}>{fieldErrors.phone}</Text> : null}
+                </View>
+
+                <View style={styles.row}>
+                    <View style={[styles.formGroup, { flex: 1 }]}>
+                        <Text style={styles.label}>Date of Birth</Text>
+                        <TextInput style={styles.input} value={dateOfBirth} onChangeText={setDateOfBirth} placeholderTextColor={Colors.textTertiary} placeholder="YYYY-MM-DD" />
+                    </View>
+                    <View style={[styles.formGroup, { flex: 1 }]}>
+                        <Text style={styles.label}>Sex</Text>
+                        <View style={[styles.chipContainer, { marginBottom: 0 }]}>
+                            {SEX_OPTIONS.map((option) => (
+                                <TouchableOpacity key={option} style={[styles.chip, sex === option && styles.chipActive]} onPress={() => setSex(sex === option ? '' : option)}>
+                                    <Text style={[styles.chipText, sex === option && styles.chipTextActive]}>{option}</Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+                    </View>
+                </View>
+
                 {/* Location */}
                 <Text style={styles.sectionTitle}>Location</Text>
                 <View style={styles.row}>
@@ -357,7 +443,8 @@ export default function EditProfileScreen({ navigation }: any) {
                         <Text style={styles.sectionTitle}>Professional Info</Text>
                         <View style={styles.formGroup}>
                             <Text style={styles.label}>Headline</Text>
-                            <TextInput style={styles.input} value={headline} onChangeText={setHeadline} placeholderTextColor={Colors.textTertiary} placeholder="e.g. Elite Hockey Coach | 15+ Years" maxLength={200} />
+                            <TextInput style={[styles.input, fieldErrors.headline ? styles.inputError : null]} value={headline} onChangeText={setHeadline} placeholderTextColor={Colors.textTertiary} placeholder="e.g. Elite Hockey Coach | 15+ Years" maxLength={200} />
+                            {fieldErrors.headline ? <Text style={styles.errorText}>{fieldErrors.headline}</Text> : null}
                         </View>
                         <View style={styles.formGroup}>
                             <Text style={styles.label}>Bio</Text>
@@ -378,7 +465,7 @@ export default function EditProfileScreen({ navigation }: any) {
                         {/* Sports */}
                         <Text style={styles.sectionTitle}>Sports You Coach</Text>
                         <View style={styles.chipContainer}>
-                            {ALL_SPORTS.map((sport) => (
+                            {sportsList.map((sport) => (
                                 <TouchableOpacity key={sport} style={[styles.chip, selectedSports.includes(sport) && styles.chipActive]} onPress={() => toggleSport(sport)}>
                                     <Text style={[styles.chipText, selectedSports.includes(sport) && styles.chipTextActive]}>{sport}</Text>
                                 </TouchableOpacity>
@@ -407,64 +494,61 @@ export default function EditProfileScreen({ navigation }: any) {
                     </>
                 )}
 
-                {/* Athlete-only: Phone, Gender, Bio */}
+                {/* Athlete-only fields */}
                 {!isTrainer && (
                     <>
-                        <View style={styles.formGroup}>
-                            <Text style={styles.label}>Phone Number</Text>
-                            <TextInput
-                                style={styles.input}
-                                value={phone}
-                                onChangeText={setPhone}
-                                placeholderTextColor={Colors.textTertiary}
-                                placeholder="Your phone number"
-                                keyboardType="phone-pad"
-                            />
+                        <Text style={styles.sectionTitle}>Skill Level</Text>
+                        <View style={styles.chipContainer}>
+                            {SKILL_LEVELS.map((level) => (
+                                <TouchableOpacity key={level} style={[styles.chip, skillLevel === level && styles.chipActive]} onPress={() => setSkillLevel(level)}>
+                                    <Text style={[styles.chipText, skillLevel === level && styles.chipTextActive]}>{level.charAt(0).toUpperCase() + level.slice(1)}</Text>
+                                </TouchableOpacity>
+                            ))}
                         </View>
 
-                        <Text style={styles.sectionTitle}>Gender</Text>
+                        <Text style={styles.sectionTitle}>Sports</Text>
                         <View style={styles.chipContainer}>
-                            {GENDER_OPTIONS.map((option) => (
-                                <TouchableOpacity
-                                    key={option}
-                                    style={[styles.chip, gender === option && styles.chipActive]}
-                                    onPress={() => setGender(gender === option ? '' : option)}
-                                >
-                                    <Text style={[styles.chipText, gender === option && styles.chipTextActive]}>{option}</Text>
+                            {sportsList.map((sport) => (
+                                <TouchableOpacity key={sport} style={[styles.chip, selectedSports.includes(sport) && styles.chipActive]} onPress={() => toggleSport(sport)}>
+                                    <Text style={[styles.chipText, selectedSports.includes(sport) && styles.chipTextActive]}>{sport}</Text>
                                 </TouchableOpacity>
                             ))}
                         </View>
 
                         <View style={styles.formGroup}>
-                            <Text style={styles.label}>Bio</Text>
-                            <TextInput
-                                style={[styles.input, styles.textArea]}
-                                value={athleteBio}
-                                onChangeText={setAthleteBio}
-                                placeholderTextColor={Colors.textTertiary}
-                                placeholder="Tell trainers about yourself, your goals, and experience..."
-                                multiline
-                                numberOfLines={5}
-                                textAlignVertical="top"
-                                maxLength={1000}
-                            />
-                            <Text style={styles.charCount}>{athleteBio.length}/1000</Text>
+                            <Text style={styles.label}>Address</Text>
+                            <TextInput style={styles.input} value={addressLine1} onChangeText={setAddressLine1} placeholderTextColor={Colors.textTertiary} placeholder="Street address" />
+                        </View>
+
+                        <View style={styles.row}>
+                            <View style={[styles.formGroup, { flex: 1 }]}>
+                                <Text style={styles.label}>ZIP Code</Text>
+                                <TextInput style={styles.input} value={zipCode} onChangeText={setZipCode} placeholderTextColor={Colors.textTertiary} placeholder="12345" keyboardType="numeric" />
+                            </View>
+                            <View style={[styles.formGroup, { flex: 1 }]}>
+                                <Text style={styles.label}>Travel Radius (mi)</Text>
+                                <TextInput style={styles.input} value={travelRadius} onChangeText={setTravelRadius} placeholderTextColor={Colors.textTertiary} placeholder="25" keyboardType="numeric" />
+                            </View>
                         </View>
                     </>
                 )}
 
-                {/* Athlete-only: Preferred Training Times */}
-                {!isTrainer && (
-                    <>
-                        <Text style={styles.sectionTitle}>Preferred Training Times</Text>
-                        <View style={styles.chipContainer}>
-                            {TRAINING_TIMES.map((time) => (
-                                <TouchableOpacity key={time} style={[styles.chip, selectedTrainingTimes.includes(time) && styles.chipActive]} onPress={() => toggleTrainingTime(time)}>
-                                    <Text style={[styles.chipText, selectedTrainingTimes.includes(time) && styles.chipTextActive]}>{time}</Text>
-                                </TouchableOpacity>
-                            ))}
-                        </View>
-                    </>
+                {/* Preferred Training Times (both roles) */}
+                <Text style={styles.sectionTitle}>Preferred Training Times</Text>
+                <View style={styles.chipContainer}>
+                    {TRAINING_TIMES.map((time) => (
+                        <TouchableOpacity key={time} style={[styles.chip, selectedTrainingTimes.includes(time) && styles.chipActive]} onPress={() => toggleTrainingTime(time)}>
+                            <Text style={[styles.chipText, selectedTrainingTimes.includes(time) && styles.chipTextActive]}>{time}</Text>
+                        </TouchableOpacity>
+                    ))}
+                </View>
+
+                {/* Travel Radius (trainer) */}
+                {isTrainer && (
+                    <View style={styles.formGroup}>
+                        <Text style={styles.label}>Travel Radius (miles)</Text>
+                        <TextInput style={styles.input} value={travelRadius} onChangeText={setTravelRadius} placeholderTextColor={Colors.textTertiary} placeholder="25" keyboardType="numeric" />
+                    </View>
                 )}
 
                 <TouchableOpacity
@@ -532,6 +616,8 @@ const styles = StyleSheet.create({
     label: { fontSize: FontSize.sm, color: Colors.textSecondary, marginBottom: Spacing.xs },
     input: { backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border, borderRadius: BorderRadius.md, padding: Spacing.md, color: Colors.text, fontSize: FontSize.md },
     inputDisabled: { opacity: 0.6 },
+    inputError: { borderColor: Colors.error },
+    errorText: { fontSize: FontSize.xs, color: Colors.error, marginTop: 4 },
     disabledText: { color: Colors.textSecondary, fontSize: FontSize.md },
     textArea: { minHeight: 120 },
     charCount: { fontSize: FontSize.xs, color: Colors.textTertiary, textAlign: 'right', marginTop: 4 },

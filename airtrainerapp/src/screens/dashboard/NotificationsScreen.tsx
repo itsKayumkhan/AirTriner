@@ -100,6 +100,29 @@ export default function NotificationsScreen({ navigation }: any) {
         setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
     };
 
+    const clearAllNotifications = async () => {
+        if (!user) return;
+        Alert.alert(
+            'Clear All Notifications',
+            'This will permanently delete all your notifications. Continue?',
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Clear All',
+                    style: 'destructive',
+                    onPress: async () => {
+                        try {
+                            await supabase.from('notifications').delete().eq('user_id', user.id);
+                            setNotifications([]);
+                        } catch (err) {
+                            console.error('Failed to clear notifications:', err);
+                        }
+                    },
+                },
+            ]
+        );
+    };
+
     const formatTime = (dateStr: string) => {
         const d = new Date(dateStr);
         const now = new Date();
@@ -251,11 +274,18 @@ export default function NotificationsScreen({ navigation }: any) {
                     <Text style={styles.headerTitle}>Notifications</Text>
                     <Text style={styles.headerSubtitle}>{unreadCount} unread</Text>
                 </View>
-                {unreadCount > 0 && (
-                    <TouchableOpacity onPress={markAllAsRead}>
-                        <Text style={styles.markAllText}>Mark all read</Text>
-                    </TouchableOpacity>
-                )}
+                <View style={styles.headerActions}>
+                    {unreadCount > 0 && (
+                        <TouchableOpacity onPress={markAllAsRead}>
+                            <Text style={styles.markAllText}>Mark all read</Text>
+                        </TouchableOpacity>
+                    )}
+                    {notifications.length > 0 && (
+                        <TouchableOpacity onPress={clearAllNotifications}>
+                            <Text style={styles.clearAllText}>Clear all</Text>
+                        </TouchableOpacity>
+                    )}
+                </View>
             </View>
             <FlatList
                 data={notifications}
@@ -399,7 +429,9 @@ const styles = StyleSheet.create({
     backButton: { width: 40, height: 40, borderRadius: 12, backgroundColor: Colors.surface, justifyContent: 'center', alignItems: 'center', marginRight: Spacing.md },
     headerTitle: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: '#FFFFFF' },
     headerSubtitle: { fontSize: FontSize.sm, color: Colors.textSecondary, marginTop: 2 },
+    headerActions: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
     markAllText: { fontSize: FontSize.sm, fontWeight: FontWeight.semibold, color: '#45D0FF' },
+    clearAllText: { fontSize: FontSize.sm, fontWeight: FontWeight.semibold, color: Colors.error },
     listContent: { paddingHorizontal: Spacing.xxl, paddingBottom: 40 },
     notifCard: { flexDirection: 'row', alignItems: 'flex-start', padding: Spacing.lg, backgroundColor: '#161B22', borderRadius: BorderRadius.lg, marginBottom: Spacing.sm, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
     notifCardUnread: { backgroundColor: 'rgba(69,208,255,0.04)', borderLeftWidth: 3, borderLeftColor: '#45D0FF' },

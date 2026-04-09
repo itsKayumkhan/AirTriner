@@ -1,9 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
+import { Config } from './config';
 
-const supabaseUrl = 'https://duaqkmptxsnonvtfdohp.supabase.co';
-const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR1YXFrbXB0eHNub252dGZkb2hwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE1NjUwOTAsImV4cCI6MjA4NzE0MTA5MH0.5glBvL0FsyhWvtasjvmfOQwMOP8LFQf-Jq2e5ji92XE';
+const supabaseUrl = Config.supabaseUrl;
+const supabaseAnonKey = Config.supabaseAnonKey;
 
 const NativeStorageAdapter = {
   getItem: async (key: string): Promise<string | null> => {

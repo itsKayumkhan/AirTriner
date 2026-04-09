@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
     View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator,
-    Modal, TextInput,
+    Modal, TextInput, Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -74,6 +74,7 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
     const [selectedSport, setSelectedSport] = useState<string>(
         trainer.sports?.length === 1 ? trainer.sports[0] : ''
     );
+    const [bookingNotes, setBookingNotes] = useState('');
 
     // New booking state
     const [selectedTime, setSelectedTime] = useState<string>('');
@@ -206,9 +207,6 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
                     const bookingStartMin = bookingDate.getHours() * 60 + bookingDate.getMinutes();
                     const bookingEndMin = bookingStartMin + (booking.duration_minutes || 60);
 
-                    // Check if this slot overlaps with the booking
-                    // A slot at slotStartMin with default duration would overlap if:
-                    // slotStartMin < bookingEndMin AND slotStartMin + duration > bookingStartMin
                     if (slotStartMin < bookingEndMin && slotStartMin + 60 > bookingStartMin) {
                         conflicting.add(timeStr);
                         break;
@@ -247,6 +245,7 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
         setSelectedDuration(60);
         setSelectedSubAccount(null);
         setShowSubAccountPicker(false);
+        setBookingNotes('');
         setShowBookingModal(true);
 
         // Fetch ancillary data
@@ -301,19 +300,21 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
                 const bookingForLabel = selectedSubAccount
                     ? `${selectedSubAccount.first_name}`
                     : 'myself';
+
+                const notesPart = bookingNotes.trim() ? `\n\nNotes: ${bookingNotes.trim()}` : '';
                 await supabase.from('messages').insert({
                     booking_id: booking.id,
                     sender_id: user!.id,
                     content: `Hi! I'd like to book a ${selectedSport} session with you on ${selectedDate} at ${formatHour(
                         parseInt(selectedTime.split(':')[0]),
                         parseInt(selectedTime.split(':')[1])
-                    )} for ${selectedDuration} minutes (for ${bookingForLabel}).`,
+                    )} for ${selectedDuration} minutes (for ${bookingForLabel}).${notesPart}`,
                 });
 
                 await createNotification({
                     userId: trainerId,
-                    type: 'NEW_REQUEST_NEARBY',
-                    title: 'New Booking Request! 🏋️',
+                    type: 'new_booking',
+                    title: 'New Booking Request!',
                     body: `${user!.firstName} ${user!.lastName} wants to book a ${selectedSport} session with you.`,
                     data: { bookingId: booking.id },
                 });
@@ -334,18 +335,20 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
     };
 
     const initials = (trainer.users?.first_name?.[0] || '') + (trainer.users?.last_name?.[0] || '');
+    const avatarUrl = trainer.users?.avatar_url || trainer.avatar_url || null;
 
     const avgRating = reviews.length > 0
         ? (reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length).toFixed(1)
-        : 'N/A';
+        : trainer.average_rating ? Number(trainer.average_rating).toFixed(1) : 'New';
 
     const sports: string[] = trainer.sports || [];
+    const certifications: string[] = Array.isArray(trainer.certifications) ? trainer.certifications : [];
 
     // Verification badge logic
     const totalSessions = trainer.total_sessions || 0;
     const completionRate = trainer.completion_rate || 0;
     const reliabilityScore = trainer.reliability_score || 0;
-    const isPerformanceVerified = totalSessions >= 3 && completionRate >= 95 && reliabilityScore >= 4.5;
+    const isPerformanceVerified = totalSessions >= 3 && completionRate >= 95 && reliabilityScore >= 95;
     const isProCoach = totalSessions > 0 && !isPerformanceVerified;
     const isNew = totalSessions === 0;
 
@@ -359,16 +362,20 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
 
                 {/* Profile Header */}
                 <View style={styles.profileHeader}>
-                    <LinearGradient
-                        colors={[Colors.primary, Colors.gradientEnd]}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 1 }}
-                        style={styles.avatarGradient}
-                    >
-                        <View style={styles.avatar}>
-                            <Text style={styles.avatarText}>{initials}</Text>
-                        </View>
-                    </LinearGradient>
+                    {avatarUrl ? (
+                        <Image source={{ uri: avatarUrl }} style={styles.avatarImage} />
+                    ) : (
+                        <LinearGradient
+                            colors={[Colors.primary, Colors.gradientEnd]}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 1 }}
+                            style={styles.avatarGradient}
+                        >
+                            <View style={styles.avatar}>
+                                <Text style={styles.avatarText}>{initials}</Text>
+                            </View>
+                        </LinearGradient>
+                    )}
                     <View style={styles.nameRow}>
                         <Text style={styles.trainerName}>
                             {trainer.users?.first_name} {trainer.users?.last_name}
@@ -383,6 +390,16 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
                         </View>
                     )}
                     <Text style={styles.headline}>{trainer.headline || 'Professional Sports Trainer'}</Text>
+
+                    {/* Location */}
+                    {(trainer.city || trainer.state) && (
+                        <View style={styles.locationRow}>
+                            <Ionicons name="location" size={14} color={Colors.textSecondary} />
+                            <Text style={styles.locationRowText}>
+                                {trainer.city || ''}{trainer.state ? `, ${trainer.state}` : ''}
+                            </Text>
+                        </View>
+                    )}
 
                     {/* Badges */}
                     <View style={styles.badgeRow}>
@@ -428,16 +445,16 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
                         <Text style={styles.statLabel}>per hour</Text>
                     </View>
                     <View style={styles.statCard}>
+                        <Text style={styles.statValue}>{trainer.total_reviews || reviews.length}</Text>
+                        <Text style={styles.statLabel}>reviews</Text>
+                    </View>
+                    <View style={styles.statCard}>
+                        <Text style={styles.statValue}>{trainer.years_experience || 0}</Text>
+                        <Text style={styles.statLabel}>years exp.</Text>
+                    </View>
+                    <View style={styles.statCard}>
                         <Text style={styles.statValue}>{trainer.total_sessions || 0}</Text>
                         <Text style={styles.statLabel}>sessions</Text>
-                    </View>
-                    <View style={styles.statCard}>
-                        <Text style={styles.statValue}>{Number(trainer.completion_rate || 100).toFixed(0)}%</Text>
-                        <Text style={styles.statLabel}>completion</Text>
-                    </View>
-                    <View style={styles.statCard}>
-                        <Text style={styles.statValue}>{trainer.travel_radius_miles || 25}mi</Text>
-                        <Text style={styles.statLabel}>radius</Text>
                     </View>
                 </View>
 
@@ -455,11 +472,26 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
                     <View style={styles.sportsContainer}>
                         {(trainer.sports || []).map((sport: string) => (
                             <View key={sport} style={styles.sportChip}>
-                                <Text style={styles.sportChipText}>{sport}</Text>
+                                <Text style={styles.sportChipText}>{sport.replace(/_/g, ' ')}</Text>
                             </View>
                         ))}
                     </View>
                 </View>
+
+                {/* Certifications */}
+                {certifications.length > 0 && (
+                    <View style={styles.section}>
+                        <Text style={styles.sectionTitle}>Certifications</Text>
+                        <View style={styles.certificationsContainer}>
+                            {certifications.map((cert, index) => (
+                                <View key={index} style={styles.certChip}>
+                                    <Ionicons name="ribbon-outline" size={14} color={Colors.primary} />
+                                    <Text style={styles.certChipText}>{cert}</Text>
+                                </View>
+                            ))}
+                        </View>
+                    </View>
+                )}
 
                 {/* Location */}
                 <View style={styles.section}>
@@ -470,13 +502,47 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
                             {trainer.city || 'Not specified'}{trainer.state ? `, ${trainer.state}` : ''}{trainer.country ? `, ${trainer.country}` : ''}
                         </Text>
                     </View>
+                    {trainer.travel_radius_miles > 0 && (
+                        <View style={[styles.locationCard, { marginTop: 8 }]}>
+                            <Ionicons name="navigate" size={18} color={Colors.textSecondary} />
+                            <Text style={[styles.locationText, { color: Colors.textSecondary }]}>
+                                Travels up to {trainer.travel_radius_miles} miles
+                            </Text>
+                        </View>
+                    )}
+                </View>
+
+                {/* Pricing Info */}
+                <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>Pricing</Text>
+                    <View style={styles.pricingCard}>
+                        <View style={styles.pricingRow}>
+                            <Text style={styles.pricingLabel}>Hourly Rate</Text>
+                            <Text style={styles.pricingValue}>${Number(trainer.hourly_rate || 50).toFixed(0)}/hr</Text>
+                        </View>
+                        <View style={styles.pricingDivider} />
+                        <View style={styles.pricingRow}>
+                            <Text style={styles.pricingLabel}>Reliability</Text>
+                            <Text style={styles.pricingValue}>{Number(trainer.reliability_score || 100).toFixed(0)}%</Text>
+                        </View>
+                        <View style={styles.pricingDivider} />
+                        <View style={styles.pricingRow}>
+                            <Text style={styles.pricingLabel}>Completion Rate</Text>
+                            <Text style={styles.pricingValue}>{Number(trainer.completion_rate || 100).toFixed(0)}%</Text>
+                        </View>
+                        <View style={styles.pricingDivider} />
+                        <View style={styles.pricingRow}>
+                            <Text style={styles.pricingLabel}>Platform Fee</Text>
+                            <Text style={[styles.pricingValue, { color: Colors.textSecondary }]}>{platformFeePercent}% at checkout</Text>
+                        </View>
+                    </View>
                 </View>
 
                 {/* Reviews */}
                 <View style={styles.section}>
                     <View style={styles.sectionHeader}>
                         <Text style={styles.sectionTitle}>Reviews</Text>
-                        <Text style={styles.sectionCount}>{reviews.length}</Text>
+                        <Text style={styles.sectionCount}>{trainer.total_reviews || reviews.length}</Text>
                     </View>
                     {reviews.length > 0 ? (
                         reviews.map((review) => (
@@ -668,6 +734,19 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
                                 </>
                             )}
 
+                            {/* Notes */}
+                            <Text style={styles.modalLabel}>Notes (Optional)</Text>
+                            <TextInput
+                                style={[styles.modalInput, { minHeight: 80, textAlignVertical: 'top' }]}
+                                placeholder="Any details for the trainer (goals, injuries, etc.)"
+                                placeholderTextColor="rgba(255,255,255,0.3)"
+                                value={bookingNotes}
+                                onChangeText={setBookingNotes}
+                                multiline
+                                numberOfLines={3}
+                                maxLength={500}
+                            />
+
                             {/* Sub-Account Selector */}
                             <Text style={styles.modalLabel}>Booking For</Text>
                             <TouchableOpacity
@@ -811,18 +890,21 @@ const styles = StyleSheet.create({
     profileHeader: { alignItems: 'center', marginBottom: Spacing.xxxl },
     avatarGradient: { width: 100, height: 100, borderRadius: 32, justifyContent: 'center', alignItems: 'center', marginBottom: Spacing.lg, ...Shadows.glow },
     avatar: { width: 92, height: 92, borderRadius: 28, backgroundColor: '#0A0D14', justifyContent: 'center', alignItems: 'center' },
+    avatarImage: { width: 100, height: 100, borderRadius: 32, marginBottom: Spacing.lg, borderWidth: 3, borderColor: Colors.primary },
     avatarText: { fontSize: FontSize.xxxl, fontWeight: FontWeight.bold, color: '#45D0FF' },
     nameRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: 4 },
     trainerName: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: '#FFFFFF' },
-    headline: { fontSize: FontSize.md, color: Colors.textSecondary, textAlign: 'center', marginBottom: Spacing.lg },
-    badgeRow: { flexDirection: 'row', gap: Spacing.sm, flexWrap: 'wrap', marginTop: Spacing.sm },
+    headline: { fontSize: FontSize.md, color: Colors.textSecondary, textAlign: 'center', marginBottom: Spacing.sm },
+    locationRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: Spacing.lg },
+    locationRowText: { fontSize: FontSize.sm, color: Colors.textSecondary },
+    badgeRow: { flexDirection: 'row', gap: Spacing.sm, flexWrap: 'wrap', marginTop: Spacing.sm, justifyContent: 'center' },
     badge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: Spacing.md, paddingVertical: 4, borderRadius: BorderRadius.pill },
     badgeText: { fontSize: FontSize.xs, fontWeight: FontWeight.semibold },
     badgePillGreen: { backgroundColor: 'rgba(16, 185, 129, 0.15)' },
     badgePillBlue: { backgroundColor: 'rgba(69, 208, 255, 0.15)' },
     badgePillGray: { backgroundColor: 'rgba(156, 163, 175, 0.15)' },
     statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.md, marginBottom: Spacing.xxxl },
-    statCard: { flex: 1, minWidth: 140, backgroundColor: '#161B22', borderRadius: BorderRadius.lg, padding: Spacing.lg, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
+    statCard: { flex: 1, minWidth: 70, backgroundColor: '#161B22', borderRadius: BorderRadius.lg, padding: Spacing.lg, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
     statValue: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: '#45D0FF' },
     statLabel: { fontSize: FontSize.xs, color: Colors.textTertiary, marginTop: 2 },
     section: { marginBottom: Spacing.xxl },
@@ -832,9 +914,17 @@ const styles = StyleSheet.create({
     bioText: { fontSize: FontSize.md, color: Colors.textSecondary, lineHeight: 24 },
     sportsContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
     sportChip: { paddingHorizontal: Spacing.lg, paddingVertical: Spacing.sm, borderRadius: BorderRadius.pill, backgroundColor: Colors.primaryGlow },
-    sportChipText: { fontSize: FontSize.sm, fontWeight: FontWeight.medium, color: '#45D0FF' },
+    sportChipText: { fontSize: FontSize.sm, fontWeight: FontWeight.medium, color: '#45D0FF', textTransform: 'capitalize' },
+    certificationsContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
+    certChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: Spacing.lg, paddingVertical: Spacing.sm, borderRadius: BorderRadius.md, backgroundColor: '#161B22', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
+    certChipText: { fontSize: FontSize.sm, fontWeight: FontWeight.medium, color: Colors.text },
     locationCard: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, padding: Spacing.lg, backgroundColor: '#161B22', borderRadius: BorderRadius.md, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
     locationText: { fontSize: FontSize.md, color: '#FFFFFF' },
+    pricingCard: { backgroundColor: '#161B22', borderRadius: BorderRadius.md, padding: Spacing.lg, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
+    pricingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: Spacing.sm },
+    pricingLabel: { fontSize: FontSize.sm, color: Colors.textSecondary },
+    pricingValue: { fontSize: FontSize.sm, fontWeight: FontWeight.semibold, color: Colors.text },
+    pricingDivider: { height: 1, backgroundColor: 'rgba(255,255,255,0.06)', marginVertical: 2 },
     reviewCard: { backgroundColor: '#161B22', borderRadius: BorderRadius.md, padding: Spacing.lg, marginBottom: Spacing.sm, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
     reviewHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.sm },
     reviewerAvatar: { width: 36, height: 36, borderRadius: 10, backgroundColor: Colors.primaryGlow, justifyContent: 'center', alignItems: 'center', marginRight: Spacing.md },
@@ -847,9 +937,6 @@ const styles = StyleSheet.create({
     noReviews: { fontSize: FontSize.md, color: Colors.textTertiary, textAlign: 'center', paddingVertical: Spacing.xxl },
     bottomBar: { position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.xxl, paddingVertical: Spacing.lg, paddingBottom: 36, backgroundColor: '#161B22', borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.08)', gap: Spacing.lg },
     messageBtn: { width: 52, height: 52, borderRadius: 14, borderWidth: 1.5, borderColor: 'rgba(69,208,255,0.3)', backgroundColor: '#161B22', justifyContent: 'center', alignItems: 'center' },
-    priceContainer: {},
-    priceLabel: { fontSize: FontSize.xs, color: Colors.textTertiary },
-    priceValue: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: '#FFFFFF' },
     bookButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: 52, borderRadius: BorderRadius.md, gap: Spacing.sm, backgroundColor: '#45D0FF', shadowColor: '#45D0FF', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 8, elevation: 6 },
     bookButtonText: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: '#0A0D14' },
     // Modal styles
@@ -863,8 +950,6 @@ const styles = StyleSheet.create({
     sportOptionSelected: { borderColor: '#45D0FF', backgroundColor: 'rgba(69,208,255,0.12)' },
     sportOptionText: { fontSize: FontSize.sm, fontWeight: FontWeight.medium, color: Colors.textSecondary },
     sportOptionTextSelected: { color: '#45D0FF', fontWeight: FontWeight.semibold },
-    modalPriceRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginTop: Spacing.xl, marginBottom: Spacing.sm },
-    modalPriceText: { fontSize: FontSize.md, fontWeight: FontWeight.semibold, color: '#45D0FF' },
     confirmButton: { marginTop: Spacing.xl, height: 52, borderRadius: BorderRadius.md, backgroundColor: '#45D0FF', justifyContent: 'center', alignItems: 'center', shadowColor: '#45D0FF', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.35, shadowRadius: 8, elevation: 6 },
     confirmButtonText: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: '#0A0D14' },
     cancelButton: { marginTop: Spacing.md, height: 48, borderRadius: BorderRadius.md, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)' },

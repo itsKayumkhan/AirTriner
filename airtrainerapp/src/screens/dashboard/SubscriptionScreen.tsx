@@ -25,6 +25,7 @@ const API_URL = 'https://api.airtrainr.com/api/v1';
 type SubscriptionStatus = 'trial' | 'active' | 'expired' | 'cancelled';
 
 type ProfileData = {
+    id: string;
     subscription_status: SubscriptionStatus;
     subscription_expires_at: string | null;
     trial_started_at: string | null;
@@ -32,7 +33,6 @@ type ProfileData = {
     is_verified: boolean;
     verification_status: string;
     reliability_score: number;
-    founding_50_applied?: boolean;
 };
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -110,7 +110,7 @@ export default function SubscriptionScreen({ navigation }: any) {
             const { data, error } = await supabase
                 .from('trainer_profiles')
                 .select(
-                    'subscription_status, subscription_expires_at, trial_started_at, is_founding_50, is_verified, verification_status, reliability_score, founding_50_applied'
+                    'id, subscription_status, subscription_expires_at, trial_started_at, is_founding_50, is_verified, verification_status, reliability_score'
                 )
                 .eq('user_id', user.id)
                 .single();
@@ -118,7 +118,8 @@ export default function SubscriptionScreen({ navigation }: any) {
             if (error) throw error;
             const profileData = data as ProfileData;
             setProfile(profileData);
-            setF50Applied(!!profileData.founding_50_applied);
+            // is_founding_50 true but not active = pending approval
+            setF50Applied(!!profileData.is_founding_50 && profileData.subscription_status !== 'active');
         } catch (err: any) {
             console.error('SubscriptionScreen fetchProfile:', err);
             Alert.alert('Error', 'Could not load subscription details.');
@@ -209,11 +210,13 @@ export default function SubscriptionScreen({ navigation }: any) {
                 return;
             }
 
-            // Set pending status (admin will approve)
-            await supabase
+            // Set is_founding_50 = true (admin will approve and activate subscription)
+            const { error: updateError } = await supabase
                 .from('trainer_profiles')
-                .update({ founding_50_applied: true })
+                .update({ is_founding_50: true })
                 .eq('user_id', user?.id);
+
+            if (updateError) throw updateError;
 
             Alert.alert(
                 'Application Submitted',
@@ -459,7 +462,7 @@ export default function SubscriptionScreen({ navigation }: any) {
                 )}
 
                 {/* ── Founding 50 Application Section ── */}
-                {!profile?.is_founding_50 && (
+                {((!profile?.is_founding_50 && !isActive) || f50Applied) && (
                     <>
                         <SectionTitle label="Founding 50 Program" />
                         <View style={styles.f50ApplyCard}>

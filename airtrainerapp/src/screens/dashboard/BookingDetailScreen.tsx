@@ -12,13 +12,13 @@ import { createNotification } from '../../lib/notifications';
 import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows } from '../../theme';
 
 const STATUS_CONFIG: Record<string, { color: string; bg: string; icon: string; label: string }> = {
-    pending: { color: '#ffab00', bg: 'rgba(255,171,0,0.15)', icon: 'hourglass', label: 'Pending' },
-    confirmed: { color: '#45D0FF', bg: 'rgba(69,208,255,0.15)', icon: 'checkmark-circle', label: 'Confirmed' },
-    completed: { color: Colors.success, bg: Colors.successLight, icon: 'trophy', label: 'Completed' },
-    cancelled: { color: '#ff1744', bg: 'rgba(255,23,68,0.15)', icon: 'close-circle', label: 'Cancelled' },
-    no_show: { color: '#ff1744', bg: 'rgba(255,23,68,0.15)', icon: 'alert-circle', label: 'No-Show' },
-    disputed: { color: '#ffab00', bg: 'rgba(255,171,0,0.15)', icon: 'flag', label: 'Disputed' },
-    reschedule_requested: { color: '#ffab00', bg: 'rgba(255,171,0,0.15)', icon: 'time-outline', label: 'Reschedule Requested' },
+    pending:              { color: '#ffab00',       bg: 'rgba(255,171,0,0.15)',     icon: 'hourglass',        label: 'Pending' },
+    confirmed:            { color: '#45D0FF',       bg: 'rgba(69,208,255,0.15)',    icon: 'checkmark-circle', label: 'Confirmed' },
+    completed:            { color: Colors.success,  bg: Colors.successLight,        icon: 'trophy',           label: 'Completed' },
+    cancelled:            { color: Colors.error,    bg: Colors.errorLight,          icon: 'close-circle',     label: 'Cancelled' },
+    no_show:              { color: '#6b6b7b',       bg: 'rgba(107,107,123,0.15)',   icon: 'alert-circle',     label: 'No-Show' },
+    disputed:             { color: Colors.error,    bg: Colors.errorLight,          icon: 'flag',             label: 'Disputed' },
+    reschedule_requested: { color: '#ffab00',       bg: 'rgba(255,171,0,0.15)',     icon: 'time-outline',     label: 'Reschedule Requested' },
 };
 
 export default function BookingDetailScreen({ route, navigation }: any) {
@@ -37,6 +37,11 @@ export default function BookingDetailScreen({ route, navigation }: any) {
     const [cancelReason, setCancelReason] = useState('');
     const [isCancelling, setIsCancelling] = useState(false);
 
+    // Reject modal state (trainer declining a pending booking)
+    const [rejectModalVisible, setRejectModalVisible] = useState(false);
+    const [rejectReason, setRejectReason] = useState('');
+    const [isRejecting, setIsRejecting] = useState(false);
+
     // Reschedule state
     const [rescheduleModalVisible, setRescheduleModalVisible] = useState(false);
     const [rescheduleDate, setRescheduleDate] = useState('');
@@ -52,7 +57,9 @@ export default function BookingDetailScreen({ route, navigation }: any) {
     const [reviewRating, setReviewRating] = useState(0);
     const [reviewComment, setReviewComment] = useState('');
     const [isSubmittingReview, setIsSubmittingReview] = useState(false);
-    const [reviewSubmitted, setReviewSubmitted] = useState(false);
+
+    // Notes modal for completed sessions (trainer)
+    const [notesModalVisible, setNotesModalVisible] = useState(false);
 
     const fetchExistingReview = useCallback(async (bId: string) => {
         if (!user) return;
@@ -109,6 +116,7 @@ export default function BookingDetailScreen({ route, navigation }: any) {
     const isTrainer = user?.role === 'trainer';
     const otherUser = isTrainer ? booking?.athlete : booking?.trainer;
 
+    // ── Status change (confirm, complete, no_show) ──
     const handleStatusChange = async (newStatus: string, confirmMsg: string) => {
         Alert.alert('Confirm Action', confirmMsg, [
             { text: 'Cancel', style: 'cancel' },
@@ -129,11 +137,10 @@ export default function BookingDetailScreen({ route, navigation }: any) {
                             .eq('id', bookingId);
                         if (error) throw error;
 
-                        // Notify the other party
                         const notifMap: Record<string, { type: string; title: string; body: string }> = {
                             completed: {
                                 type: 'BOOKING_COMPLETED',
-                                title: 'Session Completed ✅',
+                                title: 'Session Completed',
                                 body: `Your ${booking.sport} session has been marked as completed.`,
                             },
                             cancelled: {
@@ -148,7 +155,7 @@ export default function BookingDetailScreen({ route, navigation }: any) {
                             },
                             confirmed: {
                                 type: 'BOOKING_CONFIRMED',
-                                title: 'Booking Confirmed! ✅',
+                                title: 'Booking Confirmed',
                                 body: `Your ${booking.sport} session has been confirmed.`,
                             },
                         };
@@ -172,6 +179,43 @@ export default function BookingDetailScreen({ route, navigation }: any) {
         ]);
     };
 
+    // ── Reject with reason (trainer declining pending) ──
+    const handleRejectWithReason = async () => {
+        if (!rejectReason.trim()) return;
+        setIsRejecting(true);
+        try {
+            const { error } = await supabase
+                .from('bookings')
+                .update({
+                    status: 'cancelled',
+                    cancellation_reason: rejectReason.trim(),
+                    cancelled_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString(),
+                })
+                .eq('id', bookingId);
+            if (error) throw error;
+
+            if (otherUser) {
+                await createNotification({
+                    userId: otherUser.id,
+                    type: 'BOOKING_REJECTED',
+                    title: 'Booking Declined',
+                    body: `Your ${booking.sport} session request was declined.`,
+                    data: { bookingId },
+                });
+            }
+
+            setRejectModalVisible(false);
+            setRejectReason('');
+            fetchBooking();
+        } catch (e: any) {
+            Alert.alert('Error', e.message);
+        } finally {
+            setIsRejecting(false);
+        }
+    };
+
+    // ── Save session notes ──
     const handleSaveNotes = async () => {
         setIsSaving(true);
         try {
@@ -182,6 +226,7 @@ export default function BookingDetailScreen({ route, navigation }: any) {
                 .eq('id', bookingId);
             if (error) throw error;
             Alert.alert('Saved', 'Notes saved successfully.');
+            setNotesModalVisible(false);
             fetchBooking();
         } catch (e: any) {
             Alert.alert('Error', e.message);
@@ -190,6 +235,7 @@ export default function BookingDetailScreen({ route, navigation }: any) {
         }
     };
 
+    // ── Cancel with reason ──
     const handleCancelWithReason = async () => {
         if (!cancelReason.trim()) return;
         setIsCancelling(true);
@@ -225,6 +271,7 @@ export default function BookingDetailScreen({ route, navigation }: any) {
         }
     };
 
+    // ── Reschedule ──
     const handleSubmitReschedule = async () => {
         if (!rescheduleDate.trim() || !rescheduleTime.trim()) {
             Alert.alert('Required Fields', 'Please enter both a date and time.');
@@ -327,6 +374,7 @@ export default function BookingDetailScreen({ route, navigation }: any) {
         }
     };
 
+    // ── Submit review ──
     const handleSubmitReview = async () => {
         if (reviewRating === 0) {
             Alert.alert('Rating Required', 'Please select a star rating before submitting.');
@@ -334,7 +382,6 @@ export default function BookingDetailScreen({ route, navigation }: any) {
         }
         setIsSubmittingReview(true);
         try {
-            // Insert review
             const { error: insertError } = await supabase.from('reviews').insert({
                 booking_id: booking.id,
                 trainer_id: booking.trainer_id,
@@ -346,7 +393,7 @@ export default function BookingDetailScreen({ route, navigation }: any) {
             });
             if (insertError) throw insertError;
 
-            // Fetch current trainer profile stats
+            // Update trainer profile stats
             const { data: profileData, error: profileFetchError } = await supabase
                 .from('trainer_profiles')
                 .select('average_rating, total_reviews')
@@ -365,8 +412,16 @@ export default function BookingDetailScreen({ route, navigation }: any) {
                 .eq('user_id', booking.trainer_id);
             if (updateError) throw updateError;
 
-            setReviewSubmitted(true);
-            setExistingReview({ rating: reviewRating, comment: reviewComment.trim() });
+            // Notify trainer
+            await createNotification({
+                userId: booking.trainer_id,
+                type: 'REVIEW_RECEIVED',
+                title: 'New Review',
+                body: `You received a ${reviewRating}-star review for ${booking.sport}.`,
+                data: { bookingId: booking.id },
+            });
+
+            setExistingReview({ rating: reviewRating, review_text: reviewComment.trim() });
             Alert.alert('Review Submitted', 'Thank you for your feedback!');
         } catch (e: any) {
             Alert.alert('Error', e.message);
@@ -375,6 +430,7 @@ export default function BookingDetailScreen({ route, navigation }: any) {
         }
     };
 
+    // ── Calendar ──
     const handleGoogleCalendar = () => {
         setCalendarModalVisible(false);
         const startTime = new Date(booking.scheduled_at);
@@ -434,6 +490,7 @@ export default function BookingDetailScreen({ route, navigation }: any) {
         }
     };
 
+    // ── Loading ──
     if (isLoading || !booking) {
         return <View style={[styles.container, styles.center]}><ActivityIndicator size="large" color={Colors.primary} /></View>;
     }
@@ -444,6 +501,7 @@ export default function BookingDetailScreen({ route, navigation }: any) {
 
     return (
         <View style={styles.container}>
+            {/* Header */}
             <View style={styles.header}>
                 <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
                     <Ionicons name="arrow-back" size={24} color={Colors.text} />
@@ -463,6 +521,26 @@ export default function BookingDetailScreen({ route, navigation }: any) {
                     <Ionicons name={sc.icon as any} size={32} color="#fff" />
                     <Text style={styles.statusBannerText}>{sc.label}</Text>
                 </LinearGradient>
+
+                {/* Status History */}
+                <View style={styles.statusHistory}>
+                    <View style={styles.statusHistoryItem}>
+                        <View style={[styles.statusDot, { backgroundColor: Colors.success }]} />
+                        <Text style={styles.statusHistoryText}>
+                            Created {new Date(booking.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        </Text>
+                    </View>
+                    {booking.status !== 'pending' && (
+                        <View style={styles.statusHistoryItem}>
+                            <View style={[styles.statusDot, { backgroundColor: sc.color }]} />
+                            <Text style={styles.statusHistoryText}>
+                                {sc.label} {booking.updated_at
+                                    ? new Date(booking.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                                    : ''}
+                            </Text>
+                        </View>
+                    )}
+                </View>
 
                 {/* User Card */}
                 <View style={styles.userCard}>
@@ -517,6 +595,11 @@ export default function BookingDetailScreen({ route, navigation }: any) {
                             <Text style={[styles.infoValue, { flex: 1, textAlign: 'right' }]}>{booking.address}</Text>
                         </View>
                     )}
+                    <View style={[styles.infoRow, { borderBottomWidth: 0 }]}>
+                        <Ionicons name="cash" size={18} color="#45D0FF" />
+                        <Text style={styles.infoLabel}>Price</Text>
+                        <Text style={[styles.infoValue, { color: '#45D0FF' }]}>${Number(booking.price).toFixed(2)}</Text>
+                    </View>
                 </View>
 
                 {/* Payment Info */}
@@ -530,7 +613,7 @@ export default function BookingDetailScreen({ route, navigation }: any) {
                     <View style={styles.infoRow}>
                         <Ionicons name="remove-circle" size={18} color={Colors.textTertiary} />
                         <Text style={styles.infoLabel}>Platform Fee (3%)</Text>
-                        <Text style={styles.infoValue}>-${Number(booking.platform_fee).toFixed(2)}</Text>
+                        <Text style={styles.infoValue}>-${Number(booking.platform_fee || 0).toFixed(2)}</Text>
                     </View>
                     <View style={[styles.infoRow, { borderBottomWidth: 0 }]}>
                         <Ionicons name="wallet" size={18} color={Colors.primary} />
@@ -538,40 +621,38 @@ export default function BookingDetailScreen({ route, navigation }: any) {
                             {isTrainer ? 'Your Payout' : 'Total Paid'}
                         </Text>
                         <Text style={[styles.infoValue, { fontWeight: FontWeight.bold }]}>
-                            ${isTrainer ? (Number(booking.price) - Number(booking.platform_fee)).toFixed(2) : Number(booking.total_paid).toFixed(2)}
+                            ${isTrainer
+                                ? (Number(booking.price) - Number(booking.platform_fee || 0)).toFixed(2)
+                                : Number(booking.total_paid || booking.price).toFixed(2)}
                         </Text>
                     </View>
                 </View>
 
-                {/* Notes */}
-                <Text style={styles.sectionTitle}>{isTrainer ? 'Session Notes' : 'Your Notes'}</Text>
-                <TextInput
-                    style={[styles.notesInput]}
-                    value={trainerNotes}
-                    onChangeText={setTrainerNotes}
-                    placeholder="Add notes about this session..."
-                    placeholderTextColor={Colors.textTertiary}
-                    multiline
-                    textAlignVertical="top"
-                />
-                <TouchableOpacity style={styles.saveNotesButton} onPress={handleSaveNotes} disabled={isSaving}>
-                    <Text style={styles.saveNotesButtonText}>Save Notes</Text>
-                </TouchableOpacity>
+                {/* Session Notes Display */}
+                {booking.trainer_notes ? (
+                    <>
+                        <Text style={styles.sectionTitle}>Session Notes</Text>
+                        <View style={styles.noteCard}>
+                            <Text style={styles.noteText}>{booking.trainer_notes}</Text>
+                        </View>
+                    </>
+                ) : null}
 
-                {booking.athlete_notes && isTrainer && (
+                {booking.athlete_notes && isTrainer ? (
                     <>
                         <Text style={styles.sectionTitle}>Athlete Notes</Text>
                         <View style={styles.noteCard}>
                             <Text style={styles.noteText}>{booking.athlete_notes}</Text>
                         </View>
                     </>
-                )}
+                ) : null}
 
-                {/* Action Buttons */}
+                {/* ── TRAINER ACTIONS ── */}
                 {isTrainer && (
                     <View style={styles.actionsSection}>
                         <Text style={styles.sectionTitle}>Actions</Text>
 
+                        {/* Pending: Confirm or Reject (with reason) */}
                         {booking.status === 'pending' && (
                             <>
                                 <View style={styles.actionRow}>
@@ -580,14 +661,14 @@ export default function BookingDetailScreen({ route, navigation }: any) {
                                         onPress={() => handleStatusChange('confirmed', 'Accept this booking request?')}
                                     >
                                         <Ionicons name="checkmark-circle" size={20} color="#0A0D14" />
-                                        <Text style={styles.actionButtonTextWhite}>Accept</Text>
+                                        <Text style={styles.actionButtonTextDark}>Confirm</Text>
                                     </TouchableOpacity>
                                     <TouchableOpacity
                                         style={[styles.actionButton, styles.actionDecline]}
-                                        onPress={() => { setCancelReason(''); setCancelModalVisible(true); }}
+                                        onPress={() => { setRejectReason(''); setRejectModalVisible(true); }}
                                     >
                                         <Ionicons name="close-circle" size={20} color="#ff1744" />
-                                        <Text style={[styles.actionButtonText, { color: '#ff1744' }]}>Decline</Text>
+                                        <Text style={[styles.actionButtonText, { color: '#ff1744' }]}>Reject</Text>
                                     </TouchableOpacity>
                                 </View>
                                 <TouchableOpacity
@@ -600,6 +681,7 @@ export default function BookingDetailScreen({ route, navigation }: any) {
                             </>
                         )}
 
+                        {/* Confirmed: Mark as Completed, Cancel (with reason) */}
                         {booking.status === 'confirmed' && (
                             <>
                                 <View style={styles.actionRow}>
@@ -609,15 +691,7 @@ export default function BookingDetailScreen({ route, navigation }: any) {
                                         disabled={!isPast}
                                     >
                                         <Ionicons name="trophy" size={20} color="#0A0D14" />
-                                        <Text style={styles.actionButtonTextWhite}>Complete</Text>
-                                    </TouchableOpacity>
-                                    <TouchableOpacity
-                                        style={[styles.actionButton, styles.actionNoShow]}
-                                        onPress={() => handleStatusChange('no_show', 'Report this athlete as a no-show?')}
-                                        disabled={!isPast}
-                                    >
-                                        <Ionicons name="alert-circle" size={20} color="#ffab00" />
-                                        <Text style={[styles.actionButtonText, { color: '#ffab00' }]}>No-Show</Text>
+                                        <Text style={styles.actionButtonTextDark}>Complete</Text>
                                     </TouchableOpacity>
                                     <TouchableOpacity
                                         style={[styles.actionButton, styles.actionDecline]}
@@ -627,12 +701,50 @@ export default function BookingDetailScreen({ route, navigation }: any) {
                                         <Text style={[styles.actionButtonText, { color: '#ff1744' }]}>Cancel</Text>
                                     </TouchableOpacity>
                                 </View>
+                                <View style={[styles.actionRow, { marginTop: Spacing.md }]}>
+                                    <TouchableOpacity
+                                        style={[styles.actionButton, styles.actionNoShow]}
+                                        onPress={() => handleStatusChange('no_show', 'Report this athlete as a no-show?')}
+                                        disabled={!isPast}
+                                    >
+                                        <Ionicons name="alert-circle" size={20} color="#ffab00" />
+                                        <Text style={[styles.actionButtonText, { color: '#ffab00' }]}>No-Show</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                        style={[styles.actionButton, styles.actionReschedule]}
+                                        onPress={() => { setRescheduleDate(''); setRescheduleTime(''); setRescheduleReason(''); setRescheduleModalVisible(true); }}
+                                    >
+                                        <Ionicons name="time-outline" size={20} color="#fff" />
+                                        <Text style={[styles.actionButtonText, { color: '#fff' }]}>Reschedule</Text>
+                                    </TouchableOpacity>
+                                </View>
                                 <TouchableOpacity
-                                    style={[styles.actionButton, styles.actionReschedule, { flex: 0, width: '100%', marginTop: Spacing.md }]}
-                                    onPress={() => { setRescheduleDate(''); setRescheduleTime(''); setRescheduleReason(''); setRescheduleModalVisible(true); }}
+                                    style={[styles.actionButton, styles.actionCalendar, { flex: 0, width: '100%', marginTop: Spacing.md }]}
+                                    onPress={() => setCalendarModalVisible(true)}
                                 >
-                                    <Ionicons name="time-outline" size={20} color="#fff" />
-                                    <Text style={[styles.actionButtonText, { color: '#fff' }]}>Reschedule</Text>
+                                    <Ionicons name="calendar-outline" size={20} color="#fff" />
+                                    <Text style={[styles.actionButtonText, { color: '#fff' }]}>Add to Calendar</Text>
+                                </TouchableOpacity>
+
+                                {!isPast && (
+                                    <Text style={styles.futureNote}>
+                                        Complete and No-Show actions will be available after the scheduled session time.
+                                    </Text>
+                                )}
+                            </>
+                        )}
+
+                        {/* Completed: Add session notes */}
+                        {booking.status === 'completed' && (
+                            <>
+                                <TouchableOpacity
+                                    style={[styles.actionButton, styles.actionAccept, { flex: 0, width: '100%' }]}
+                                    onPress={() => { setTrainerNotes(booking.trainer_notes || ''); setNotesModalVisible(true); }}
+                                >
+                                    <Ionicons name="document-text" size={20} color="#0A0D14" />
+                                    <Text style={styles.actionButtonTextDark}>
+                                        {booking.trainer_notes ? 'Edit Session Notes' : 'Add Session Notes'}
+                                    </Text>
                                 </TouchableOpacity>
                                 <TouchableOpacity
                                     style={[styles.actionButton, styles.actionCalendar, { flex: 0, width: '100%', marginTop: Spacing.md }]}
@@ -643,54 +755,68 @@ export default function BookingDetailScreen({ route, navigation }: any) {
                                 </TouchableOpacity>
                             </>
                         )}
-
-                        {!isPast && booking.status === 'confirmed' && (
-                            <Text style={styles.futureNote}>
-                                Complete and No-Show actions will be available after the scheduled session time.
-                            </Text>
-                        )}
                     </View>
                 )}
 
-                {/* Athlete: Cancel & Reschedule options */}
-                {!isTrainer && (booking.status === 'pending' || booking.status === 'confirmed' || booking.status === 'reschedule_requested') && (
+                {/* ── ATHLETE ACTIONS ── */}
+                {!isTrainer && (
                     <View style={styles.actionsSection}>
-                        <TouchableOpacity
-                            style={[styles.actionButton, styles.actionReschedule, { flex: 0, width: '100%' }]}
-                            onPress={() => { setRescheduleDate(''); setRescheduleTime(''); setRescheduleReason(''); setRescheduleModalVisible(true); }}
-                        >
-                            <Ionicons name="time-outline" size={20} color="#fff" />
-                            <Text style={[styles.actionButtonText, { color: '#fff' }]}>Reschedule</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                            style={[styles.actionButton, styles.actionDecline, { flex: 0, width: '100%', marginTop: Spacing.md }]}
-                            onPress={() => { setCancelReason(''); setCancelModalVisible(true); }}
-                        >
-                            <Ionicons name="close-circle" size={20} color="#ff1744" />
-                            <Text style={[styles.actionButtonText, { color: '#ff1744' }]}>Cancel Booking</Text>
-                        </TouchableOpacity>
-                        {booking.status === 'confirmed' && (
-                            <TouchableOpacity
-                                style={[styles.actionButton, styles.actionCalendar, { flex: 0, width: '100%', marginTop: Spacing.md }]}
-                                onPress={() => setCalendarModalVisible(true)}
-                            >
-                                <Ionicons name="calendar-outline" size={20} color="#fff" />
-                                <Text style={[styles.actionButtonText, { color: '#fff' }]}>Add to Calendar</Text>
-                            </TouchableOpacity>
+                        {/* Pending: Cancel */}
+                        {booking.status === 'pending' && (
+                            <>
+                                <Text style={styles.sectionTitle}>Actions</Text>
+                                <TouchableOpacity
+                                    style={[styles.actionButton, styles.actionDecline, { flex: 0, width: '100%' }]}
+                                    onPress={() => { setCancelReason(''); setCancelModalVisible(true); }}
+                                >
+                                    <Ionicons name="close-circle" size={20} color="#ff1744" />
+                                    <Text style={[styles.actionButtonText, { color: '#ff1744' }]}>Cancel Booking</Text>
+                                </TouchableOpacity>
+                            </>
                         )}
-                    </View>
-                )}
 
-                {/* Add to Calendar for completed bookings (reference) */}
-                {booking.status === 'completed' && (
-                    <View style={styles.actionsSection}>
-                        <TouchableOpacity
-                            style={[styles.actionButton, styles.actionCalendar, { flex: 0, width: '100%' }]}
-                            onPress={() => setCalendarModalVisible(true)}
-                        >
-                            <Ionicons name="calendar-outline" size={20} color="#fff" />
-                            <Text style={[styles.actionButtonText, { color: '#fff' }]}>Add to Calendar</Text>
-                        </TouchableOpacity>
+                        {/* Confirmed: Cancel (with reason), Reschedule, Calendar */}
+                        {(booking.status === 'confirmed' || booking.status === 'reschedule_requested') && (
+                            <>
+                                <Text style={styles.sectionTitle}>Actions</Text>
+                                <TouchableOpacity
+                                    style={[styles.actionButton, styles.actionReschedule, { flex: 0, width: '100%' }]}
+                                    onPress={() => { setRescheduleDate(''); setRescheduleTime(''); setRescheduleReason(''); setRescheduleModalVisible(true); }}
+                                >
+                                    <Ionicons name="time-outline" size={20} color="#fff" />
+                                    <Text style={[styles.actionButtonText, { color: '#fff' }]}>Reschedule</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={[styles.actionButton, styles.actionDecline, { flex: 0, width: '100%', marginTop: Spacing.md }]}
+                                    onPress={() => { setCancelReason(''); setCancelModalVisible(true); }}
+                                >
+                                    <Ionicons name="close-circle" size={20} color="#ff1744" />
+                                    <Text style={[styles.actionButtonText, { color: '#ff1744' }]}>Cancel Booking</Text>
+                                </TouchableOpacity>
+                                {booking.status === 'confirmed' && (
+                                    <TouchableOpacity
+                                        style={[styles.actionButton, styles.actionCalendar, { flex: 0, width: '100%', marginTop: Spacing.md }]}
+                                        onPress={() => setCalendarModalVisible(true)}
+                                    >
+                                        <Ionicons name="calendar-outline" size={20} color="#fff" />
+                                        <Text style={[styles.actionButtonText, { color: '#fff' }]}>Add to Calendar</Text>
+                                    </TouchableOpacity>
+                                )}
+                            </>
+                        )}
+
+                        {/* Completed: Leave Review + Calendar */}
+                        {booking.status === 'completed' && (
+                            <>
+                                <TouchableOpacity
+                                    style={[styles.actionButton, styles.actionCalendar, { flex: 0, width: '100%' }]}
+                                    onPress={() => setCalendarModalVisible(true)}
+                                >
+                                    <Ionicons name="calendar-outline" size={20} color="#fff" />
+                                    <Text style={[styles.actionButtonText, { color: '#fff' }]}>Add to Calendar</Text>
+                                </TouchableOpacity>
+                            </>
+                        )}
                     </View>
                 )}
 
@@ -768,7 +894,7 @@ export default function BookingDetailScreen({ route, navigation }: any) {
                     </>
                 )}
 
-                {/* Review Section — athlete only, completed bookings */}
+                {/* Review Section -- athlete only, completed bookings */}
                 {!isTrainer && booking.status === 'completed' && reviewChecked && (
                     <>
                         <Text style={styles.sectionTitle}>Your Review</Text>
@@ -776,12 +902,11 @@ export default function BookingDetailScreen({ route, navigation }: any) {
                             <View style={styles.reviewSubmittedCard}>
                                 <Ionicons name="checkmark-circle" size={20} color={Colors.success} />
                                 <Text style={styles.reviewSubmittedText}>
-                                    You reviewed this session ⭐ {existingReview.rating}/5
+                                    You reviewed this session - {existingReview.rating}/5 stars
                                 </Text>
                             </View>
                         ) : (
                             <View style={styles.reviewCard}>
-                                {/* Star selector */}
                                 <Text style={styles.reviewLabel}>Rating</Text>
                                 <View style={styles.starsRow}>
                                     {[1, 2, 3, 4, 5].map((star) => (
@@ -799,7 +924,6 @@ export default function BookingDetailScreen({ route, navigation }: any) {
                                     ))}
                                 </View>
 
-                                {/* Comment input */}
                                 <Text style={[styles.reviewLabel, { marginTop: Spacing.md }]}>Comment (optional)</Text>
                                 <TextInput
                                     style={styles.reviewInput}
@@ -829,7 +953,7 @@ export default function BookingDetailScreen({ route, navigation }: any) {
                 <View style={{ height: 60 }} />
             </ScrollView>
 
-            {/* Calendar Options Modal */}
+            {/* ── Calendar Options Modal ── */}
             <Modal
                 visible={calendarModalVisible}
                 transparent
@@ -871,7 +995,7 @@ export default function BookingDetailScreen({ route, navigation }: any) {
                 </TouchableOpacity>
             </Modal>
 
-            {/* Reschedule Modal */}
+            {/* ── Reschedule Modal ── */}
             <Modal
                 visible={rescheduleModalVisible}
                 transparent
@@ -940,7 +1064,7 @@ export default function BookingDetailScreen({ route, navigation }: any) {
                 </View>
             </Modal>
 
-            {/* Cancel Booking Modal */}
+            {/* ── Cancel Booking Modal ── */}
             <Modal
                 visible={cancelModalVisible}
                 transparent
@@ -988,6 +1112,100 @@ export default function BookingDetailScreen({ route, navigation }: any) {
                     </View>
                 </View>
             </Modal>
+
+            {/* ── Reject Booking Modal (Trainer declining pending) ── */}
+            <Modal
+                visible={rejectModalVisible}
+                transparent
+                animationType="fade"
+                onRequestClose={() => setRejectModalVisible(false)}
+            >
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalCard}>
+                        <Text style={styles.modalTitle}>Decline Booking</Text>
+                        <Text style={styles.modalSubtitle}>Please provide a reason for declining this request</Text>
+
+                        <TextInput
+                            style={styles.modalInput}
+                            value={rejectReason}
+                            onChangeText={setRejectReason}
+                            placeholder="Reason for declining..."
+                            placeholderTextColor={Colors.textTertiary}
+                            multiline
+                            numberOfLines={4}
+                            textAlignVertical="top"
+                        />
+
+                        <View style={styles.modalButtonRow}>
+                            <TouchableOpacity
+                                style={styles.modalGoBackButton}
+                                onPress={() => setRejectModalVisible(false)}
+                                disabled={isRejecting}
+                            >
+                                <Text style={styles.modalGoBackText}>Go Back</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[
+                                    styles.modalCancelButton,
+                                    !rejectReason.trim() && { opacity: 0.4 },
+                                ]}
+                                onPress={handleRejectWithReason}
+                                disabled={!rejectReason.trim() || isRejecting}
+                            >
+                                {isRejecting
+                                    ? <ActivityIndicator size="small" color="#fff" />
+                                    : <Text style={styles.modalCancelText}>Decline</Text>
+                                }
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
+
+            {/* ── Session Notes Modal (Trainer, completed) ── */}
+            <Modal
+                visible={notesModalVisible}
+                transparent
+                animationType="fade"
+                onRequestClose={() => setNotesModalVisible(false)}
+            >
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalCard}>
+                        <Text style={styles.modalTitle}>Session Notes</Text>
+                        <Text style={styles.modalSubtitle}>Add notes about this training session</Text>
+
+                        <TextInput
+                            style={[styles.modalInput, { minHeight: 120 }]}
+                            value={trainerNotes}
+                            onChangeText={setTrainerNotes}
+                            placeholder="Add notes about this session..."
+                            placeholderTextColor={Colors.textTertiary}
+                            multiline
+                            textAlignVertical="top"
+                        />
+
+                        <View style={styles.modalButtonRow}>
+                            <TouchableOpacity
+                                style={styles.modalGoBackButton}
+                                onPress={() => setNotesModalVisible(false)}
+                                disabled={isSaving}
+                            >
+                                <Text style={styles.modalGoBackText}>Cancel</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={styles.notesSubmitButton}
+                                onPress={handleSaveNotes}
+                                disabled={isSaving}
+                            >
+                                {isSaving
+                                    ? <ActivityIndicator size="small" color="#0A0D14" />
+                                    : <Text style={styles.notesSubmitText}>Save Notes</Text>
+                                }
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
         </View>
     );
 }
@@ -999,8 +1217,18 @@ const styles = StyleSheet.create({
     backButton: { width: 44, height: 44, borderRadius: 14, backgroundColor: Colors.surface, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
     headerTitle: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: '#FFFFFF' },
     contentContainer: { padding: Spacing.xxl },
-    statusBanner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.md, padding: Spacing.xl, borderRadius: BorderRadius.lg, marginBottom: Spacing.xxl },
+
+    // Status banner
+    statusBanner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.md, padding: Spacing.xl, borderRadius: BorderRadius.lg, marginBottom: Spacing.md },
     statusBannerText: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: '#fff' },
+
+    // Status history
+    statusHistory: { marginBottom: Spacing.xxl, paddingLeft: Spacing.md },
+    statusHistoryItem: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: Spacing.xs },
+    statusDot: { width: 8, height: 8, borderRadius: 4 },
+    statusHistoryText: { fontSize: FontSize.xs, color: Colors.textTertiary },
+
+    // User card
     userCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#161B22', padding: Spacing.lg, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', marginBottom: Spacing.xxl },
     userAvatar: { width: 50, height: 50, borderRadius: 16, backgroundColor: Colors.primaryGlow, justifyContent: 'center', alignItems: 'center', marginRight: Spacing.md },
     userAvatarText: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: '#45D0FF' },
@@ -1008,17 +1236,22 @@ const styles = StyleSheet.create({
     userName: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: '#FFFFFF' },
     userRole: { fontSize: FontSize.sm, color: Colors.textSecondary, textTransform: 'capitalize', marginTop: 2 },
     messageButton: { width: 44, height: 44, borderRadius: 14, backgroundColor: '#45D0FF', justifyContent: 'center', alignItems: 'center' },
+
+    // Section
     sectionTitle: { fontSize: FontSize.md, fontWeight: FontWeight.bold, color: '#FFFFFF', marginBottom: Spacing.md, marginTop: Spacing.md },
+
+    // Info card
     infoCard: { backgroundColor: '#161B22', borderRadius: BorderRadius.lg, padding: Spacing.md, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', marginBottom: Spacing.md },
     infoRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, paddingVertical: Spacing.md, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.08)' },
     infoLabel: { flex: 1, fontSize: FontSize.md, color: Colors.textSecondary },
     infoValue: { fontSize: FontSize.md, fontWeight: FontWeight.semibold, color: '#FFFFFF' },
-    notesInput: { backgroundColor: Colors.surface, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', padding: Spacing.md, color: '#FFFFFF', fontSize: FontSize.md, minHeight: 100 },
-    saveNotesButton: { alignSelf: 'flex-end', paddingHorizontal: Spacing.xl, paddingVertical: Spacing.sm, borderRadius: BorderRadius.md, backgroundColor: Colors.surface, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', marginTop: Spacing.sm },
-    saveNotesButtonText: { fontSize: FontSize.sm, fontWeight: FontWeight.medium, color: '#45D0FF' },
+
+    // Notes
     noteCard: { backgroundColor: Colors.surface, borderRadius: BorderRadius.md, padding: Spacing.lg, marginBottom: Spacing.md },
     noteText: { fontSize: FontSize.md, color: Colors.textSecondary, lineHeight: 22 },
     noteDate: { fontSize: FontSize.xs, color: Colors.textTertiary, marginTop: Spacing.sm },
+
+    // Actions
     actionsSection: { marginTop: Spacing.xl },
     actionRow: { flexDirection: 'row', gap: Spacing.md },
     actionButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm, paddingVertical: Spacing.md, borderRadius: BorderRadius.md },
@@ -1027,9 +1260,10 @@ const styles = StyleSheet.create({
     actionNoShow: { backgroundColor: Colors.surface, borderWidth: 1, borderColor: '#ffab00' },
     actionDecline: { backgroundColor: 'rgba(255,23,68,0.1)', borderWidth: 1, borderColor: 'rgba(255,23,68,0.2)' },
     actionButtonText: { fontSize: FontSize.md, fontWeight: FontWeight.bold },
-    actionButtonTextWhite: { fontSize: FontSize.md, fontWeight: FontWeight.bold, color: '#0A0D14' },
+    actionButtonTextDark: { fontSize: FontSize.md, fontWeight: FontWeight.bold, color: '#0A0D14' },
     futureNote: { fontSize: FontSize.xs, color: Colors.textTertiary, textAlign: 'center', marginTop: Spacing.md, fontStyle: 'italic' },
-    // Review styles
+
+    // Review
     reviewCard: { backgroundColor: '#161B22', borderRadius: BorderRadius.lg, padding: Spacing.lg, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', marginBottom: Spacing.md },
     reviewLabel: { fontSize: FontSize.sm, color: Colors.textSecondary, marginBottom: Spacing.sm },
     starsRow: { flexDirection: 'row', gap: Spacing.sm },
@@ -1039,9 +1273,11 @@ const styles = StyleSheet.create({
     reviewSubmitButtonText: { fontSize: FontSize.md, fontWeight: FontWeight.bold, color: '#0A0D14' },
     reviewSubmittedCard: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, backgroundColor: '#161B22', borderRadius: BorderRadius.lg, padding: Spacing.lg, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', marginBottom: Spacing.md },
     reviewSubmittedText: { fontSize: FontSize.md, color: Colors.textSecondary },
+
     // Cancellation header
     cancellationHeader: { flexDirection: 'row', alignItems: 'center', marginTop: Spacing.md, marginBottom: Spacing.md },
-    // Calendar button & modal styles
+
+    // Calendar
     actionCalendar: { backgroundColor: Colors.info },
     calendarModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
     calendarModalCard: { backgroundColor: Colors.card, borderTopLeftRadius: BorderRadius.xl, borderTopRightRadius: BorderRadius.xl, padding: Spacing.xxl, paddingBottom: 40 },
@@ -1052,7 +1288,8 @@ const styles = StyleSheet.create({
     calendarOptionText: { flex: 1, fontSize: FontSize.md, fontWeight: FontWeight.semibold, color: '#FFFFFF' },
     calendarCancelButton: { marginTop: Spacing.md, paddingVertical: Spacing.md, borderRadius: BorderRadius.md, alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.06)' },
     calendarCancelText: { fontSize: FontSize.md, fontWeight: FontWeight.bold, color: Colors.textSecondary },
-    // Cancel modal styles
+
+    // Modals
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center', padding: Spacing.xxl },
     modalCard: { width: '100%', backgroundColor: Colors.card, borderRadius: BorderRadius.lg, padding: Spacing.xxl },
     modalTitle: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: '#FFFFFF', marginBottom: Spacing.xs },
@@ -1063,7 +1300,8 @@ const styles = StyleSheet.create({
     modalGoBackText: { fontSize: FontSize.md, fontWeight: FontWeight.bold, color: Colors.textSecondary },
     modalCancelButton: { flex: 1, backgroundColor: Colors.error, borderRadius: BorderRadius.md, paddingVertical: Spacing.md, alignItems: 'center', justifyContent: 'center' },
     modalCancelText: { fontSize: FontSize.md, fontWeight: FontWeight.bold, color: '#FFFFFF' },
-    // Reschedule styles
+
+    // Reschedule
     actionReschedule: { backgroundColor: Colors.warning },
     rescheduleInput: { backgroundColor: Colors.surface, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: Colors.border, padding: Spacing.md, color: '#FFFFFF', fontSize: FontSize.md, marginBottom: Spacing.md },
     rescheduleInputLabel: { fontSize: FontSize.sm, color: Colors.textSecondary, marginBottom: Spacing.xs },
@@ -1078,4 +1316,8 @@ const styles = StyleSheet.create({
     rescheduleResponseRow: { flexDirection: 'row', gap: Spacing.md, marginTop: Spacing.md },
     rescheduleAcceptButton: { backgroundColor: Colors.success },
     rescheduleDeclineButton: { backgroundColor: Colors.error },
+
+    // Notes modal submit
+    notesSubmitButton: { flex: 1, backgroundColor: '#45D0FF', borderRadius: BorderRadius.md, paddingVertical: Spacing.md, alignItems: 'center', justifyContent: 'center' },
+    notesSubmitText: { fontSize: FontSize.md, fontWeight: FontWeight.bold, color: '#0A0D14' },
 });

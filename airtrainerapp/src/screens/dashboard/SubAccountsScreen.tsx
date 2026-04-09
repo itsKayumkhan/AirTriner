@@ -22,30 +22,20 @@ import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows } from '..
 const MAX_SUB_ACCOUNTS = 6;
 
 const SPORTS_LIST = [
-    { label: 'Hockey', emoji: '\u{1F3D2}' },
-    { label: 'Baseball', emoji: '\u{26BE}' },
-    { label: 'Basketball', emoji: '\u{1F3C0}' },
-    { label: 'Soccer', emoji: '\u{26BD}' },
-    { label: 'Football', emoji: '\u{1F3C8}' },
-    { label: 'Tennis', emoji: '\u{1F3BE}' },
-    { label: 'Golf', emoji: '\u{26F3}' },
-    { label: 'Swimming', emoji: '\u{1F3CA}' },
-    { label: 'Boxing', emoji: '\u{1F94A}' },
-    { label: 'Lacrosse', emoji: '\u{1F94D}' },
+    'hockey', 'baseball', 'basketball', 'soccer', 'football',
+    'tennis', 'golf', 'swimming', 'boxing', 'lacrosse',
 ] as const;
 
-const SKILL_LEVELS = ['Beginner', 'Intermediate', 'Advanced', 'Pro'] as const;
+const SKILL_LEVELS = ['beginner', 'intermediate', 'advanced', 'pro'] as const;
 type SkillLevel = (typeof SKILL_LEVELS)[number];
 
 type SubAccountProfileData = {
-    name?: string;
-    email?: string | null;
-    role?: 'athlete' | 'trainer';
-    age?: number | null;
-    sport?: string | null;
-    skill_level?: SkillLevel | null;
-    notes?: string | null;
-    max_bookings_per_month?: number | null;
+    first_name: string;
+    last_name: string;
+    age?: number;
+    sport?: string;
+    skill_level?: string;
+    notes?: string;
 };
 
 type SubAccount = {
@@ -58,39 +48,22 @@ type SubAccount = {
     updated_at: string;
 };
 
-type Role = 'athlete' | 'trainer';
-
-function getSportEmoji(sportLabel: string): string {
-    const found = SPORTS_LIST.find((s) => s.label === sportLabel);
-    return found ? found.emoji : '\u{1F3C5}';
+function capitalize(s: string): string {
+    return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-function getInitials(name: string): string {
-    const parts = name.trim().split(' ');
-    if (parts.length >= 2) {
-        return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-    }
-    return name.slice(0, 2).toUpperCase();
+function getInitials(pd: SubAccountProfileData): string {
+    const f = pd.first_name?.[0] || '';
+    const l = pd.last_name?.[0] || '';
+    return (f + l).toUpperCase() || '??';
 }
 
 function AvatarGradient({ initials }: { initials: string }) {
     return (
         <View style={styles.avatarContainer}>
-            {/* Simulate gradient with layered views */}
             <View style={styles.avatarGradientBase} />
             <View style={styles.avatarGradientOverlay} />
             <Text style={styles.avatarText}>{initials}</Text>
-        </View>
-    );
-}
-
-function RoleBadge({ role }: { role: Role }) {
-    const isTrainer = role === 'trainer';
-    return (
-        <View style={[styles.roleBadge, isTrainer ? styles.roleBadgeTrainer : styles.roleBadgeAthlete]}>
-            <Text style={[styles.roleBadgeText, isTrainer ? styles.roleBadgeTextTrainer : styles.roleBadgeTextAthlete]}>
-                {isTrainer ? 'Trainer' : 'Athlete'}
-            </Text>
         </View>
     );
 }
@@ -102,17 +75,18 @@ export default function SubAccountsScreen({ navigation }: any) {
     const [refreshing, setRefreshing] = useState(false);
     const [isModalVisible, setModalVisible] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
+    const [editingId, setEditingId] = useState<string | null>(null);
+    const [deleteError, setDeleteError] = useState<string | null>(null);
 
-    // Form state
+    // Form state - matches web: first_name, last_name, age, sport, skill_level, notes
     const [firstName, setFirstName] = useState('');
     const [lastName, setLastName] = useState('');
-    const [email, setEmail] = useState('');
-    const [role, setRole] = useState<Role>('athlete');
     const [age, setAge] = useState('');
-    const [sport, setSport] = useState<string | null>(null);
-    const [skillLevel, setSkillLevel] = useState<SkillLevel | null>(null);
+    const [sport, setSport] = useState('hockey');
+    const [skillLevel, setSkillLevel] = useState<SkillLevel>('beginner');
     const [notes, setNotes] = useState('');
-    const [maxBookings, setMaxBookings] = useState('');
+    const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+    const [saveError, setSaveError] = useState<string | null>(null);
 
     const fetchAccounts = useCallback(async () => {
         if (!user) return;
@@ -121,11 +95,11 @@ export default function SubAccountsScreen({ navigation }: any) {
                 .from('sub_accounts')
                 .select('*')
                 .eq('parent_user_id', user.id)
+                .eq('is_active', true)
                 .order('created_at', { ascending: true });
 
             if (error) throw error;
             setAccounts((data || []) as SubAccount[]);
-
         } catch (err) {
             console.error('Error fetching sub-accounts:', err);
         } finally {
@@ -146,100 +120,138 @@ export default function SubAccountsScreen({ navigation }: any) {
     const resetForm = () => {
         setFirstName('');
         setLastName('');
-        setEmail('');
-        setRole('athlete');
         setAge('');
-        setSport(null);
-        setSkillLevel(null);
+        setSport('hockey');
+        setSkillLevel('beginner');
         setNotes('');
-        setMaxBookings('');
+        setFormErrors({});
+        setSaveError(null);
+        setEditingId(null);
+        setModalVisible(false);
     };
 
-    const handleOpenModal = () => {
+    const openAddModal = () => {
         resetForm();
         setModalVisible(true);
     };
 
-    const handleCloseModal = () => {
-        setModalVisible(false);
-        resetForm();
+    const openEditModal = (account: SubAccount) => {
+        const pd = account.profile_data;
+        setFirstName(pd.first_name || '');
+        setLastName(pd.last_name || '');
+        setAge(pd.age ? String(pd.age) : '');
+        setSport(pd.sport || 'hockey');
+        setSkillLevel((pd.skill_level as SkillLevel) || 'beginner');
+        setNotes(pd.notes || '');
+        setFormErrors({});
+        setSaveError(null);
+        setEditingId(account.id);
+        setModalVisible(true);
     };
 
-    const handleAddAccount = async () => {
-        if (!firstName.trim() || !user) return;
-        if (accounts.length >= MAX_SUB_ACCOUNTS) {
-            Alert.alert('Limit Reached', `You can only have up to ${MAX_SUB_ACCOUNTS} sub-accounts.`);
-            return;
+    const validateForm = (): boolean => {
+        const errors: Record<string, string> = {};
+
+        if (!firstName.trim()) {
+            errors.first_name = 'First name is required';
+        } else if (firstName.trim().length < 2) {
+            errors.first_name = 'First name must be at least 2 characters';
         }
 
-        // Validate age if provided
-        const ageNum = age.trim() ? parseInt(age.trim(), 10) : null;
-        if (ageNum !== null && (isNaN(ageNum) || ageNum < 3 || ageNum > 99)) {
-            Alert.alert('Invalid Age', 'Age must be a number between 3 and 99.');
-            return;
+        if (!lastName.trim()) {
+            errors.last_name = 'Last name is required';
+        } else if (lastName.trim().length < 2) {
+            errors.last_name = 'Last name must be at least 2 characters';
         }
 
-        const maxBookingsNum = maxBookings.trim() ? parseInt(maxBookings.trim(), 10) : null;
-        if (maxBookingsNum !== null && (isNaN(maxBookingsNum) || maxBookingsNum < 1)) {
-            Alert.alert('Invalid Value', 'Max bookings must be a positive number.');
-            return;
+        if (age && (Number(age) < 3 || Number(age) > 99)) {
+            errors.age = 'Age must be between 3 and 99';
         }
 
+        setFormErrors(errors);
+        return Object.keys(errors).length === 0;
+    };
+
+    const handleSave = async () => {
+        if (!user || !validateForm()) return;
         setIsSaving(true);
+        setSaveError(null);
+
+        const profileData: SubAccountProfileData = {
+            first_name: firstName.trim(),
+            last_name: lastName.trim(),
+            age: age ? Number(age) : undefined,
+            sport,
+            skill_level: skillLevel,
+            notes: notes.trim() || undefined,
+        };
+
         try {
-            const fullName = [firstName.trim(), lastName.trim()].filter(Boolean).join(' ');
-            const profileData: SubAccountProfileData = {
-                name: fullName,
-                email: email.trim() || null,
-                role,
-                age: ageNum,
-                sport: sport || null,
-                skill_level: skillLevel || null,
-                notes: notes.trim() || null,
-                max_bookings_per_month: maxBookingsNum,
-            };
+            if (editingId) {
+                // Update existing
+                const { error } = await supabase
+                    .from('sub_accounts')
+                    .update({ profile_data: profileData, updated_at: new Date().toISOString() })
+                    .eq('id', editingId);
 
-            const { data, error } = await supabase
-                .from('sub_accounts')
-                .insert({
-                    parent_user_id: user.id,
-                    profile_data: profileData,
-                    is_active: true,
-                })
-                .select()
-                .single();
+                if (error) throw error;
 
-            if (error) throw error;
+                setAccounts((prev) =>
+                    prev.map((a) => (a.id === editingId ? { ...a, profile_data: profileData } : a))
+                );
+            } else {
+                // Create new
+                if (accounts.length >= MAX_SUB_ACCOUNTS) {
+                    setSaveError(`You can only have up to ${MAX_SUB_ACCOUNTS} sub-accounts.`);
+                    setIsSaving(false);
+                    return;
+                }
 
-            setAccounts((prev) => [...prev, data as SubAccount]);
-            handleCloseModal();
+                const { data, error } = await supabase
+                    .from('sub_accounts')
+                    .insert({
+                        parent_user_id: user.id,
+                        profile_data: profileData,
+                        max_bookings_per_month: 10,
+                        is_active: true,
+                    })
+                    .select()
+                    .single();
+
+                if (error) throw error;
+                setAccounts((prev) => [...prev, data as SubAccount]);
+            }
+            resetForm();
         } catch (err: any) {
-            console.error('Error creating sub-account:', err);
-            Alert.alert('Error', err.message || 'Failed to create sub-account');
+            const msg = err?.message || 'Failed to save. Please try again.';
+            setSaveError(msg);
+            console.error('Save failed:', err);
         } finally {
             setIsSaving(false);
         }
     };
 
-    const handleLongPress = (account: SubAccount) => {
+    // Soft-delete matching web behavior
+    const handleDelete = (account: SubAccount) => {
         Alert.alert(
             'Remove Sub-Account',
-            `Are you sure you want to remove "${account.profile_data?.name}"? This action cannot be undone.`,
+            `Remove ${account.profile_data.first_name} ${account.profile_data.last_name}? This cannot be undone.`,
             [
                 { text: 'Cancel', style: 'cancel' },
                 {
                     text: 'Remove',
                     style: 'destructive',
                     onPress: async () => {
+                        setDeleteError(null);
                         try {
                             const { error } = await supabase
                                 .from('sub_accounts')
-                                .delete()
+                                .update({ is_active: false, updated_at: new Date().toISOString() })
                                 .eq('id', account.id);
                             if (error) throw error;
                             setAccounts((prev) => prev.filter((a) => a.id !== account.id));
                         } catch (err: any) {
-                            Alert.alert('Error', err.message || 'Failed to remove sub-account');
+                            setDeleteError(err?.message || 'Failed to remove sub-account.');
                         }
                     },
                 },
@@ -266,7 +278,7 @@ export default function SubAccountsScreen({ navigation }: any) {
                 </TouchableOpacity>
                 <Text style={styles.headerTitle}>Sub-Accounts</Text>
                 {canAdd ? (
-                    <TouchableOpacity style={styles.addHeaderButton} onPress={handleOpenModal}>
+                    <TouchableOpacity style={styles.addHeaderButton} onPress={openAddModal}>
                         <Ionicons name="add" size={22} color={Colors.background} />
                     </TouchableOpacity>
                 ) : (
@@ -288,20 +300,41 @@ export default function SubAccountsScreen({ navigation }: any) {
                     />
                 }
             >
+                {/* Subtitle */}
+                <Text style={styles.pageSubtitle}>
+                    Manage profiles for family members ({accounts.length}/{MAX_SUB_ACCOUNTS} used)
+                </Text>
+
                 {/* Capacity indicator */}
                 {accounts.length > 0 && (
                     <View style={styles.capacityRow}>
-                        <Text style={styles.capacityLabel}>
-                            {accounts.length} of {MAX_SUB_ACCOUNTS} slots used
-                        </Text>
                         <View style={styles.capacityBarTrack}>
                             <View
                                 style={[
                                     styles.capacityBarFill,
-                                    { width: `${(accounts.length / MAX_SUB_ACCOUNTS) * 100}%` },
+                                    {
+                                        width: `${(accounts.length / MAX_SUB_ACCOUNTS) * 100}%`,
+                                        backgroundColor: accounts.length >= MAX_SUB_ACCOUNTS ? Colors.warning : Colors.primary,
+                                    },
                                 ]}
                             />
                         </View>
+                        {accounts.length >= MAX_SUB_ACCOUNTS && (
+                            <Text style={styles.capacityFull}>
+                                Maximum sub-accounts reached. Remove one to add another.
+                            </Text>
+                        )}
+                    </View>
+                )}
+
+                {/* Delete error toast */}
+                {deleteError && (
+                    <View style={styles.errorBanner}>
+                        <Ionicons name="close-circle" size={18} color={Colors.error} />
+                        <Text style={styles.errorBannerText}>{deleteError}</Text>
+                        <TouchableOpacity onPress={() => setDeleteError(null)}>
+                            <Ionicons name="close" size={16} color={Colors.error} />
+                        </TouchableOpacity>
                     </View>
                 )}
 
@@ -311,105 +344,135 @@ export default function SubAccountsScreen({ navigation }: any) {
                         <View style={styles.emptyIconWrap}>
                             <Ionicons name="people-outline" size={44} color={Colors.primary} />
                         </View>
-                        <Text style={styles.emptyTitle}>No sub-accounts yet</Text>
+                        <Text style={styles.emptyTitle}>No family members yet</Text>
                         <Text style={styles.emptyText}>
-                            Add family members or athletes you manage. Each sub-account can book sessions under your account.
+                            Add up to {MAX_SUB_ACCOUNTS} family members who can book sessions under your account.
                         </Text>
-                        <TouchableOpacity style={styles.emptyAddButton} onPress={handleOpenModal}>
+                        <Text style={styles.emptySubText}>
+                            All sessions booked by family members are billed to your account.
+                        </Text>
+                        <TouchableOpacity style={styles.emptyAddButton} onPress={openAddModal}>
                             <Ionicons name="add-circle-outline" size={20} color={Colors.background} />
-                            <Text style={styles.emptyAddButtonText}>Add Sub-Account</Text>
+                            <Text style={styles.emptyAddButtonText}>Add First Member</Text>
                         </TouchableOpacity>
+
+                        {/* Feature hints */}
+                        <View style={styles.featureHints}>
+                            {[
+                                { title: 'Shared Billing', desc: 'Billing goes to the parent account automatically.' },
+                                { title: 'Individual Profiles', desc: 'Each member has their own sport and skill settings.' },
+                                { title: 'Easy Booking', desc: 'Select a family member when booking a session.' },
+                            ].map((f) => (
+                                <View key={f.title} style={styles.featureHintCard}>
+                                    <Text style={styles.featureHintTitle}>{f.title}</Text>
+                                    <Text style={styles.featureHintDesc}>{f.desc}</Text>
+                                </View>
+                            ))}
+                        </View>
                     </View>
                 ) : (
                     <View style={styles.listContainer}>
-                        <Text style={styles.sectionLabel}>ACCOUNTS</Text>
                         {accounts.map((acc) => {
                             const pd = acc.profile_data;
                             return (
-                                <TouchableWithoutFeedback
-                                    key={acc.id}
-                                    onLongPress={() => handleLongPress(acc)}
-                                    delayLongPress={500}
-                                >
-                                    <View style={styles.accountCard}>
-                                        <AvatarGradient initials={getInitials(pd?.name || '?')} />
+                                <View key={acc.id} style={styles.accountCard}>
+                                    <View style={styles.accountCardTop}>
+                                        <AvatarGradient initials={getInitials(pd)} />
                                         <View style={styles.accountInfo}>
-                                            <View style={styles.accountNameRow}>
-                                                <Text style={styles.accountName}>{pd?.name}</Text>
-                                                <RoleBadge role={pd?.role ?? 'athlete'} />
-                                            </View>
-                                            {pd?.email ? (
-                                                <Text style={styles.accountEmail}>{pd.email}</Text>
+                                            <Text style={styles.accountName}>
+                                                {pd.first_name} {pd.last_name}
+                                            </Text>
+                                            {pd.age ? (
+                                                <Text style={styles.accountAge}>Age {pd.age}</Text>
                                             ) : (
-                                                <Text style={styles.accountEmailMuted}>No email set</Text>
+                                                <Text style={styles.accountAgeMuted}>No age set</Text>
                                             )}
-                                            {/* Extra info row */}
-                                            {(pd?.age || pd?.sport || pd?.skill_level) && (
-                                                <View style={styles.cardMetaRow}>
-                                                    {pd?.age != null && (
-                                                        <View style={styles.cardMetaBadge}>
-                                                            <Text style={styles.cardMetaBadgeText}>
-                                                                Age {pd.age}
-                                                            </Text>
-                                                        </View>
-                                                    )}
-                                                    {pd?.sport && (
-                                                        <View style={styles.cardSportChip}>
-                                                            <Text style={styles.cardSportChipText}>
-                                                                {getSportEmoji(pd.sport)} {pd.sport}
-                                                            </Text>
-                                                        </View>
-                                                    )}
-                                                    {pd?.skill_level && (
-                                                        <View style={styles.cardSkillBadge}>
-                                                            <Text style={styles.cardSkillBadgeText}>
-                                                                {pd.skill_level}
-                                                            </Text>
-                                                        </View>
-                                                    )}
-                                                </View>
-                                            )}
-                                            {pd?.notes ? (
-                                                <Text style={styles.cardNotesPreview} numberOfLines={1}>
-                                                    {pd.notes}
-                                                </Text>
-                                            ) : null}
                                         </View>
                                     </View>
-                                </TouchableWithoutFeedback>
+
+                                    {/* Tags */}
+                                    {(pd.sport || pd.skill_level) && (
+                                        <View style={styles.cardMetaRow}>
+                                            {pd.sport && (
+                                                <View style={styles.cardSportChip}>
+                                                    <Text style={styles.cardSportChipText}>
+                                                        {pd.sport.replace(/_/g, ' ')}
+                                                    </Text>
+                                                </View>
+                                            )}
+                                            {pd.skill_level && (
+                                                <View style={styles.cardSkillBadge}>
+                                                    <Text style={styles.cardSkillBadgeText}>
+                                                        {capitalize(pd.skill_level)}
+                                                    </Text>
+                                                </View>
+                                            )}
+                                        </View>
+                                    )}
+
+                                    {/* Notes */}
+                                    {pd.notes ? (
+                                        <View style={styles.notesContainer}>
+                                            <Text style={styles.notesLabel}>Notes</Text>
+                                            <Text style={styles.notesText} numberOfLines={2}>
+                                                {pd.notes}
+                                            </Text>
+                                        </View>
+                                    ) : null}
+
+                                    {/* Action buttons - Edit + Remove */}
+                                    <View style={styles.cardActions}>
+                                        <TouchableOpacity
+                                            style={styles.editBtn}
+                                            onPress={() => openEditModal(acc)}
+                                            activeOpacity={0.7}
+                                        >
+                                            <Ionicons name="create-outline" size={14} color={Colors.text} />
+                                            <Text style={styles.editBtnText}>Edit</Text>
+                                        </TouchableOpacity>
+                                        <TouchableOpacity
+                                            style={styles.removeBtn}
+                                            onPress={() => handleDelete(acc)}
+                                            activeOpacity={0.7}
+                                        >
+                                            <Ionicons name="trash-outline" size={14} color={Colors.error} />
+                                            <Text style={styles.removeBtnText}>Remove</Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                </View>
                             );
                         })}
-                        <Text style={styles.longPressHint}>Long press an account to remove it</Text>
                     </View>
                 )}
 
                 {/* Add button at bottom when list has items */}
                 {accounts.length > 0 && canAdd && (
-                    <TouchableOpacity style={styles.addButton} onPress={handleOpenModal}>
+                    <TouchableOpacity style={styles.addButton} onPress={openAddModal}>
                         <Ionicons name="add" size={20} color={Colors.background} />
-                        <Text style={styles.addButtonText}>Add Sub-Account</Text>
+                        <Text style={styles.addButtonText}>Add Member</Text>
                     </TouchableOpacity>
                 )}
             </ScrollView>
 
-            {/* Add Account Modal */}
+            {/* Add/Edit Account Modal */}
             <Modal visible={isModalVisible} transparent animationType="slide">
                 <KeyboardAvoidingView
                     behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
                     style={styles.modalOverlay}
                 >
-                    <TouchableWithoutFeedback onPress={handleCloseModal}>
+                    <TouchableWithoutFeedback onPress={resetForm}>
                         <View style={styles.modalBackdrop} />
                     </TouchableWithoutFeedback>
 
                     <View style={styles.modalContent}>
-                        {/* Modal handle */}
                         <View style={styles.modalHandle} />
 
                         <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
                             <View style={styles.modalHeader}>
-                                <Text style={styles.modalTitle}>New Sub-Account</Text>
-                                <TouchableOpacity onPress={handleCloseModal} style={styles.closeButton}>
+                                <Text style={styles.modalTitle}>
+                                    {editingId ? 'Edit Member' : 'Add Family Member'}
+                                </Text>
+                                <TouchableOpacity onPress={resetForm} style={styles.closeButton}>
                                     <Ionicons name="close" size={20} color={Colors.textSecondary} />
                                 </TouchableOpacity>
                             </View>
@@ -417,90 +480,46 @@ export default function SubAccountsScreen({ navigation }: any) {
                             {/* First Name */}
                             <Text style={styles.inputLabel}>First Name *</Text>
                             <TextInput
-                                style={styles.input}
-                                placeholder="e.g. Alex"
+                                style={[styles.input, formErrors.first_name ? styles.inputError : null]}
+                                placeholder="First name"
                                 placeholderTextColor={Colors.textTertiary}
                                 value={firstName}
-                                onChangeText={setFirstName}
+                                onChangeText={(t) => { setFirstName(t); setFormErrors((p) => ({ ...p, first_name: '' })); }}
                                 autoFocus
                                 autoCapitalize="words"
                             />
+                            {formErrors.first_name ? (
+                                <Text style={styles.fieldError}>{formErrors.first_name}</Text>
+                            ) : null}
 
                             {/* Last Name */}
-                            <Text style={styles.inputLabel}>Last Name</Text>
+                            <Text style={styles.inputLabel}>Last Name *</Text>
                             <TextInput
-                                style={styles.input}
-                                placeholder="e.g. Johnson"
+                                style={[styles.input, formErrors.last_name ? styles.inputError : null]}
+                                placeholder="Last name"
                                 placeholderTextColor={Colors.textTertiary}
                                 value={lastName}
-                                onChangeText={setLastName}
+                                onChangeText={(t) => { setLastName(t); setFormErrors((p) => ({ ...p, last_name: '' })); }}
                                 autoCapitalize="words"
                             />
-
-                            {/* Email */}
-                            <Text style={styles.inputLabel}>Email</Text>
-                            <TextInput
-                                style={styles.input}
-                                placeholder="e.g. alex@example.com"
-                                placeholderTextColor={Colors.textTertiary}
-                                value={email}
-                                onChangeText={setEmail}
-                                keyboardType="email-address"
-                                autoCapitalize="none"
-                            />
-
-                            {/* Role Picker */}
-                            <Text style={styles.inputLabel}>Role</Text>
-                            <View style={styles.rolePicker}>
-                                <TouchableOpacity
-                                    style={[styles.roleOption, role === 'athlete' && styles.roleOptionActive]}
-                                    onPress={() => setRole('athlete')}
-                                >
-                                    <Ionicons
-                                        name="fitness-outline"
-                                        size={18}
-                                        color={role === 'athlete' ? Colors.background : Colors.textSecondary}
-                                    />
-                                    <Text
-                                        style={[
-                                            styles.roleOptionText,
-                                            role === 'athlete' && styles.roleOptionTextActive,
-                                        ]}
-                                    >
-                                        Athlete
-                                    </Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                    style={[styles.roleOption, role === 'trainer' && styles.roleOptionActive]}
-                                    onPress={() => setRole('trainer')}
-                                >
-                                    <Ionicons
-                                        name="ribbon-outline"
-                                        size={18}
-                                        color={role === 'trainer' ? Colors.background : Colors.textSecondary}
-                                    />
-                                    <Text
-                                        style={[
-                                            styles.roleOptionText,
-                                            role === 'trainer' && styles.roleOptionTextActive,
-                                        ]}
-                                    >
-                                        Trainer
-                                    </Text>
-                                </TouchableOpacity>
-                            </View>
+                            {formErrors.last_name ? (
+                                <Text style={styles.fieldError}>{formErrors.last_name}</Text>
+                            ) : null}
 
                             {/* Age */}
                             <Text style={styles.inputLabel}>Age</Text>
                             <TextInput
-                                style={styles.input}
-                                placeholder="e.g. 12"
+                                style={[styles.input, formErrors.age ? styles.inputError : null]}
+                                placeholder="Age (optional)"
                                 placeholderTextColor={Colors.textTertiary}
                                 value={age}
-                                onChangeText={(text) => setAge(text.replace(/[^0-9]/g, ''))}
+                                onChangeText={(text) => { setAge(text.replace(/[^0-9]/g, '')); setFormErrors((p) => ({ ...p, age: '' })); }}
                                 keyboardType="number-pad"
                                 maxLength={2}
                             />
+                            {formErrors.age ? (
+                                <Text style={styles.fieldError}>{formErrors.age}</Text>
+                            ) : null}
 
                             {/* Primary Sport */}
                             <Text style={styles.inputLabel}>Primary Sport</Text>
@@ -511,24 +530,15 @@ export default function SubAccountsScreen({ navigation }: any) {
                                 contentContainerStyle={styles.sportScrollContent}
                             >
                                 {SPORTS_LIST.map((s) => {
-                                    const isActive = sport === s.label;
+                                    const isActive = sport === s;
                                     return (
                                         <TouchableOpacity
-                                            key={s.label}
-                                            style={[
-                                                styles.sportChip,
-                                                isActive && styles.sportChipActive,
-                                            ]}
-                                            onPress={() => setSport(isActive ? null : s.label)}
+                                            key={s}
+                                            style={[styles.sportChip, isActive && styles.sportChipActive]}
+                                            onPress={() => setSport(s)}
                                         >
-                                            <Text style={styles.sportChipEmoji}>{s.emoji}</Text>
-                                            <Text
-                                                style={[
-                                                    styles.sportChipText,
-                                                    isActive && styles.sportChipTextActive,
-                                                ]}
-                                            >
-                                                {s.label}
+                                            <Text style={[styles.sportChipText, isActive && styles.sportChipTextActive]}>
+                                                {capitalize(s)}
                                             </Text>
                                         </TouchableOpacity>
                                     );
@@ -543,19 +553,11 @@ export default function SubAccountsScreen({ navigation }: any) {
                                     return (
                                         <TouchableOpacity
                                             key={level}
-                                            style={[
-                                                styles.skillLevelButton,
-                                                isActive && styles.skillLevelButtonActive,
-                                            ]}
-                                            onPress={() => setSkillLevel(isActive ? null : level)}
+                                            style={[styles.skillLevelButton, isActive && styles.skillLevelButtonActive]}
+                                            onPress={() => setSkillLevel(level)}
                                         >
-                                            <Text
-                                                style={[
-                                                    styles.skillLevelText,
-                                                    isActive && styles.skillLevelTextActive,
-                                                ]}
-                                            >
-                                                {level}
+                                            <Text style={[styles.skillLevelText, isActive && styles.skillLevelTextActive]}>
+                                                {capitalize(level)}
                                             </Text>
                                         </TouchableOpacity>
                                     );
@@ -566,7 +568,7 @@ export default function SubAccountsScreen({ navigation }: any) {
                             <Text style={styles.inputLabel}>Notes</Text>
                             <TextInput
                                 style={[styles.input, styles.inputMultiline]}
-                                placeholder="Any injuries, allergies, or preferences..."
+                                placeholder="Injuries, preferences, or any special notes"
                                 placeholderTextColor={Colors.textTertiary}
                                 value={notes}
                                 onChangeText={setNotes}
@@ -575,33 +577,39 @@ export default function SubAccountsScreen({ navigation }: any) {
                                 textAlignVertical="top"
                             />
 
-                            {/* Max Bookings/Month */}
-                            <Text style={styles.inputLabel}>Max Bookings / Month</Text>
-                            <TextInput
-                                style={styles.input}
-                                placeholder="e.g. 4 (optional)"
-                                placeholderTextColor={Colors.textTertiary}
-                                value={maxBookings}
-                                onChangeText={(text) => setMaxBookings(text.replace(/[^0-9]/g, ''))}
-                                keyboardType="number-pad"
-                                maxLength={3}
-                            />
+                            {/* Save error */}
+                            {saveError && (
+                                <View style={styles.saveErrorBanner}>
+                                    <Ionicons name="close-circle" size={16} color={Colors.error} />
+                                    <Text style={styles.saveErrorText}>{saveError}</Text>
+                                </View>
+                            )}
 
-                            {/* Save Button */}
-                            <TouchableOpacity
-                                style={[styles.saveButton, (!firstName.trim() || isSaving) && styles.saveButtonDisabled]}
-                                onPress={handleAddAccount}
-                                disabled={!firstName.trim() || isSaving}
-                            >
-                                {isSaving ? (
-                                    <ActivityIndicator color={Colors.background} size="small" />
-                                ) : (
-                                    <>
-                                        <Ionicons name="checkmark-circle-outline" size={20} color={Colors.background} />
-                                        <Text style={styles.saveButtonText}>Create Account</Text>
-                                    </>
-                                )}
-                            </TouchableOpacity>
+                            {/* Action buttons */}
+                            <View style={styles.modalActions}>
+                                <TouchableOpacity
+                                    style={styles.cancelBtn}
+                                    onPress={resetForm}
+                                >
+                                    <Text style={styles.cancelBtnText}>Cancel</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={[
+                                        styles.saveButton,
+                                        (!firstName.trim() || !lastName.trim() || isSaving) && styles.saveButtonDisabled,
+                                    ]}
+                                    onPress={handleSave}
+                                    disabled={!firstName.trim() || !lastName.trim() || isSaving}
+                                >
+                                    {isSaving ? (
+                                        <ActivityIndicator color={Colors.background} size="small" />
+                                    ) : (
+                                        <Text style={styles.saveButtonText}>
+                                            {editingId ? 'Update Member' : 'Add Member'}
+                                        </Text>
+                                    )}
+                                </TouchableOpacity>
+                            </View>
                         </ScrollView>
                     </View>
                 </KeyboardAvoidingView>
@@ -673,15 +681,15 @@ const styles = StyleSheet.create({
         padding: Spacing.xxl,
         flexGrow: 1,
     },
+    pageSubtitle: {
+        fontSize: FontSize.sm,
+        color: Colors.textSecondary,
+        marginBottom: Spacing.lg,
+    },
 
     // Capacity bar
     capacityRow: {
-        marginBottom: Spacing.xl,
-        gap: Spacing.sm,
-    },
-    capacityLabel: {
-        fontSize: FontSize.sm,
-        color: Colors.textSecondary,
+        marginBottom: Spacing.lg,
     },
     capacityBarTrack: {
         height: 4,
@@ -691,8 +699,32 @@ const styles = StyleSheet.create({
     },
     capacityBarFill: {
         height: '100%',
-        backgroundColor: Colors.primary,
         borderRadius: BorderRadius.pill,
+    },
+    capacityFull: {
+        fontSize: FontSize.xs,
+        color: Colors.warning,
+        fontWeight: FontWeight.bold,
+        marginTop: Spacing.sm,
+    },
+
+    // Error banner
+    errorBanner: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.sm,
+        padding: Spacing.md,
+        backgroundColor: Colors.errorLight,
+        borderRadius: BorderRadius.md,
+        borderWidth: 1,
+        borderColor: 'rgba(255,23,68,0.2)',
+        marginBottom: Spacing.lg,
+    },
+    errorBannerText: {
+        flex: 1,
+        fontSize: FontSize.sm,
+        fontWeight: FontWeight.bold,
+        color: Colors.error,
     },
 
     // Empty state
@@ -700,8 +732,8 @@ const styles = StyleSheet.create({
         flex: 1,
         alignItems: 'center',
         justifyContent: 'center',
-        paddingVertical: 60,
-        gap: Spacing.lg,
+        paddingVertical: 40,
+        gap: Spacing.md,
     },
     emptyIconWrap: {
         width: 88,
@@ -725,6 +757,13 @@ const styles = StyleSheet.create({
         paddingHorizontal: Spacing.xl,
         lineHeight: 22,
     },
+    emptySubText: {
+        fontSize: FontSize.sm,
+        color: Colors.textTertiary,
+        textAlign: 'center',
+        paddingHorizontal: Spacing.xxl,
+        lineHeight: 20,
+    },
     emptyAddButton: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -740,29 +779,50 @@ const styles = StyleSheet.create({
         fontWeight: FontWeight.semibold,
         color: Colors.background,
     },
+    featureHints: {
+        width: '100%',
+        gap: Spacing.sm,
+        marginTop: Spacing.xl,
+    },
+    featureHintCard: {
+        backgroundColor: Colors.card,
+        borderRadius: BorderRadius.md,
+        borderWidth: 1,
+        borderColor: Colors.border,
+        padding: Spacing.lg,
+    },
+    featureHintTitle: {
+        fontSize: FontSize.xs,
+        fontWeight: FontWeight.bold,
+        color: Colors.textSecondary,
+        letterSpacing: 1,
+        textTransform: 'uppercase',
+        marginBottom: Spacing.xs,
+    },
+    featureHintDesc: {
+        fontSize: FontSize.xs,
+        color: Colors.textTertiary,
+        lineHeight: 18,
+    },
 
     // List
-    sectionLabel: {
-        fontSize: FontSize.xs,
-        fontWeight: FontWeight.semibold,
-        color: Colors.textTertiary,
-        letterSpacing: 1.2,
-        marginBottom: Spacing.md,
-    },
     listContainer: {
-        gap: Spacing.sm,
+        gap: Spacing.md,
         marginBottom: Spacing.xl,
     },
     accountCard: {
-        flexDirection: 'row',
-        alignItems: 'flex-start',
         backgroundColor: Colors.card,
         padding: Spacing.lg,
         borderRadius: BorderRadius.lg,
         borderWidth: 1,
         borderColor: Colors.border,
-        gap: Spacing.md,
         ...Shadows.small,
+    },
+    accountCardTop: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.md,
+        marginBottom: Spacing.md,
     },
 
     // Avatar
@@ -794,54 +854,37 @@ const styles = StyleSheet.create({
     // Account info
     accountInfo: {
         flex: 1,
-        gap: 3,
-    },
-    accountNameRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: Spacing.sm,
     },
     accountName: {
-        fontSize: FontSize.md,
-        fontWeight: FontWeight.semibold,
+        fontSize: FontSize.lg,
+        fontWeight: FontWeight.bold,
         color: Colors.text,
-        flex: 1,
     },
-    accountEmail: {
-        fontSize: FontSize.sm,
+    accountAge: {
+        fontSize: FontSize.xs,
         color: Colors.textSecondary,
+        letterSpacing: 1,
+        textTransform: 'uppercase',
+        marginTop: 2,
     },
-    accountEmailMuted: {
-        fontSize: FontSize.sm,
+    accountAgeMuted: {
+        fontSize: FontSize.xs,
         color: Colors.textTertiary,
         fontStyle: 'italic',
+        marginTop: 2,
     },
 
     // Card meta badges
     cardMetaRow: {
         flexDirection: 'row',
         flexWrap: 'wrap',
-        gap: Spacing.xs,
-        marginTop: Spacing.xs,
-    },
-    cardMetaBadge: {
-        backgroundColor: Colors.glass,
-        paddingHorizontal: Spacing.sm,
-        paddingVertical: 2,
-        borderRadius: BorderRadius.pill,
-        borderWidth: 1,
-        borderColor: Colors.glassBorder,
-    },
-    cardMetaBadgeText: {
-        fontSize: FontSize.xs,
-        color: Colors.textSecondary,
-        fontWeight: FontWeight.medium,
+        gap: Spacing.sm,
+        marginBottom: Spacing.md,
     },
     cardSportChip: {
         backgroundColor: Colors.primaryGlow,
-        paddingHorizontal: Spacing.sm,
-        paddingVertical: 2,
+        paddingHorizontal: Spacing.md,
+        paddingVertical: 4,
         borderRadius: BorderRadius.pill,
         borderWidth: 1,
         borderColor: Colors.borderActive,
@@ -849,54 +892,90 @@ const styles = StyleSheet.create({
     cardSportChipText: {
         fontSize: FontSize.xs,
         color: Colors.primary,
-        fontWeight: FontWeight.medium,
+        fontWeight: FontWeight.bold,
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
     },
     cardSkillBadge: {
-        backgroundColor: 'rgba(0, 71, 171, 0.2)',
-        paddingHorizontal: Spacing.sm,
-        paddingVertical: 2,
+        backgroundColor: Colors.glass,
+        paddingHorizontal: Spacing.md,
+        paddingVertical: 4,
         borderRadius: BorderRadius.pill,
+        borderWidth: 1,
+        borderColor: Colors.glassBorder,
     },
     cardSkillBadgeText: {
         fontSize: FontSize.xs,
-        color: '#7eb4ff',
+        color: Colors.textSecondary,
+        fontWeight: FontWeight.bold,
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
+    },
+
+    // Notes
+    notesContainer: {
+        backgroundColor: Colors.surface,
+        padding: Spacing.md,
+        borderRadius: BorderRadius.md,
+        borderWidth: 1,
+        borderColor: Colors.border,
+        marginBottom: Spacing.md,
+    },
+    notesLabel: {
+        fontSize: FontSize.xs,
+        color: Colors.textTertiary,
         fontWeight: FontWeight.medium,
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
+        marginBottom: 4,
     },
-    cardNotesPreview: {
-        fontSize: FontSize.xs,
-        color: Colors.textTertiary,
-        fontStyle: 'italic',
-        marginTop: Spacing.xs,
-    },
-
-    // Role badge
-    roleBadge: {
-        paddingHorizontal: 10,
-        paddingVertical: 4,
-        borderRadius: BorderRadius.pill,
-    },
-    roleBadgeAthlete: {
-        backgroundColor: Colors.primaryGlow,
-    },
-    roleBadgeTrainer: {
-        backgroundColor: 'rgba(0, 71, 171, 0.2)',
-    },
-    roleBadgeText: {
-        fontSize: FontSize.xs,
-        fontWeight: FontWeight.semibold,
-    },
-    roleBadgeTextAthlete: {
-        color: Colors.primary,
-    },
-    roleBadgeTextTrainer: {
-        color: '#7eb4ff',
+    notesText: {
+        fontSize: FontSize.sm,
+        color: Colors.textSecondary,
+        lineHeight: 20,
     },
 
-    longPressHint: {
+    // Card actions
+    cardActions: {
+        flexDirection: 'row',
+        gap: Spacing.sm,
+        borderTopWidth: 1,
+        borderTopColor: Colors.border,
+        paddingTop: Spacing.md,
+    },
+    editBtn: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: Spacing.xs,
+        paddingVertical: Spacing.sm,
+        borderRadius: BorderRadius.sm,
+        backgroundColor: Colors.glass,
+        borderWidth: 1,
+        borderColor: Colors.glassBorder,
+    },
+    editBtnText: {
         fontSize: FontSize.xs,
-        color: Colors.textTertiary,
-        textAlign: 'center',
-        marginTop: Spacing.sm,
+        fontWeight: FontWeight.bold,
+        color: Colors.text,
+    },
+    removeBtn: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: Spacing.xs,
+        paddingVertical: Spacing.sm,
+        borderRadius: BorderRadius.sm,
+        backgroundColor: Colors.errorLight,
+        borderWidth: 1,
+        borderColor: 'rgba(255,23,68,0.2)',
+    },
+    removeBtnText: {
+        fontSize: FontSize.xs,
+        fontWeight: FontWeight.bold,
+        color: Colors.error,
     },
 
     // Add button
@@ -981,41 +1060,19 @@ const styles = StyleSheet.create({
         fontSize: FontSize.md,
         marginBottom: Spacing.lg,
     },
+    inputError: {
+        borderColor: 'rgba(255,23,68,0.5)',
+    },
     inputMultiline: {
         minHeight: 80,
         paddingTop: Spacing.md,
     },
-
-    // Role picker
-    rolePicker: {
-        flexDirection: 'row',
-        gap: Spacing.md,
-        marginBottom: Spacing.xl,
-    },
-    roleOption: {
-        flex: 1,
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: Spacing.sm,
-        paddingVertical: Spacing.md,
-        borderRadius: BorderRadius.md,
-        borderWidth: 1.5,
-        borderColor: Colors.border,
-        backgroundColor: Colors.surface,
-    },
-    roleOptionActive: {
-        backgroundColor: Colors.primary,
-        borderColor: Colors.primary,
-    },
-    roleOptionText: {
-        fontSize: FontSize.md,
-        fontWeight: FontWeight.medium,
-        color: Colors.textSecondary,
-    },
-    roleOptionTextActive: {
-        color: Colors.background,
-        fontWeight: FontWeight.semibold,
+    fieldError: {
+        fontSize: FontSize.xs,
+        fontWeight: FontWeight.bold,
+        color: Colors.error,
+        marginTop: -Spacing.md,
+        marginBottom: Spacing.md,
     },
 
     // Sport selector
@@ -1027,10 +1084,7 @@ const styles = StyleSheet.create({
         paddingVertical: Spacing.xs,
     },
     sportChip: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: Spacing.xs,
-        paddingHorizontal: Spacing.md,
+        paddingHorizontal: Spacing.lg,
         paddingVertical: Spacing.sm,
         borderRadius: BorderRadius.pill,
         backgroundColor: Colors.glass,
@@ -1040,9 +1094,6 @@ const styles = StyleSheet.create({
     sportChipActive: {
         backgroundColor: Colors.primaryGlow,
         borderColor: Colors.primary,
-    },
-    sportChipEmoji: {
-        fontSize: 16,
     },
     sportChipText: {
         fontSize: FontSize.sm,
@@ -1084,23 +1135,62 @@ const styles = StyleSheet.create({
         fontWeight: FontWeight.semibold,
     },
 
-    // Save button
-    saveButton: {
+    // Save error
+    saveErrorBanner: {
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'center',
         gap: Spacing.sm,
-        backgroundColor: Colors.primary,
-        padding: Spacing.lg,
+        padding: Spacing.md,
+        backgroundColor: Colors.errorLight,
         borderRadius: BorderRadius.md,
+        borderWidth: 1,
+        borderColor: 'rgba(255,23,68,0.2)',
+        marginBottom: Spacing.lg,
+    },
+    saveErrorText: {
+        flex: 1,
+        fontSize: FontSize.xs,
+        fontWeight: FontWeight.bold,
+        color: Colors.error,
+    },
+
+    // Modal actions
+    modalActions: {
+        flexDirection: 'row',
+        gap: Spacing.md,
         marginTop: Spacing.sm,
     },
+    cancelBtn: {
+        flex: 1,
+        paddingVertical: Spacing.md,
+        borderRadius: BorderRadius.md,
+        borderWidth: 1,
+        borderColor: Colors.border,
+        backgroundColor: Colors.surface,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    cancelBtnText: {
+        fontSize: FontSize.md,
+        fontWeight: FontWeight.semibold,
+        color: Colors.textSecondary,
+    },
+
+    // Save button
+    saveButton: {
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: Colors.primary,
+        paddingVertical: Spacing.md,
+        borderRadius: BorderRadius.md,
+    },
     saveButtonDisabled: {
-        opacity: 0.45,
+        opacity: 0.4,
     },
     saveButtonText: {
-        color: Colors.background,
         fontSize: FontSize.md,
         fontWeight: FontWeight.bold,
+        color: Colors.background,
     },
 });

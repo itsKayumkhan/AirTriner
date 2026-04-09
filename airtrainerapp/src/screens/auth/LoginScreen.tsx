@@ -15,7 +15,6 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
-import { supabase } from '../../lib/supabase';
 import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows } from '../../theme';
 
 export default function LoginScreen({ navigation }: any) {
@@ -119,20 +118,7 @@ export default function LoginScreen({ navigation }: any) {
                         {/* Forgot Password */}
                         <TouchableOpacity
                             style={styles.forgotContainer}
-                            onPress={() => Alert.alert(
-                                'Reset Password',
-                                'Enter your email address and we will send you a reset link.',
-                                [
-                                    { text: 'Cancel', style: 'cancel' },
-                                    {
-                                        text: 'Send Reset Email',
-                                        onPress: async () => {
-                                            await supabase.auth.resetPasswordForEmail(email);
-                                            Alert.alert('Email Sent', 'Check your inbox for a password reset link.');
-                                        },
-                                    },
-                                ]
-                            )}
+                            onPress={() => navigation.navigate('ForgotPassword')}
                         >
                             <Text style={styles.forgotText}>Forgot Password?</Text>
                         </TouchableOpacity>
