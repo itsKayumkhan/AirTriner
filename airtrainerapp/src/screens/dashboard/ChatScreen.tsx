@@ -7,7 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase, MessageRow } from '../../lib/supabase';
 import { createNotification } from '../../lib/notifications';
-import { Colors, Spacing, BorderRadius, FontSize, FontWeight } from '../../theme';
+import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Layout } from '../../theme';
 
 // ---------- Date helpers (matching web) ----------
 function isToday(d: Date) {
@@ -453,7 +453,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         paddingHorizontal: Spacing.lg,
-        paddingTop: 56,
+        paddingTop: Layout.headerTopPadding,
         paddingBottom: Spacing.lg,
         backgroundColor: '#0A0D14',
         borderBottomWidth: 1,

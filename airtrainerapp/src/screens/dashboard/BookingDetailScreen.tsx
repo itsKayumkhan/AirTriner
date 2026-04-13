@@ -8,8 +8,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Calendar from 'expo-calendar';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
-import { createNotification } from '../../lib/notifications';
-import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows } from '../../theme';
+import { createNotification, scheduleRebookReminder } from '../../lib/notifications';
+import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows, Layout} from '../../theme';
 
 const STATUS_CONFIG: Record<string, { color: string; bg: string; icon: string; label: string }> = {
     pending:              { color: '#ffab00',       bg: 'rgba(255,171,0,0.15)',     icon: 'hourglass',        label: 'Pending' },
@@ -110,6 +110,14 @@ export default function BookingDetailScreen({ route, navigation }: any) {
     useEffect(() => {
         if (booking && booking.status === 'completed' && user?.role === 'athlete') {
             fetchExistingReview(booking.id);
+            // Schedule rebook reminder on athlete's device 3 days after session
+            if (booking.trainer) {
+                scheduleRebookReminder({
+                    bookingId: booking.id,
+                    trainerName: `${booking.trainer.first_name} ${booking.trainer.last_name}`,
+                    sport: booking.sport,
+                }).catch(() => { /* silent fail */ });
+            }
         }
     }, [booking, user, fetchExistingReview]);
 
@@ -1213,7 +1221,7 @@ export default function BookingDetailScreen({ route, navigation }: any) {
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#0A0D14' },
     center: { justifyContent: 'center', alignItems: 'center' },
-    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing.xxl, paddingTop: 60, paddingBottom: Spacing.lg, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.08)' },
+    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Layout.screenPadding, paddingTop: Layout.headerTopPadding, paddingBottom: Spacing.lg, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.08)' },
     backButton: { width: 44, height: 44, borderRadius: 14, backgroundColor: Colors.surface, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
     headerTitle: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: '#FFFFFF' },
     contentContainer: { padding: Spacing.xxl },

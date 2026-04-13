@@ -7,7 +7,7 @@ import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase, ReviewRow } from '../../lib/supabase';
-import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows } from '../../theme';
+import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows, Layout} from '../../theme';
 
 type ReviewWithUser = ReviewRow & {
     reviewer?: { first_name: string; last_name: string };
@@ -252,7 +252,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'space-between',
         paddingHorizontal: Spacing.xxl,
-        paddingTop: 60,
+        paddingTop: Layout.headerTopPadding,
         paddingBottom: Spacing.lg,
         borderBottomWidth: 1,
         borderBottomColor: Colors.border,

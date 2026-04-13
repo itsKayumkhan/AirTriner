@@ -7,7 +7,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase, TrainerProfileRow, UserRow, AthleteProfileRow } from '../../lib/supabase';
-import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows } from '../../theme';
+import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows, Layout} from '../../theme';
 import Founding50Badge from '../../components/Founding50Badge';
 
 // ─── Sport categories loaded from DB, with fallback ───
@@ -82,6 +82,7 @@ interface TrainerWithUser extends TrainerProfileRow {
     dispute_count: number;
     is_performance_verified: boolean;
     is_new: boolean;
+    is_top_rated: boolean;
     session_lengths?: number[];
     target_skill_levels?: string[];
     preferred_training_times?: string[];
@@ -301,6 +302,7 @@ export default function DiscoverScreen({ navigation }: any) {
                         dispute_count: disputeCount,
                         is_performance_verified: isPerformanceVerified,
                         is_new: isNew,
+                        is_top_rated: Number(p.average_rating) >= 4.8 && Number(p.total_reviews) >= 5,
                     } as TrainerWithUser;
                 });
 
@@ -492,6 +494,12 @@ export default function DiscoverScreen({ navigation }: any) {
                     {item.is_founding_50 && (
                         <View style={[styles.badge, styles.badgeFounding]}>
                             <Text style={[styles.badgeText, styles.badgeFoundingText]}>Founding 50</Text>
+                        </View>
+                    )}
+                    {item.is_top_rated && (
+                        <View style={[styles.badge, styles.badgeTopRated]}>
+                            <Ionicons name="star" size={9} color="#FF9500" />
+                            <Text style={[styles.badgeText, styles.badgeTopRatedText]}>TOP RATED</Text>
                         </View>
                     )}
                 </View>
@@ -971,7 +979,7 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         alignItems: 'center',
         paddingHorizontal: Spacing.xxl,
-        paddingTop: 60,
+        paddingTop: Layout.headerTopPadding,
         paddingBottom: Spacing.md,
     },
     headerTitle: {
@@ -1285,6 +1293,12 @@ const styles = StyleSheet.create({
     badgeFoundingText: {
         color: Colors.warning,
     },
+    badgeTopRated: {
+        backgroundColor: 'rgba(255,149,0,0.15)',
+    },
+    badgeTopRatedText: {
+        color: '#FF9500',
+    },
 
     // Sport tags
     sportTags: {
@@ -1352,7 +1366,7 @@ const styles = StyleSheet.create({
     // Empty state
     emptyState: {
         alignItems: 'center',
-        paddingTop: 60,
+        paddingTop: Layout.headerTopPadding,
         gap: Spacing.md,
     },
     emptyTitle: {

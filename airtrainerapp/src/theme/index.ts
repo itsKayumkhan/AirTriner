@@ -128,3 +128,8 @@ export const Shadows = {
         '0 0 12px rgba(69,208,255,0.3)'
     ),
 };
+
+export const Layout = {
+    screenPadding: Spacing.xxl,
+    headerTopPadding: Platform.OS === 'ios' ? 56 : 48,
+};

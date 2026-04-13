@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import {
     View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Switch, Image,
+    useWindowDimensions,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
@@ -9,6 +11,9 @@ import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows } from '..
 
 export default function ProfileScreen({ navigation }: any) {
     const { user, logout, refreshUser } = useAuth();
+    const insets = useSafeAreaInsets();
+    const { width: screenWidth } = useWindowDimensions();
+    const isSmallScreen = screenWidth < 380;
     const [notificationsEnabled, setNotificationsEnabled] = useState(true);
 
     useEffect(() => {
@@ -80,7 +85,7 @@ export default function ProfileScreen({ navigation }: any) {
     ];
 
     return (
-        <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer} showsVerticalScrollIndicator={false}>
+        <ScrollView style={styles.container} contentContainerStyle={[styles.contentContainer, { paddingTop: insets.top + 16, paddingHorizontal: isSmallScreen ? Spacing.lg : Spacing.xxl }]} showsVerticalScrollIndicator={false}>
             {/* Header / Profile Card */}
             <View style={styles.profileCard}>
                 {user?.avatarUrl ? (
@@ -285,7 +290,7 @@ export default function ProfileScreen({ navigation }: any) {
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#0A0D14' },
-    contentContainer: { paddingHorizontal: Spacing.xxl, paddingTop: 60, paddingBottom: 40 },
+    contentContainer: { paddingBottom: 40 },
     profileCard: { alignItems: 'center', marginBottom: Spacing.xxxl },
     avatarBg: { width: 88, height: 88, borderRadius: 28, justifyContent: 'center', alignItems: 'center', marginBottom: Spacing.lg, ...Shadows.glow },
     avatar: { width: 80, height: 80, borderRadius: 24, backgroundColor: '#0A0D14', justifyContent: 'center', alignItems: 'center' },

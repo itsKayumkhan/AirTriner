@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Spacing, BorderRadius, FontSize, FontWeight } from '../../theme';
+import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Layout} from '../../theme';
 
 export default function GenericPlaceholderScreen({ navigation, route }: any) {
     const title = route.name || 'Screen';
@@ -28,7 +28,7 @@ export default function GenericPlaceholderScreen({ navigation, route }: any) {
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: Colors.background },
-    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing.xxl, paddingTop: 60, paddingBottom: Spacing.lg, borderBottomWidth: 1, borderBottomColor: Colors.border },
+    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Layout.screenPadding, paddingTop: Layout.headerTopPadding, paddingBottom: Spacing.lg, borderBottomWidth: 1, borderBottomColor: Colors.border },
     backButton: { width: 44, height: 44, borderRadius: 14, backgroundColor: Colors.surface, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: Colors.border },
     headerTitle: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: Colors.text },
     contentContainer: { padding: Spacing.xxl },

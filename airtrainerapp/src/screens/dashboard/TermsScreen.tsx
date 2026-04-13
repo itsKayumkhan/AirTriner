@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Spacing, BorderRadius, FontSize, FontWeight } from '../../theme';
+import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Layout} from '../../theme';
 
 type Section = {
     heading: string;
@@ -113,7 +113,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'space-between',
         paddingHorizontal: Spacing.xxl,
-        paddingTop: 60,
+        paddingTop: Layout.headerTopPadding,
         paddingBottom: Spacing.lg,
         borderBottomWidth: 1,
         borderBottomColor: Colors.border,

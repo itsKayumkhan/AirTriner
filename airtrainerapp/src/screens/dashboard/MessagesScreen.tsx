@@ -6,7 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase, MessageRow, BookingRow, UserRow } from '../../lib/supabase';
-import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows } from '../../theme';
+import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows, Layout} from '../../theme';
 
 type ConversationItem = {
     bookingId: string;         // most recent booking id (for display/sending)
@@ -319,7 +319,7 @@ const styles = StyleSheet.create({
     center: { justifyContent: 'center', alignItems: 'center' },
     header: {
         paddingHorizontal: Spacing.xxl,
-        paddingTop: 60,
+        paddingTop: Layout.headerTopPadding,
         paddingBottom: Spacing.lg,
     },
     headerTitle: {
@@ -332,7 +332,7 @@ const styles = StyleSheet.create({
         color: Colors.textSecondary,
         marginTop: 2,
     },
-    listContent: { paddingHorizontal: Spacing.xxl, paddingBottom: 100 },
+    listContent: { paddingHorizontal: Layout.screenPadding, paddingBottom: 100 },
     convCard: {
         flexDirection: 'row',
         alignItems: 'center',

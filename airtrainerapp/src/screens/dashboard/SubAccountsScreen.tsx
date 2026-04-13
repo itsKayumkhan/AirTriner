@@ -17,7 +17,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
-import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows } from '../../theme';
+import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows, Layout} from '../../theme';
 
 const MAX_SUB_ACCOUNTS = 6;
 
@@ -634,7 +634,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'space-between',
         paddingHorizontal: Spacing.xxl,
-        paddingTop: 60,
+        paddingTop: Layout.headerTopPadding,
         paddingBottom: Spacing.lg,
         borderBottomWidth: 1,
         borderBottomColor: Colors.border,

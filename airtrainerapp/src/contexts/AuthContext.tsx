@@ -29,18 +29,21 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
     const [user, setUser] = useState<AuthUser | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const isManualAuthRef = React.useRef(false);
 
     useEffect(() => {
         // Check for existing session
         checkSession();
 
-        // Listen for auth state changes
+        // Listen for auth state changes — skip if login/register is handling it
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event) => {
             if (event === 'SIGNED_OUT') {
                 setUser(null);
-            } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-                const currentUser = await getCurrentUser();
-                setUser(currentUser);
+            } else if (event === 'TOKEN_REFRESHED') {
+                if (!isManualAuthRef.current) {
+                    const currentUser = await getCurrentUser();
+                    if (currentUser) setUser(currentUser);
+                }
             }
         });
 
@@ -51,7 +54,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const checkSession = async () => {
         try {
-            const currentUser = await getCurrentUser();
+            const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000));
+            const currentUser = await Promise.race([getCurrentUser(), timeout]);
             setUser(currentUser);
         } catch (error) {
             console.error('Session check failed:', error);
@@ -62,8 +66,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     const login = async (email: string, password: string) => {
-        const authUser = await loginUser(email, password);
-        setUser(authUser);
+        isManualAuthRef.current = true;
+        try {
+            const authUser = await loginUser(email, password);
+            setUser(authUser);
+        } finally {
+            isManualAuthRef.current = false;
+        }
     };
 
     const register = async (data: {
@@ -79,13 +88,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         state?: string;
         travelRadius?: number;
     }) => {
-        const authUser = await registerUser(data);
-        setUser(authUser);
+        isManualAuthRef.current = true;
+        try {
+            const authUser = await registerUser(data);
+            setUser(authUser);
+        } finally {
+            isManualAuthRef.current = false;
+        }
     };
 
     const logout = async () => {
-        await logoutUser();
-        setUser(null);
+        try {
+            await logoutUser();
+        } catch (e) {
+            console.error('[Logout] signOut error:', e);
+        } finally {
+            setUser(null);
+        }
     };
 
     const refreshUser = async () => {

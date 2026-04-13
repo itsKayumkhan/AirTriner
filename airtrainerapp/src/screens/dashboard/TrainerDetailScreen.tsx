@@ -7,8 +7,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase, ReviewRow, UserRow } from '../../lib/supabase';
-import { createNotification } from '../../lib/notifications';
-import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows } from '../../theme';
+import { createNotification, scheduleSessionReminder } from '../../lib/notifications';
+import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows, Layout} from '../../theme';
 import Founding50Badge from '../../components/Founding50Badge';
 
 const getDefaultDate = () => {
@@ -317,6 +317,17 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
                     title: 'New Booking Request!',
                     body: `${user!.firstName} ${user!.lastName} wants to book a ${selectedSport} session with you.`,
                     data: { bookingId: booking.id },
+                });
+
+                // Schedule a local reminder 24 hours before the session
+                const trainerDisplayName = trainer?.users
+                    ? `${trainer.users.first_name} ${trainer.users.last_name}`
+                    : `${trainer?.first_name || ''} ${trainer?.last_name || ''}`.trim() || 'your trainer';
+                await scheduleSessionReminder({
+                    bookingId: booking.id,
+                    scheduledAt: scheduledAt,
+                    trainerName: trainerDisplayName,
+                    sport: selectedSport,
                 });
             }
 
@@ -885,7 +896,7 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#0A0D14' },
-    scrollContent: { paddingHorizontal: Spacing.xxl, paddingTop: 56 },
+    scrollContent: { paddingHorizontal: Layout.screenPadding, paddingTop: Layout.headerTopPadding },
     backButton: { width: 40, height: 40, borderRadius: 12, backgroundColor: Colors.surface, justifyContent: 'center', alignItems: 'center', marginBottom: Spacing.xl },
     profileHeader: { alignItems: 'center', marginBottom: Spacing.xxxl },
     avatarGradient: { width: 100, height: 100, borderRadius: 32, justifyContent: 'center', alignItems: 'center', marginBottom: Spacing.lg, ...Shadows.glow },

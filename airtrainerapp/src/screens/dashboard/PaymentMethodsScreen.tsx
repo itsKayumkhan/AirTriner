@@ -13,7 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
-import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows } from '../../theme';
+import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows, Layout} from '../../theme';
 
 // ─── API URL ─────────────────────────────────────────────────────────────────
 
@@ -128,21 +128,38 @@ export default function PaymentMethodsScreen({ navigation }: any) {
     const fetchTransactions = useCallback(async () => {
         if (!user) return;
         try {
-            let query = supabase
-                .from('payment_transactions')
-                .select('*')
-                .order('created_at', { ascending: false })
-                .limit(20);
-
             if (isTrainer && trainerProfile?.id) {
-                query = query.eq('trainer_id', trainerProfile.id);
+                // Trainer: query directly by trainer_id
+                const { data, error } = await supabase
+                    .from('payment_transactions')
+                    .select('*')
+                    .eq('trainer_id', trainerProfile.id)
+                    .order('created_at', { ascending: false })
+                    .limit(20);
+                if (error) throw error;
+                setTransactions((data || []) as Transaction[]);
             } else {
-                query = query.eq('athlete_id', user.id);
-            }
+                // Athlete: payment_transactions doesn't have athlete_id,
+                // so query through bookings first
+                const { data: bookings } = await supabase
+                    .from('bookings')
+                    .select('id')
+                    .eq('athlete_id', user.id);
 
-            const { data, error } = await query;
-            if (error) throw error;
-            setTransactions((data || []) as Transaction[]);
+                if (bookings && bookings.length > 0) {
+                    const bookingIds = bookings.map((b: any) => b.id);
+                    const { data, error } = await supabase
+                        .from('payment_transactions')
+                        .select('*')
+                        .in('booking_id', bookingIds)
+                        .order('created_at', { ascending: false })
+                        .limit(20);
+                    if (error) throw error;
+                    setTransactions((data || []) as Transaction[]);
+                } else {
+                    setTransactions([]);
+                }
+            }
         } catch (err) {
             console.error('Error fetching transactions:', err);
             // Fall through with empty array — table may not exist yet
@@ -405,7 +422,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'space-between',
         paddingHorizontal: Spacing.xxl,
-        paddingTop: 60,
+        paddingTop: Layout.headerTopPadding,
         paddingBottom: Spacing.lg,
         borderBottomWidth: 1,
         borderBottomColor: Colors.border,

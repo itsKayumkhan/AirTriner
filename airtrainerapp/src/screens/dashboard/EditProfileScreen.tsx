@@ -5,7 +5,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
-import { Colors, Spacing, BorderRadius, FontSize, FontWeight } from '../../theme';
+import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Layout} from '../../theme';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 
@@ -67,6 +67,8 @@ export default function EditProfileScreen({ navigation }: any) {
     // Sports from DB
     const [sportsList, setSportsList] = useState<string[]>(FALLBACK_SPORTS);
     const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+    const [saveError, setSaveError] = useState<string | null>(null);
+    const [saveSuccess, setSaveSuccess] = useState(false);
 
     useEffect(() => {
         // Load sports from database
@@ -226,8 +228,10 @@ export default function EditProfileScreen({ navigation }: any) {
 
     const handleSave = async () => {
         if (!user) return;
+        setSaveError(null);
+        setSaveSuccess(false);
         if (!validate()) {
-            Alert.alert('Validation Error', 'Please fix the highlighted fields.');
+            setSaveError('Please fix the highlighted fields.');
             return;
         }
         setIsSaving(true);
@@ -287,11 +291,11 @@ export default function EditProfileScreen({ navigation }: any) {
             }
 
             await refreshUser();
-            Alert.alert('Success', 'Profile updated successfully.', [
-                { text: 'OK', onPress: () => navigation.goBack() },
-            ]);
+            setSaveSuccess(true);
+            setTimeout(() => navigation.goBack(), 1000);
         } catch (error: any) {
-            Alert.alert('Error', error.message || 'Failed to update profile');
+            console.error('[EditProfile] Save error:', error);
+            setSaveError(error?.message || 'Failed to update profile. Please try again.');
         } finally {
             setIsSaving(false);
         }
@@ -551,6 +555,19 @@ export default function EditProfileScreen({ navigation }: any) {
                     </View>
                 )}
 
+                {saveError && (
+                    <View style={styles.saveErrorBox}>
+                        <Ionicons name="alert-circle" size={18} color={Colors.error} />
+                        <Text style={styles.saveErrorText}>{saveError}</Text>
+                    </View>
+                )}
+                {saveSuccess && (
+                    <View style={styles.saveSuccessBox}>
+                        <Ionicons name="checkmark-circle" size={18} color={Colors.success} />
+                        <Text style={styles.saveSuccessText}>Profile saved successfully!</Text>
+                    </View>
+                )}
+
                 <TouchableOpacity
                     style={[styles.saveButton, (!firstName.trim() || isSaving) && styles.saveButtonDisabled]}
                     onPress={handleSave}
@@ -570,7 +587,7 @@ export default function EditProfileScreen({ navigation }: any) {
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: Colors.background },
-    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing.xxl, paddingTop: 60, paddingBottom: Spacing.lg, borderBottomWidth: 1, borderBottomColor: Colors.border },
+    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Layout.screenPadding, paddingTop: Layout.headerTopPadding, paddingBottom: Spacing.lg, borderBottomWidth: 1, borderBottomColor: Colors.border },
     backButton: { width: 44, height: 44, borderRadius: 14, backgroundColor: Colors.surface, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: Colors.border },
     headerTitle: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: Colors.text },
     contentContainer: { padding: Spacing.xxl },
@@ -648,6 +665,10 @@ const styles = StyleSheet.create({
         backgroundColor: Colors.border,
         justifyContent: 'center', alignItems: 'center',
     },
+    saveErrorBox: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, backgroundColor: Colors.errorLight, borderWidth: 1, borderColor: 'rgba(255,23,68,0.3)', borderRadius: BorderRadius.md, padding: Spacing.md, marginTop: Spacing.lg },
+    saveErrorText: { flex: 1, fontSize: FontSize.sm, color: Colors.error },
+    saveSuccessBox: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, backgroundColor: Colors.successLight, borderWidth: 1, borderColor: 'rgba(0,200,83,0.3)', borderRadius: BorderRadius.md, padding: Spacing.md, marginTop: Spacing.lg },
+    saveSuccessText: { flex: 1, fontSize: FontSize.sm, color: Colors.success },
     saveButton: { backgroundColor: Colors.primary, padding: Spacing.lg, borderRadius: BorderRadius.md, alignItems: 'center', marginTop: Spacing.xxl },
     saveButtonDisabled: { opacity: 0.5 },
     saveButtonText: { color: '#fff', fontSize: FontSize.md, fontWeight: FontWeight.bold },

@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
     View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl,
-    ActivityIndicator,
+    ActivityIndicator, useWindowDimensions,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { DrawerActions } from '@react-navigation/native';
@@ -16,6 +17,9 @@ type BookingWithOtherUser = BookingRow & {
 
 export default function AthleteDashboardScreen({ navigation }: any) {
     const { user } = useAuth();
+    const insets = useSafeAreaInsets();
+    const { width: screenWidth } = useWindowDimensions();
+    const isSmallScreen = screenWidth < 380;
     const [stats, setStats] = useState({
         totalBookings: 0,
         upcomingBookings: 0,
@@ -190,7 +194,7 @@ export default function AthleteDashboardScreen({ navigation }: any) {
     return (
         <ScrollView
             style={styles.container}
-            contentContainerStyle={styles.contentContainer}
+            contentContainerStyle={[styles.contentContainer, { paddingTop: insets.top + 16, paddingHorizontal: isSmallScreen ? Spacing.lg : Spacing.xxl }]}
             showsVerticalScrollIndicator={false}
             refreshControl={
                 <RefreshControl
@@ -202,16 +206,16 @@ export default function AthleteDashboardScreen({ navigation }: any) {
         >
             {/* Header */}
             <View style={styles.header}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.md }}>
+                <View style={styles.headerLeft}>
                     <TouchableOpacity
                         style={styles.menuButton}
                         onPress={() => navigation.dispatch(DrawerActions.openDrawer())}
                     >
                         <Ionicons name="menu-outline" size={24} color={Colors.text} />
                     </TouchableOpacity>
-                    <View>
+                    <View style={styles.headerTextContainer}>
                         <Text style={styles.dateText}>{today.toUpperCase()}</Text>
-                        <Text style={styles.headerTitle}>
+                        <Text style={[styles.headerTitle, isSmallScreen && { fontSize: FontSize.xl }]} numberOfLines={1}>
                             Good {getGreeting()},{' '}
                             <Text style={{ color: Colors.primary }}>{user?.firstName}</Text>
                         </Text>
@@ -222,7 +226,7 @@ export default function AthleteDashboardScreen({ navigation }: any) {
                     style={styles.notifButton}
                     onPress={() => navigation.navigate('Notifications')}
                 >
-                    <Ionicons name="notifications-outline" size={24} color={Colors.text} />
+                    <Ionicons name="notifications-outline" size={22} color={Colors.text} />
                 </TouchableOpacity>
             </View>
 
@@ -463,14 +467,23 @@ export default function AthleteDashboardScreen({ navigation }: any) {
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#0A0D14' },
     center: { justifyContent: 'center', alignItems: 'center' },
-    contentContainer: { paddingHorizontal: Spacing.xxl, paddingTop: 60 },
+    contentContainer: { paddingBottom: 20 },
 
     // Header
     header: {
         flexDirection: 'row',
         justifyContent: 'space-between',
-        alignItems: 'flex-start',
+        alignItems: 'center',
         marginBottom: Spacing.xxl,
+    },
+    headerLeft: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.md,
+        flex: 1,
+    },
+    headerTextContainer: {
+        flex: 1,
     },
     dateText: {
         fontSize: 10,

@@ -18,7 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
-import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows } from '../../theme';
+import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows, Layout} from '../../theme';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -31,6 +31,8 @@ type TrainingOffer = {
     sport: string | null;
     duration_minutes: number;
     is_active: boolean;
+    max_athletes: number | null;
+    athlete_count: number;
     created_at: string;
 };
 
@@ -40,6 +42,7 @@ type FormState = {
     price: string;
     sport: string;
     duration_minutes: string;
+    max_athletes: string;
 };
 
 type Athlete = {
@@ -72,6 +75,7 @@ const EMPTY_FORM: FormState = {
     price: '',
     sport: '',
     duration_minutes: '60',
+    max_athletes: '',
 };
 
 const SESSION_LENGTHS = [30, 45, 60, 90];
@@ -141,7 +145,21 @@ export default function TrainingOffersScreen({ navigation }: any) {
                 .order('created_at', { ascending: false });
 
             if (error) throw error;
-            setOffers((data || []) as TrainingOffer[]);
+            const offerList = (data || []) as TrainingOffer[];
+
+            // Auto-deactivate any offers that have reached their cap
+            const capsReached = offerList.filter(
+                (o) => o.is_active && o.max_athletes != null && (o.athlete_count ?? 0) >= o.max_athletes
+            );
+            if (capsReached.length > 0) {
+                await supabase
+                    .from('training_offers')
+                    .update({ is_active: false })
+                    .in('id', capsReached.map((o) => o.id));
+                capsReached.forEach((o) => { o.is_active = false; });
+            }
+
+            setOffers(offerList);
         } catch (err: any) {
             console.error('TrainingOffersScreen fetchOffers:', err);
             Alert.alert('Error', 'Could not load training offers.');
@@ -240,6 +258,7 @@ export default function TrainingOffersScreen({ navigation }: any) {
         }
         setIsSaving(true);
         try {
+            const maxAthletes = form.max_athletes.trim() ? parseInt(form.max_athletes, 10) : null;
             const { error } = await supabase.from('training_offers').insert({
                 trainer_id: trainerProfile.id,
                 title: form.title.trim(),
@@ -247,6 +266,8 @@ export default function TrainingOffersScreen({ navigation }: any) {
                 price: parseFloat(form.price),
                 sport: form.sport.trim() || null,
                 duration_minutes: parseInt(form.duration_minutes, 10),
+                max_athletes: maxAthletes,
+                athlete_count: 0,
                 is_active: true,
             });
             if (error) throw error;
@@ -830,10 +851,18 @@ function OfferCard({ offer, onLongPress }: { offer: TrainingOffer; onLongPress: 
                         <Ionicons name="time-outline" size={12} color={Colors.textSecondary} />
                         <Text style={styles.metaChipText}>{offer.duration_minutes} min</Text>
                     </View>
+                    {offer.max_athletes != null && (
+                        <View style={styles.metaChip}>
+                            <Ionicons name="people-outline" size={12} color={Colors.textSecondary} />
+                            <Text style={styles.metaChipText}>
+                                {offer.athlete_count ?? 0}/{offer.max_athletes}
+                            </Text>
+                        </View>
+                    )}
                     <View style={[styles.metaChip, { marginLeft: 'auto' }]}>
                         <View style={[styles.activeDot, { backgroundColor: offer.is_active ? Colors.success : Colors.textTertiary }]} />
                         <Text style={[styles.metaChipText, { color: offer.is_active ? Colors.success : Colors.textTertiary }]}>
-                            {offer.is_active ? 'Active' : 'Inactive'}
+                            {offer.is_active ? 'Active' : offer.max_athletes != null && (offer.athlete_count ?? 0) >= offer.max_athletes ? 'Full' : 'Inactive'}
                         </Text>
                     </View>
                 </View>
@@ -942,6 +971,17 @@ function CreateOfferModal({
                                 placeholder="e.g. Hockey, Basketball, Soccer"
                                 placeholderTextColor={Colors.textTertiary}
                                 autoCapitalize="words"
+                            />
+
+                            {/* Max Athletes Cap */}
+                            <FieldLabel label="Max Athletes (optional)" />
+                            <TextInput
+                                style={styles.input}
+                                value={form.max_athletes}
+                                onChangeText={(v) => onChange('max_athletes', v)}
+                                keyboardType="number-pad"
+                                placeholder="Leave blank for unlimited"
+                                placeholderTextColor={Colors.textTertiary}
                             />
 
                             {/* Save button */}
@@ -1091,7 +1131,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'space-between',
         paddingHorizontal: Spacing.xxl,
-        paddingTop: 60,
+        paddingTop: Layout.headerTopPadding,
         paddingBottom: Spacing.lg,
         borderBottomWidth: 1,
         borderBottomColor: Colors.border,

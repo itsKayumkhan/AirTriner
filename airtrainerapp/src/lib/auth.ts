@@ -11,31 +11,39 @@ export interface AuthUser {
     athleteProfile?: AthleteProfileRow | null;
 }
 
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+    return Promise.race([
+        promise,
+        new Promise<T>((_, reject) => setTimeout(() => reject(new Error(message)), ms)),
+    ]);
+}
+
 // Login with Supabase Auth
 export async function loginUser(email: string, password: string): Promise<AuthUser> {
     const cleanEmail = email.toLowerCase().trim();
 
-    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email: cleanEmail,
-        password,
-    });
+    const { data: authData, error: authError } = await withTimeout(
+        supabase.auth.signInWithPassword({ email: cleanEmail, password }),
+        10000,
+        'Login timed out. Please check your connection and try again.'
+    );
 
     if (authError || !authData.user) {
         throw new Error(authError?.message || 'Invalid email or password');
     }
 
-    let { data: user, error } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', authData.user.id)
-        .single();
+    let { data: user, error } = await withTimeout(
+        supabase.from('users').select('*').eq('id', authData.user.id).single(),
+        8000,
+        'Failed to load user profile. Please try again.'
+    );
 
     if (error || !user) {
-        const { data: fallbackUser } = await supabase
-            .from('users')
-            .select('*')
-            .eq('email', cleanEmail)
-            .single();
+        const { data: fallbackUser } = await withTimeout(
+            supabase.from('users').select('*').eq('email', cleanEmail).single(),
+            8000,
+            'Failed to load user profile. Please try again.'
+        );
 
         if (fallbackUser) {
             user = fallbackUser;

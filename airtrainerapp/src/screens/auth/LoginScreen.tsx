@@ -12,6 +12,7 @@ import {
     Alert,
     StatusBar,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
@@ -19,11 +20,13 @@ import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows } from '..
 
 export default function LoginScreen({ navigation }: any) {
     const { login } = useAuth();
+    const insets = useSafeAreaInsets();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
+    const [loginError, setLoginError] = useState<string | null>(null);
 
     const validate = () => {
         const newErrors: { email?: string; password?: string } = {};
@@ -36,11 +39,15 @@ export default function LoginScreen({ navigation }: any) {
 
     const handleLogin = async () => {
         if (!validate()) return;
+        setLoginError(null);
         setIsLoading(true);
         try {
+            console.log('[Login] Attempting login for:', email.trim().toLowerCase());
             await login(email, password);
+            console.log('[Login] Success');
         } catch (error: any) {
-            Alert.alert('Login Failed', error.message || 'Invalid credentials');
+            console.error('[Login] Error:', error?.message, error);
+            setLoginError(error?.message || 'Login failed. Please try again.');
         } finally {
             setIsLoading(false);
         }
@@ -54,7 +61,7 @@ export default function LoginScreen({ navigation }: any) {
                 style={styles.keyboardView}
             >
                 <ScrollView
-                    contentContainerStyle={styles.scrollContent}
+                    contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 20 }]}
                     showsVerticalScrollIndicator={false}
                     keyboardShouldPersistTaps="handled"
                 >
@@ -123,6 +130,14 @@ export default function LoginScreen({ navigation }: any) {
                             <Text style={styles.forgotText}>Forgot Password?</Text>
                         </TouchableOpacity>
 
+                        {/* Login Error */}
+                        {loginError && (
+                            <View style={styles.loginErrorBox}>
+                                <Ionicons name="alert-circle" size={18} color={Colors.error} />
+                                <Text style={styles.loginErrorText}>{loginError}</Text>
+                            </View>
+                        )}
+
                         {/* Login Button */}
                         <TouchableOpacity onPress={handleLogin} disabled={isLoading} activeOpacity={0.8}>
                             <LinearGradient
@@ -188,7 +203,6 @@ const styles = StyleSheet.create({
     scrollContent: {
         flexGrow: 1,
         paddingHorizontal: Spacing.xxl,
-        paddingTop: 60,
         paddingBottom: 40,
     },
     header: {
@@ -255,6 +269,22 @@ const styles = StyleSheet.create({
     },
     inputError: {
         borderColor: Colors.error,
+    },
+    loginErrorBox: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: Colors.errorLight,
+        borderWidth: 1,
+        borderColor: 'rgba(255,23,68,0.3)',
+        borderRadius: BorderRadius.md,
+        paddingHorizontal: Spacing.lg,
+        paddingVertical: Spacing.md,
+        gap: Spacing.sm,
+    },
+    loginErrorText: {
+        flex: 1,
+        fontSize: FontSize.sm,
+        color: Colors.error,
     },
     inputIcon: {
         marginRight: Spacing.md,

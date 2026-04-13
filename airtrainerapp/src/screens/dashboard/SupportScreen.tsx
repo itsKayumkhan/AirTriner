@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Spacing, BorderRadius, FontSize, FontWeight } from '../../theme';
+import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Layout} from '../../theme';
 
 type ContactItem = {
     label: string;
@@ -36,6 +36,22 @@ const CONTACTS: ContactItem[] = [
         iconColor: Colors.primary,
         iconBg: Colors.primaryGlow,
         onPress: () => Linking.openURL('https://twitter.com/airtrainr'),
+    },
+    {
+        label: 'Instagram',
+        value: '@AirTrainr',
+        icon: 'logo-instagram',
+        iconColor: '#E1306C',
+        iconBg: 'rgba(225, 48, 108, 0.12)',
+        onPress: () => Linking.openURL('https://instagram.com/airtrainr'),
+    },
+    {
+        label: 'Facebook',
+        value: 'AirTrainr',
+        icon: 'logo-facebook',
+        iconColor: '#1877F2',
+        iconBg: 'rgba(24, 119, 242, 0.12)',
+        onPress: () => Linking.openURL('https://facebook.com/airtrainr'),
     },
 ];
 
@@ -117,7 +133,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'space-between',
         paddingHorizontal: Spacing.xxl,
-        paddingTop: 60,
+        paddingTop: Layout.headerTopPadding,
         paddingBottom: Spacing.lg,
         borderBottomWidth: 1,
         borderBottomColor: Colors.border,

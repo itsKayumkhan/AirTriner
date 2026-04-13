@@ -5,7 +5,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase, BookingRow, UserRow } from '../../lib/supabase';
-import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows } from '../../theme';
+import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows, Layout} from '../../theme';
 
 type BookingWithUsers = BookingRow & {
     athlete: UserRow;
@@ -240,13 +240,13 @@ const styles = StyleSheet.create({
     center: { justifyContent: 'center', alignItems: 'center' },
 
     // Header
-    header: { paddingHorizontal: Spacing.xxl, paddingTop: 60, paddingBottom: Spacing.lg },
+    header: { paddingHorizontal: Layout.screenPadding, paddingTop: Layout.headerTopPadding, paddingBottom: Spacing.lg },
     headerTitle: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: '#FFFFFF' },
     headerSubtitle: { fontSize: FontSize.sm, color: Colors.textSecondary, marginTop: 2 },
 
     // Tabs
     tabsWrapper: { marginBottom: Spacing.md },
-    tabsContainer: { paddingHorizontal: Spacing.xxl, gap: Spacing.sm },
+    tabsContainer: { paddingHorizontal: Layout.screenPadding, gap: Spacing.sm },
     tab: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -280,7 +280,7 @@ const styles = StyleSheet.create({
     tabCountTextActive: { color: '#45D0FF' },
 
     // List
-    listContent: { paddingHorizontal: Spacing.xxl, paddingBottom: 100 },
+    listContent: { paddingHorizontal: Layout.screenPadding, paddingBottom: 100 },
 
     // Booking Card
     bookingCard: {

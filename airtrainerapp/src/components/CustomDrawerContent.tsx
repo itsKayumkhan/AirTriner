@@ -5,6 +5,7 @@ import {
     StyleSheet,
     TouchableOpacity,
     ScrollView,
+    Alert,
     Platform,
     Image,
 } from 'react-native';
@@ -88,15 +89,26 @@ export default function CustomDrawerContent(props: any) {
     const handleNavigation = (screen: string) => {
         navigation.closeDrawer();
         if (tabScreens.includes(screen)) {
-            navigation.navigate('Tabs', { screen });
+            // Navigate through Main stack into the nested Tab navigator
+            navigation.navigate('Main', { screen: 'Tabs', params: { screen } });
         } else {
-            navigation.navigate(screen);
+            // Navigate to a screen within the Main stack
+            navigation.navigate('Main', { screen });
         }
     };
 
-    const handleLogout = async () => {
-        navigation.closeDrawer();
-        await logout();
+    const handleLogout = () => {
+        Alert.alert('Logout', 'Are you sure you want to log out?', [
+            { text: 'Cancel', style: 'cancel' },
+            {
+                text: 'Logout',
+                style: 'destructive',
+                onPress: async () => {
+                    await logout();
+                    navigation.closeDrawer();
+                },
+            },
+        ]);
     };
 
     const getInitials = () => {

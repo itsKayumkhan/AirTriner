@@ -3,6 +3,7 @@ import {
     View, Text, TextInput, TouchableOpacity, StyleSheet,
     KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator, Alert, StatusBar,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
@@ -14,12 +15,14 @@ const SPORTS = [
     { name: 'Football', emoji: '🏈' }, { name: 'Tennis', emoji: '🎾' },
     { name: 'Golf', emoji: '⛳' }, { name: 'Swimming', emoji: '🏊' },
     { name: 'Boxing', emoji: '🥊' }, { name: 'Lacrosse', emoji: '🥍' },
+    { name: 'General Fitness', emoji: '💪' }, { name: 'Personal Training', emoji: '🏋️' },
 ];
 
 const SKILL_LEVELS = ['Beginner', 'Intermediate', 'Advanced', 'Pro'];
 
 export default function RegisterScreen({ navigation }: any) {
     const { register } = useAuth();
+    const insets = useSafeAreaInsets();
     const [step, setStep] = useState(1);
     const [isLoading, setIsLoading] = useState(false);
 
@@ -97,7 +100,7 @@ export default function RegisterScreen({ navigation }: any) {
         <View style={styles.container}>
             <StatusBar barStyle="light-content" backgroundColor={Colors.background} />
             <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
-                <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                <ScrollView contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 12 }]} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
                     {/* Back Button */}
                     {step > 1 ? (
                         <TouchableOpacity style={styles.backButton} onPress={() => setStep(step - 1)}>
@@ -377,7 +380,7 @@ export default function RegisterScreen({ navigation }: any) {
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#0A0D14' },
-    scrollContent: { flexGrow: 1, paddingHorizontal: Spacing.xxl, paddingTop: 50, paddingBottom: 40 },
+    scrollContent: { flexGrow: 1, paddingHorizontal: Spacing.xxl, paddingBottom: 40 },
     backButton: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#161B22', justifyContent: 'center', alignItems: 'center', marginBottom: Spacing.xl },
     progressContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: Spacing.xxxl, gap: 40, position: 'relative' },
     progressLine: { position: 'absolute', left: '20%', right: '20%', height: 2, backgroundColor: Colors.border, zIndex: -1 },

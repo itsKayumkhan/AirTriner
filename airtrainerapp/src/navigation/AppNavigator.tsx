@@ -315,7 +315,7 @@ export default function AppNavigator() {
     }
 
     return (
-        <NavigationContainer>
+        <NavigationContainer key={isAuthenticated ? 'app' : 'auth'}>
             {isAuthenticated ? <MainNavigator /> : <AuthNavigator />}
         </NavigationContainer>
     );

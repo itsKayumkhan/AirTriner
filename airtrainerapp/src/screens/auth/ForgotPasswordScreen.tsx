@@ -14,7 +14,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '../../lib/supabase';
-import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows } from '../../theme';
+import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows, Layout} from '../../theme';
 
 export default function ForgotPasswordScreen({ navigation }: any) {
     const [email, setEmail] = useState('');
@@ -177,7 +177,7 @@ const styles = StyleSheet.create({
     scrollContent: {
         flexGrow: 1,
         paddingHorizontal: Spacing.xxl,
-        paddingTop: 60,
+        paddingTop: Layout.headerTopPadding,
         paddingBottom: 40,
     },
     backButton: {

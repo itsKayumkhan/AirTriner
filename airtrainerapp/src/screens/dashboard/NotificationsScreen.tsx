@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
     View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator,
-    Modal, ScrollView, Alert,
+    Modal, ScrollView, Alert, useWindowDimensions,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase, NotificationRow } from '../../lib/supabase';
@@ -35,6 +36,7 @@ const getOfferIdFromNotification = (item: NotificationRow): string | null => {
 
 export default function NotificationsScreen({ navigation }: any) {
     const { user } = useAuth();
+    const insets = useSafeAreaInsets();
     const [notifications, setNotifications] = useState<NotificationRow[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -112,10 +114,27 @@ export default function NotificationsScreen({ navigation }: any) {
                     style: 'destructive',
                     onPress: async () => {
                         try {
-                            await supabase.from('notifications').delete().eq('user_id', user.id);
+                            // Delete all notifications for this user
+                            const { error } = await supabase
+                                .from('notifications')
+                                .delete()
+                                .eq('user_id', user.id);
+
+                            if (error) {
+                                console.error('Supabase delete error:', error);
+                                // Fallback: mark all as read instead of deleting
+                                await supabase
+                                    .from('notifications')
+                                    .update({ read: true })
+                                    .eq('user_id', user.id);
+                                Alert.alert('Note', 'Notifications were marked as read instead of deleted.');
+                            }
+
+                            // Always clear local state
                             setNotifications([]);
                         } catch (err) {
                             console.error('Failed to clear notifications:', err);
+                            Alert.alert('Error', 'Could not clear notifications. Please try again.');
                         }
                     },
                 },
@@ -266,22 +285,26 @@ export default function NotificationsScreen({ navigation }: any) {
 
     return (
         <View style={styles.container}>
-            <View style={styles.header}>
-                <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-                    <Ionicons name="arrow-back" size={24} color={Colors.text} />
-                </TouchableOpacity>
-                <View style={{ flex: 1 }}>
-                    <Text style={styles.headerTitle}>Notifications</Text>
-                    <Text style={styles.headerSubtitle}>{unreadCount} unread</Text>
+            <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
+                <View style={styles.headerTopRow}>
+                    <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+                        <Ionicons name="arrow-back" size={24} color={Colors.text} />
+                    </TouchableOpacity>
+                    <View style={styles.headerTitleContainer}>
+                        <Text style={styles.headerTitle}>Notifications</Text>
+                        <Text style={styles.headerSubtitle}>{unreadCount} unread</Text>
+                    </View>
                 </View>
                 <View style={styles.headerActions}>
                     {unreadCount > 0 && (
-                        <TouchableOpacity onPress={markAllAsRead}>
+                        <TouchableOpacity style={styles.headerActionBtn} onPress={markAllAsRead}>
+                            <Ionicons name="checkmark-done-outline" size={16} color="#45D0FF" />
                             <Text style={styles.markAllText}>Mark all read</Text>
                         </TouchableOpacity>
                     )}
                     {notifications.length > 0 && (
-                        <TouchableOpacity onPress={clearAllNotifications}>
+                        <TouchableOpacity style={styles.headerActionBtn} onPress={clearAllNotifications}>
+                            <Ionicons name="trash-outline" size={16} color={Colors.error} />
                             <Text style={styles.clearAllText}>Clear all</Text>
                         </TouchableOpacity>
                     )}
@@ -425,13 +448,16 @@ export default function NotificationsScreen({ navigation }: any) {
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#0A0D14' },
     center: { justifyContent: 'center', alignItems: 'center' },
-    header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.xxl, paddingTop: 56, paddingBottom: Spacing.lg },
-    backButton: { width: 40, height: 40, borderRadius: 12, backgroundColor: Colors.surface, justifyContent: 'center', alignItems: 'center', marginRight: Spacing.md },
+    header: { paddingHorizontal: Spacing.xxl, paddingBottom: Spacing.md, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.06)' },
+    headerTopRow: { flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.sm },
+    backButton: { width: 40, height: 40, borderRadius: 12, backgroundColor: Colors.surface, justifyContent: 'center', alignItems: 'center', marginRight: Spacing.md, borderWidth: 1, borderColor: Colors.border },
+    headerTitleContainer: { flex: 1 },
     headerTitle: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: '#FFFFFF' },
     headerSubtitle: { fontSize: FontSize.sm, color: Colors.textSecondary, marginTop: 2 },
     headerActions: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
-    markAllText: { fontSize: FontSize.sm, fontWeight: FontWeight.semibold, color: '#45D0FF' },
-    clearAllText: { fontSize: FontSize.sm, fontWeight: FontWeight.semibold, color: Colors.error },
+    headerActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6, paddingHorizontal: Spacing.md, borderRadius: BorderRadius.sm, backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)' },
+    markAllText: { fontSize: FontSize.xs, fontWeight: FontWeight.semibold, color: '#45D0FF' },
+    clearAllText: { fontSize: FontSize.xs, fontWeight: FontWeight.semibold, color: Colors.error },
     listContent: { paddingHorizontal: Spacing.xxl, paddingBottom: 40 },
     notifCard: { flexDirection: 'row', alignItems: 'flex-start', padding: Spacing.lg, backgroundColor: '#161B22', borderRadius: BorderRadius.lg, marginBottom: Spacing.sm, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
     notifCardUnread: { backgroundColor: 'rgba(69,208,255,0.04)', borderLeftWidth: 3, borderLeftColor: '#45D0FF' },

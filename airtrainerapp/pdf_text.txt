@@ -1,0 +1,264 @@
+--- PAGE 1 ---
+DIGITAL HEROES  AirTrainr — Project Scope Document  
+Prepared by Khushi Gupta  |  Digital Heroes  Page 1  
+DIGITAL HEROES  
+AirTrainr Platform  
+Project Scope Document  
+Full Scope Summary  —  Athlete & Trainer Marketplace  
+ 
+ 
+Prepared by:  Khushi Gupta  
+Agency:  Digital Heroes  |  portfolio.digitalheroes.co.in  
+Date:  March 24, 2026  
+Confidential  —  NDA Protected  
+1. Project Overview  
+Client  Eadie (eadie1989)  
+Developer / Agency  Digital Heroes  
+Product  AirTrainr — Athlete & Trainer Marketplace  
+Platforms  Web App (Website + Admin Panel)  +  Mobile App  
+Tech Stack  Next.js / Vercel + Supabase + Stripe / Stripe Connect  
+Payments  Stripe (athlete bills via 3% fee) + Stripe Connect (trainer payouts — 
+daily)  
+Live Preview URL  https://air -triner -web.vercel.app/  
+Domain  GoDaddy — developer access granted  
+Stripe Access  Developer Console access granted (mabtang1@gmail.com)  
+Slogan  Athletes Grow Here. Trainers Thrive Here.  
+Social — Instagram  https://www.instagram.com/airtrainr  
+Social — Facebook  https://www.facebook.com/share/1CkVaUNrM2/  
+Social — X (Twitter)  https://x.com/airtrainr  
+ 
+2. Project Background  
+AirTrainr is a two -sided marketplace platform that connects athletes of all ages and skill levels with 
+verified local sports trainers and coaches. Athletes can discover coaches by sport, location, skill 
+
+--- PAGE 2 ---
+DIGITAL HEROES  AirTrainr — Project Scope Document  
+Prepared by Khushi Gupta  |  Digital Heroes  Page 2 level, and availability; trainers can build a profess ional presence, accept bookings, and grow their 
+coaching business — all within one app.  
+Digital Heroes was engaged to design and build the full platform from scratch, covering the public -
+facing website, athlete and trainer onboarding flows, booking and ses sion management, payment 
+processing via Stripe, and an admin panel for platform management.  
+ 
+3. Tech Stack  
+Frontend  Next.js (React) — Vercel deployment  
+Backend & DB  Supabase (Postgres + Auth + Storage)  
+Mobile App  Built in parallel with web platform  
+Payments  Stripe (athlete billing) + Stripe Connect (trainer payouts)  
+Email Collection  Custom coming -soon page + Supabase database (GoDaddy domain 
+connected)  
+Admin Panel  Full transaction and athlete management dashboard  
+ 
+4. Athlete Onboarding Flow  
+Athletes sign up for free and are matched with verified local coaches based on their sport, 
+availability, and goals.  
+Steps:  
+1. Create Athlete Profile — enter age, sport, skill level, location, travel radius, and preferred 
+training times (morning / afternoon /  evening).  
+2. Set Training Preferences — choose session type: 1 -on-1 or group, skill -specific 
+development, strength & conditioning, pre -season or in -season training.  
+3. Get Matched With Verified Trainers — AirTrainr recommends trainers by sport, skill level, 
+availability, and distance.  
+4. Receive Training Offers — trainers send personalized offers including session types, pricing 
+packages, and available time slots.  
+5. Book a Session — select date, time, training location, and session length. Payment handled 
+securely in -app. 
+6. Train & Track Progress — rate and review trainers after sessions; view feedback, progress 
+notes, and rebook.  
+7. Stay Organised — instant notifications, calendar sync, training reminders, and preferred 
+time-of-day matching.  
+ 
+5. Trainer Onboarding Flow  
+Trainers create a verified professional profile, set their schedule and pricing, and begin receiving 
+matched athlete leads and booking requests.  
+
+--- PAGE 3 ---
+DIGITAL HEROES  AirTrainr — Project Scope Document  
+Prepared by Khushi Gupta  |  Digital Heroes  Page 3 Steps:  
+1. Create Trainer Account — full name, profile photo, sports coached, accreditations, coaching 
+style, travel range or facility address, availability, and pricing.  
+2. Verify Identity & Credentials — upload ID for identity verification, upload certifications 
+(optional, improves profile ranking), confirm Stripe Connect payment setup, and accept the 
+Trainer Agreement & Platform Policies.  
+3. Set Schedule & Pricing — available days, preferred training times (morning / afternoon / 
+evening), session lengths (30, 45, 60, 90 min), session type (private / semi -private / group), 
+and per -session or bundle pricing.  
+4. Get Matched With L ocal Athletes — notifications when new athletes in your area sign up or 
+request coaching, matched by sport, skill level, location, and travel radius.  
+5. Send Training Offers to Athletes — personalized session offers, intro specials, discounts, 
+flexible time s lots, and coaching notes. Option to limit offer to first N athletes (e.g., first 20) — 
+once the cap is reached the offer closes automatically.  
+6. Manage Bookings — confirm sessions, chat directly in -app, choose location (rink, field, gym, 
+facility), sync to c alendar, and receive reminders.  
+7. Get Paid Automatically — payment processed after session marked complete; payout via 
+Stripe Connect on a daily basis. Full financial tracking and downloadable reports available in 
+dashboard.  
+8. Build Your Coaching Business — ratings & reviews, in -app analytics, repeat session 
+recommendations, automated rebook reminders, and seasonal promotion tools.  
+ 
+6. Platform Features  
+6.1  Public Landing Page  
+• Slogan: "Athletes Grow Here. Trainers Thrive Here."  
+• Hero headline: "Connecting athletes with trusted local trainers — making it easier than ever 
+to find the right coach, right in your area, and elevate your performance."  
+• AirTrainr logo applied with matching brand color scheme  
+• "Sign up as a Trainer" CTA button for trainer registration  
+• How AirTrainr Works section — 3-step explanation for both Athletes and Trainers (see 
+Section 7)  
+• AirTrainr Advantage section — 6-point benefit breakdown for athletes (see Section 8)  
+• Sports category browser — all sports viewable on the landing page without requiring login  
+• Social media links: Instagram, Facebook, X (Twitter) — linked to AirTrainr's official accounts  
+• Footer branding: "AirTrainr" (not "AirTrainr Marketplace" or "AirTrainr Industries")  
+• Coming Soon / Email Capture page for pre -launch signups — connected to Supabase 
+database and GoDaddy domain  
+6.2  Athlete Features  
+• Free account creation  
+• Profile: age, sport, skill level, location, travel radius, preferred training times  
+• Training preference se lection: session type, training focus  
+• Trainer discovery: search by sport, location, skill level, and availability  
+
+--- PAGE 4 ---
+DIGITAL HEROES  AirTrainr — Project Scope Document  
+Prepared by Khushi Gupta  |  Digital Heroes  Page 4 • Trainer profiles: view experience, certifications, reviews, specialties, and pricing  
+• Receive and accept personalized training offers from trai ners 
+• Session booking: date, time, location, session length  
+• In-app messaging with trainer  
+• Post-session reviews and star ratings for trainers  
+• Progress tracking and session history  
+• Calendar sync and training reminders  
+• Payment: athlete pays 3% platform fee on top of trainer's billed amount; processed via Stripe  
+6.3  Trainer Features  
+• Professional profile page: name, photo, sports, certifications, coaching style, availability, 
+pricing  
+• Identity and credential verification (ID required; certifications improve searc h ranking)  
+• Stripe Connect setup for payment receipt  
+• Schedule management: available days, times, session lengths, session types  
+• Athlete matching and discovery notifications  
+• Proactive offer sending to athletes — with optional cap (e.g., first 20 athletes; offer closes 
+automatically once cap is reached)  
+• Offer types: personalized sessions, intro specials, discount packages, flexible time slots  
+• Booking management: confirm, resche dule, cancel  
+• In-app messaging with athletes  
+• Location management: rink, field, gym, facility  
+• Calendar sync and automated session reminders  
+• Post-session payout via Stripe Connect (daily)  
+• Analytics dashboard: bookings, earnings, client history  
+• Downloadable fi nancial reports (accounting / tax)  
+• Ratings and reviews from athletes  
+• Automated rebook reminders sent to athletes  
+• Seasonal promotions: pre -season, tryouts, camps  
+• Top-Rated badge earned through high reviews and active platform engagement  
+6.4  Founding 50 Pro gramme  
+• Special badge displayed on trainer profiles for the first 50 trainers who join  
+• Founding 50 trainers receive 6 months free subscription (instead of standard 7 -day trial)  
+• Badge and free subscription are manually assigned by the admin — not automatic  
+• Admin controls who receives Founding 50 status via the admin panel  
+• Once 50 trainers have been granted Founding 50 status, the offer is closed  
+6.5  Subscription & Pricing Model  
+Athlete Account  Free — athletes do not pay a subscription  
+Athlete Payment Fee  3% platform fee charged on top of each session bill (processed via 
+Stripe)  
+
+--- PAGE 5 ---
+DIGITAL HEROES  AirTrainr — Project Scope Document  
+Prepared by Khushi Gupta  |  Digital Heroes  Page 5 Trainer — Monthly  $25 / month  
+Trainer — Annual  $250 / year  
+Trainer — Trial  7-day free trial for standard sign -ups 
+Founding 50 Trainers  6 months free (manually granted by admin)  
+Trainer Payout  Daily payouts via Stripe Connect after sessions are marked complete  
+6.6  Payment Flow  
+• Athlete selects a trainer and books a session.  
+• Athlete is charged the trainer's session fee plus a 3% AirTrainr platform fee via Stripe.  
+• Payment is held in the platform's Stripe account.  
+• After the session is marked complete, the trainer's net amount (session fee minus any 
+applicable Stripe fees) is transferred to the trainer's Stripe Connect account on a daily basis.  
+• Trainers have full tran saction history and downloadable reports in their dashboard.  
+6.7  Admin Panel  
+• View and manage all athletes on the platform  
+• View and manage all trainers (including verification status)  
+• Assign and revoke Founding 50 badges and 6 -month free subscriptions  
+• View  all transactions and financial activity  
+• Platform -wide configuration and management  
+• Login credentials provided to client  
+6.8  Ad Space  
+• Sell advertising space on both the app and website  
+• Ad placements to be defined (banner ads, featured listings, sponsored search results — to 
+be scoped)  
+• Revenue stream in addition to platform fees and trainer subscriptions  
+ 
+7. How AirTrainr Works — Landing Page Copy  
+7.1  For Athletes  
+1. Search Local Trainers — Enter your sport and location to instantly see qualified trainers in 
+your area, complete with profiles, specialties, and reviews.  
+2. Choose the Right Coach — Compare experience, pricing, and training styles to find the 
+perfect match fo r your goals — whether you're improving skills, strength, or overall 
+performance.  
+3. Connect & Start Training — Message your trainer directly, book sessions, and begin your 
+development journey with personalised coaching that fits your schedule.  
+7.2  For Train ers 
+1. Create Your Trainer Profile — Set up your professional page with your experience, 
+certifications, specialties, pricing, and training locations so athletes can easily find you.  
+
+--- PAGE 6 ---
+DIGITAL HEROES  AirTrainr — Project Scope Document  
+Prepared by Khushi Gupta  |  Digital Heroes  Page 6 2. Get Discovered by Local Athletes — Athletes in your area search for coaches by sport and 
+skill level — your profile appears so the right clients can reach out directly.  
+3. Connect & Grow Your Business — Message athletes, book sessions, and manage clients all 
+in one place — expanding your reach and building a stronger training busines s with ease.  
+ 
+8. The AirTrainr Advantage — Landing Page Copy  
+Why AirTrainr Gives Athletes the Edge:  
+• Access to the Right Local Coaches — Instantly connected to trainers who specialise in your 
+sport, skill level, and goals. No more guessing or searching endl essly.  
+• Personalised, High -Quality Training — Every athlete gets coaching tailored specifically to 
+their needs, helping them improve faster and more efficiently.  
+• Faster Skill Development — With trainers who understand your sport, you learn the right 
+techniq ues, avoid bad habits, and progress quicker than training alone.  
+• Real, Verified Trainer Profiles — See experience, certifications, reviews, and specialties so 
+you always choose a coach you can trust.  
+• Saves Time and Simplifies Training — No more calling aro und or chasing referrals. Find, 
+compare, and contact trainers in minutes, all in one place.  
+• Built for Every Athlete — Not Just Pros — Whether you're just starting or chasing the next 
+level, AirTrainr connects you with a coach who fits your journey and pushes you forward.  
+ 
+9. Sports Supported  
+AirTrainr supports coaches and athletes across a wide r ange of sports, including:  
+• Hockey  
+• Baseball  
+• Soccer  
+• Basketball  
+• Golf 
+• General Fitness / Personal Training  
+• Additional sports can be added by the admin via the platform  
+Sport categories are browsable on the public landing page without requiring a login.  
+ 
+10. UI / UX & Design  
+• Brand color scheme matched to the AirTrainr logo  
+• AirTrainr logo applied across the website and app  
+• Correct spelling enforced throughout: "AirTrainr" (not "Airtrainer", "AirTrainer Industries", or 
+"AirTrainr Marketplace")  
+• Social media icons li nked to official AirTrainr Instagram, Facebook, and X (Twitter) pages  
+• Login page footer updated: "AirTrainr" only  
+
+--- PAGE 7 ---
+DIGITAL HEROES  AirTrainr — Project Scope Document  
+Prepared by Khushi Gupta  |  Digital Heroes  Page 7 • "View More Sports" on landing page does not redirect to login — all sports viewable without 
+authentication  
+• Coming Soon / email capture page redesigned: headline reads "Sign up today for early 
+insights to AirTrainr"  
+• Mobile app UI developed in parallel with website for consistent experience  
+ 
+11. Future Scope  
+• Ad space inventory management system (pricing, placemen ts, booking)  
+• Social media management services (3 –5 posts/week on Facebook & Instagram; 1 –2 
+reels/week — client enquired, to be scoped separately)  
+• Advanced trainer analytics and performance reporting  
+• In-app group session management  
+• Referral and affiliate programme  
+• Push notifications for mobile app  
+ 
+ 
+Prepared by:  Khushi Gupta  
+Agency:  Digital Heroes  |  portfolio.digitalheroes.co.in  
+Date:  March 24, 2026  
+— Confidential — NDA Protected — Digital Heroes — 
+

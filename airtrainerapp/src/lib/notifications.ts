@@ -5,15 +5,20 @@ import { Platform } from 'react-native';
 import { supabase } from './supabase';
 
 // Configure how notifications appear when app is in foreground
-Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-        shouldShowAlert: true,
-        shouldPlaySound: true,
-        shouldSetBadge: true,
-        shouldShowBanner: true,
-        shouldShowList: true,
-    }),
-});
+try {
+    Notifications.setNotificationHandler({
+        handleNotification: async () => ({
+            shouldShowAlert: true,
+            shouldPlaySound: true,
+            shouldSetBadge: true,
+            shouldShowBanner: true,
+            shouldShowList: true,
+        }),
+    });
+} catch (e) {
+    // Expo Go may not fully support notification handler
+    console.log('Notification handler setup skipped (Expo Go limitation)');
+}
 
 // Register for push notifications and store token
 export async function registerForPushNotifications(userId: string): Promise<string | null> {
@@ -36,7 +41,7 @@ export async function registerForPushNotifications(userId: string): Promise<stri
             return null;
         }
 
-        // Get Expo push token
+        // Get Expo push token — this will fail in Expo Go SDK 53+
         const projectId = Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
         const tokenData = await Notifications.getExpoPushTokenAsync({
             projectId,
@@ -75,8 +80,13 @@ export async function registerForPushNotifications(userId: string): Promise<stri
         }
 
         return token;
-    } catch (error) {
-        console.error('Error registering for push notifications:', error);
+    } catch (error: any) {
+        // Gracefully handle Expo Go limitations
+        if (error?.message?.includes('Expo Go') || error?.message?.includes('development build')) {
+            console.log('Push notifications not available in Expo Go. Use a development build.');
+        } else {
+            console.error('Error registering for push notifications:', error);
+        }
         return null;
     }
 }
@@ -119,7 +129,79 @@ export async function sendLocalNotification(params: {
             trigger: null, // Show immediately
         });
     } catch (error) {
-        console.error('Error sending local notification:', error);
+        // Silently fail — local notifications may not work in Expo Go
+    }
+}
+
+// Schedule a local reminder notification for an upcoming session
+export async function scheduleSessionReminder(params: {
+    bookingId: string;
+    scheduledAt: string; // ISO date string
+    trainerName: string;
+    sport: string;
+    reminderHoursBefore?: number;
+}): Promise<string | null> {
+    try {
+        const sessionDate = new Date(params.scheduledAt);
+        const hoursBefore = params.reminderHoursBefore ?? 24;
+        const triggerDate = new Date(sessionDate.getTime() - hoursBefore * 60 * 60 * 1000);
+
+        // Only schedule if reminder is in the future
+        if (triggerDate <= new Date()) return null;
+
+        const identifier = await Notifications.scheduleNotificationAsync({
+            content: {
+                title: 'Upcoming Session Reminder',
+                body: `Your ${params.sport} session with ${params.trainerName} is in ${hoursBefore} hours`,
+                data: { bookingId: params.bookingId, type: 'SESSION_REMINDER' },
+                sound: 'default',
+            },
+            trigger: {
+                type: Notifications.SchedulableTriggerInputTypes.DATE,
+                date: triggerDate,
+            },
+        });
+        return identifier;
+    } catch (error) {
+        // Silently fail — scheduled notifications may not work in Expo Go
+        return null;
+    }
+}
+
+// Cancel a scheduled session reminder by identifier
+export async function cancelSessionReminder(identifier: string): Promise<void> {
+    try {
+        await Notifications.cancelScheduledNotificationAsync(identifier);
+    } catch (error) {
+        // Silently fail
+    }
+}
+
+// Schedule a rebook reminder after session completion (sent 3 days later)
+export async function scheduleRebookReminder(params: {
+    bookingId: string;
+    trainerName: string;
+    sport: string;
+    delayDays?: number;
+}): Promise<void> {
+    try {
+        const delayDays = params.delayDays ?? 3;
+        const triggerDate = new Date(Date.now() + delayDays * 24 * 60 * 60 * 1000);
+
+        await Notifications.scheduleNotificationAsync({
+            content: {
+                title: 'Book Another Session',
+                body: `Ready to train again? Book your next ${params.sport} session with ${params.trainerName}!`,
+                data: { bookingId: params.bookingId, type: 'REBOOK_REMINDER' },
+                sound: 'default',
+            },
+            trigger: {
+                type: Notifications.SchedulableTriggerInputTypes.DATE,
+                date: triggerDate,
+            },
+        });
+    } catch (error) {
+        // Silently fail — scheduled notifications may not work in Expo Go
     }
 }
 
