@@ -17,6 +17,14 @@ export const metadata: Metadata = {
     "book training session",
     "sports marketplace",
   ],
+  icons: {
+    icon: [
+      { url: "/favicon.ico", sizes: "48x48" },
+      { url: "/icon-192x192.png", sizes: "192x192", type: "image/png" },
+    ],
+    apple: "/apple-touch-icon.png",
+  },
+  manifest: "/manifest.json",
   openGraph: {
     title: "AirTrainr | Find Your Perfect Sports Trainer",
     description:
@@ -24,12 +32,14 @@ export const metadata: Metadata = {
     type: "website",
     url: "https://airtrainr.com",
     siteName: "AirTrainr",
+    images: [{ url: "/og-image.jpg", width: 1200, height: 630, alt: "AirTrainr" }],
   },
   twitter: {
     card: "summary_large_image",
     title: "AirTrainr | Find Your Perfect Sports Trainer",
     description:
       "Connect with verified sports trainers near you. Book personalized sessions in 15+ sports.",
+    images: ["/og-image.jpg"],
   },
 };
 

@@ -4,18 +4,18 @@
   "description": "Find Your Perfect Sports Trainer",
   "start_url": "/dashboard",
   "display": "standalone",
-  "background_color": "#1A1D23",
-  "theme_color": "#A3FF12",
+  "background_color": "#0D0F17",
+  "theme_color": "#45D0FF",
   "icons": [
     {
-      "src": "/globe.svg",
+      "src": "/icon-192x192.png",
       "sizes": "192x192",
-      "type": "image/svg+xml"
+      "type": "image/png"
     },
     {
-      "src": "/globe.svg",
+      "src": "/icon-512x512.png",
       "sizes": "512x512",
-      "type": "image/svg+xml"
+      "type": "image/png"
     }
   ]
 }
