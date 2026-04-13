@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Download, Plus, FileText, CheckCircle, Search, XCircle, ChevronLeft, ChevronRight, UserCheck, Clock, Award, ExternalLink, ShieldCheck, ShieldX, X, Mail, Phone, MapPin, Calendar, CreditCard, Loader2, Activity, DollarSign } from "lucide-react";
+import { Download, Plus, FileText, CheckCircle, Search, XCircle, ChevronLeft, ChevronRight, UserCheck, Clock, Award, ExternalLink, ShieldCheck, ShieldX, X, Mail, Phone, MapPin, Calendar, CreditCard, Loader2, Activity, DollarSign, ImageIcon, Eye, Check } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { FoundingBadgeTooltip } from "@/components/ui/FoundingBadge";
@@ -29,6 +29,19 @@ export default function AdminTrainersPage() {
         isOpen: false, trainerId: null, trainerName: "", docs: [], isVerified: false, isDeclined: false
     });
     const [docsActionLoading, setDocsActionLoading] = useState(false);
+
+    // Image approval modal
+    const [imageModal, setImageModal] = useState<{
+        isOpen: boolean;
+        trainerId: string | null;
+        trainerName: string;
+        imageUrl: string | null;
+        status: "none" | "pending" | "approved" | "rejected";
+        rejectionReason: string | null;
+    }>({ isOpen: false, trainerId: null, trainerName: "", imageUrl: null, status: "none", rejectionReason: null });
+    const [imageActionLoading, setImageActionLoading] = useState(false);
+    const [rejectReasonInput, setRejectReasonInput] = useState("");
+    const [showRejectInput, setShowRejectInput] = useState(false);
 
     // Trainer Detail Modal
     const [trainerDetail, setTrainerDetail] = useState<{ isOpen: boolean; loading: boolean; data: any }>({ isOpen: false, loading: false, data: null });
@@ -58,7 +71,7 @@ export default function AdminTrainersPage() {
             const userIds = usersData.map(u => u.id);
             const { data: profilesData } = await supabase
                 .from("trainer_profiles")
-                .select("user_id, verification_status, sports, is_founding_50, verification_documents, latitude, longitude, city, state")
+                .select("user_id, verification_status, sports, is_founding_50, verification_documents, latitude, longitude, city, state, profile_image_url, profile_image_status, profile_image_rejection_reason")
                 .in("user_id", userIds);
             const profilesMap = new Map((profilesData || []).map(p => [p.user_id, p]));
 
@@ -85,6 +98,9 @@ export default function AdminTrainersPage() {
                     lng: profile?.longitude,
                     city: profile?.city,
                     state: profile?.state,
+                    profileImageUrl: profile?.profile_image_url || null,
+                    profileImageStatus: profile?.profile_image_status || "none",
+                    profileImageRejectionReason: profile?.profile_image_rejection_reason || null,
                 };
             }));
         } catch (err) {
@@ -113,6 +129,49 @@ export default function AdminTrainersPage() {
             isVerified: t.isVerified,
             isDeclined: t.isDeclined,
         });
+    };
+
+    const openImageModal = (t: any) => {
+        setImageModal({
+            isOpen: true,
+            trainerId: t.id,
+            trainerName: t.name,
+            imageUrl: t.profileImageUrl,
+            status: t.profileImageStatus,
+            rejectionReason: t.profileImageRejectionReason,
+        });
+        setRejectReasonInput("");
+        setShowRejectInput(false);
+    };
+
+    const handleImageAction = async (action: "approve" | "reject") => {
+        if (!imageModal.trainerId) return;
+        setImageActionLoading(true);
+        try {
+            const res = await fetch("/api/admin/approve-trainer-image", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    trainerId: imageModal.trainerId,
+                    action,
+                    ...(action === "reject" ? { reason: rejectReasonInput } : {}),
+                }),
+            });
+            const json = await res.json();
+            if (!res.ok) throw new Error(json.error);
+
+            await loadTrainers();
+            setImageModal(prev => ({
+                ...prev,
+                isOpen: false,
+            }));
+            setShowRejectInput(false);
+            setRejectReasonInput("");
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setImageActionLoading(false);
+        }
     };
 
     const handleDocsStatusUpdate = async (newStatus: "verified" | "rejected") => {
@@ -216,7 +275,8 @@ export default function AdminTrainersPage() {
         if (activeTab === "Verified" && !t.isVerified) return false;
         if (activeTab === "Declined" && !t.isDeclined) return false;
         if (activeTab === "Pending" && (t.isVerified || t.isDeclined)) return false;
-        
+        if (activeTab === "Image Approval" && t.profileImageStatus !== "pending") return false;
+
         const searchLower = searchQuery.toLowerCase();
         return !searchQuery || t.name.toLowerCase().includes(searchLower) || t.email.toLowerCase().includes(searchLower);
     });
@@ -320,7 +380,7 @@ export default function AdminTrainersPage() {
                 </div>
 
                 <div className="flex bg-[#12141A] border border-white/5 rounded-full p-1.5 w-full md:w-auto overflow-x-auto scrollbar-none">
-                    {["Pending", "Verified", "Declined"].map(tab => (
+                    {["Pending", "Verified", "Declined", "Image Approval"].map(tab => (
                         <button
                             key={tab}
                             onClick={() => {
@@ -403,7 +463,7 @@ export default function AdminTrainersPage() {
                                         </div>
                                     </td>
                                     <td className="px-6 py-5">
-                                        <div className="flex items-center gap-2">
+                                        <div className="flex items-center gap-2 flex-wrap">
                                             {t.isVerified ? (
                                                 <span className="flex items-center justify-center px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border bg-green-500/10 text-green-500 border-green-500/20">
                                                     Verified
@@ -416,6 +476,21 @@ export default function AdminTrainersPage() {
                                                 <span className="flex items-center justify-center px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border bg-orange-500/10 text-orange-500 border-orange-500/20">
                                                     Pending
                                                 </span>
+                                            )}
+                                            {t.profileImageStatus && t.profileImageStatus !== "none" && (
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); openImageModal(t); }}
+                                                    className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border cursor-pointer transition-all hover:opacity-80 ${
+                                                        t.profileImageStatus === "pending"
+                                                            ? "bg-amber-500/10 text-amber-500 border-amber-500/20"
+                                                            : t.profileImageStatus === "approved"
+                                                            ? "bg-green-500/10 text-green-500 border-green-500/20"
+                                                            : "bg-red-500/10 text-red-500 border-red-500/20"
+                                                    }`}
+                                                >
+                                                    <ImageIcon size={10} />
+                                                    Image: {t.profileImageStatus}
+                                                </button>
                                             )}
                                         </div>
                                     </td>
@@ -690,6 +765,123 @@ export default function AdminTrainersPage() {
                                 </div>
                             );
                         })()}
+                    </div>
+                </div>
+            )}
+
+            {/* Image Approval Modal */}
+            {imageModal.isOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+                    <div className="bg-[#1A1C23] border border-white/10 rounded-[24px] shadow-2xl w-full max-w-lg animate-in fade-in zoom-in-95 duration-200">
+                        {/* Modal Header */}
+                        <div className="flex items-center justify-between p-6 border-b border-white/5">
+                            <div>
+                                <h3 className="text-lg font-black text-white uppercase tracking-wider">Profile Image Review</h3>
+                                <p className="text-xs text-text-main/50 font-medium mt-0.5">{imageModal.trainerName}</p>
+                            </div>
+                            <button
+                                onClick={() => { setImageModal(prev => ({ ...prev, isOpen: false })); setShowRejectInput(false); setRejectReasonInput(""); }}
+                                className="p-2 rounded-xl text-text-main/50 hover:text-white hover:bg-white/5 transition-all"
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        {/* Current status badge */}
+                        <div className="px-6 pt-4 flex items-center gap-2">
+                            <span className="text-[10px] font-black uppercase tracking-widest text-text-main/40">Current Status:</span>
+                            {imageModal.status === "approved" ? (
+                                <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-green-500/10 text-green-400 border border-green-500/20">Approved</span>
+                            ) : imageModal.status === "rejected" ? (
+                                <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-red-500/10 text-red-400 border border-red-500/20">Rejected</span>
+                            ) : (
+                                <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-amber-500/10 text-amber-400 border border-amber-500/20">Pending Review</span>
+                            )}
+                        </div>
+
+                        {/* Image preview */}
+                        <div className="p-6">
+                            {imageModal.imageUrl ? (
+                                <div className="flex justify-center">
+                                    <img
+                                        src={imageModal.imageUrl}
+                                        alt={`${imageModal.trainerName} profile`}
+                                        className="w-[400px] h-[400px] object-cover rounded-xl border border-white/10"
+                                    />
+                                </div>
+                            ) : (
+                                <div className="flex flex-col items-center justify-center py-10 border border-dashed border-white/10 rounded-xl text-center">
+                                    <ImageIcon size={28} className="text-text-main/20 mb-3" />
+                                    <p className="text-text-main/40 text-sm font-medium">No image uploaded</p>
+                                </div>
+                            )}
+
+                            {imageModal.rejectionReason && imageModal.status === "rejected" && (
+                                <div className="mt-4 p-3 bg-red-500/10 border border-red-500/20 rounded-xl">
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-red-400 mb-1">Rejection Reason</p>
+                                    <p className="text-text-main/80 text-sm font-medium">{imageModal.rejectionReason}</p>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Reject reason input */}
+                        {showRejectInput && (
+                            <div className="px-6 pb-4 space-y-3">
+                                <input
+                                    type="text"
+                                    placeholder="Enter rejection reason..."
+                                    value={rejectReasonInput}
+                                    onChange={e => setRejectReasonInput(e.target.value)}
+                                    className="w-full bg-[#12141A] border border-white/10 rounded-xl px-4 py-3 text-sm font-medium text-text-main focus:outline-none focus:ring-1 focus:ring-red-500/50 transition-all"
+                                />
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={() => handleImageAction("reject")}
+                                        disabled={imageActionLoading || !rejectReasonInput.trim()}
+                                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-black uppercase tracking-widest hover:bg-red-500/20 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                                    >
+                                        {imageActionLoading ? (
+                                            <div className="w-4 h-4 border-2 border-red-400 border-t-transparent rounded-full animate-spin" />
+                                        ) : (
+                                            <ShieldX size={14} />
+                                        )}
+                                        Confirm Reject
+                                    </button>
+                                    <button
+                                        onClick={() => { setShowRejectInput(false); setRejectReasonInput(""); }}
+                                        className="px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-text-main/60 text-xs font-black uppercase tracking-widest hover:bg-white/10 transition-all"
+                                    >
+                                        Cancel
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Approve / Reject actions */}
+                        {!showRejectInput && (
+                            <div className="p-6 pt-0 flex gap-3">
+                                <button
+                                    onClick={() => handleImageAction("approve")}
+                                    disabled={imageActionLoading || imageModal.status === "approved"}
+                                    className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-green-500/10 border border-green-500/20 text-green-400 text-xs font-black uppercase tracking-widest hover:bg-green-500/20 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                                >
+                                    {imageActionLoading ? (
+                                        <div className="w-4 h-4 border-2 border-green-400 border-t-transparent rounded-full animate-spin" />
+                                    ) : (
+                                        <ShieldCheck size={15} />
+                                    )}
+                                    {imageModal.status === "approved" ? "Already Approved" : "Approve"}
+                                </button>
+                                <button
+                                    onClick={() => setShowRejectInput(true)}
+                                    disabled={imageActionLoading || imageModal.status === "rejected"}
+                                    className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-black uppercase tracking-widest hover:bg-red-500/20 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                                >
+                                    <ShieldX size={15} />
+                                    {imageModal.status === "rejected" ? "Already Rejected" : "Reject"}
+                                </button>
+                            </div>
+                        )}
                     </div>
                 </div>
             )}

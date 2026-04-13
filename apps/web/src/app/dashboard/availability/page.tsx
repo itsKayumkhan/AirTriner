@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { getSession, AuthUser } from "@/lib/auth";
 import { supabase, BookingRow } from "@/lib/supabase";
-import { Plus, X, CheckCircle2, Circle, Clock } from "lucide-react";
+import { Plus, X, CheckCircle2, Circle, Clock, CalendarDays, List } from "lucide-react";
 
 interface AvailabilitySlot {
     id: string;
@@ -14,8 +14,25 @@ interface AvailabilitySlot {
     is_blocked: boolean;
 }
 
+interface RecurringDay {
+    day_of_week: number;
+    start_time: string;
+    end_time: string;
+    is_active: boolean;
+}
+
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const DURATIONS = [30, 45, 60] as const;
+
+/** Returns true if the Supabase error indicates the table does not exist. */
+function isTableMissingError(err: unknown): boolean {
+    if (!err || typeof err !== "object") return false;
+    const e = err as Record<string, unknown>;
+    const code = e.code as string | undefined;
+    const msg = (e.message as string | undefined) ?? "";
+    // PostgreSQL error code 42P01 = undefined_table
+    return code === "42P01" || msg.toLowerCase().includes("does not exist") || msg.toLowerCase().includes("relation");
+}
 
 function addMinutes(time: string, mins: number): string {
     const [h, m] = time.split(":").map(Number);
@@ -39,6 +56,11 @@ function to12h(t: string): string {
     return `${h}:${m} ${ampm}`;
 }
 
+function timeToMinutes(t: string): number {
+    const [h, m] = t.split(":").map(Number);
+    return h * 60 + m;
+}
+
 export default function AvailabilityPage() {
     const [user, setUser] = useState<AuthUser | null>(null);
     const [slots, setSlots] = useState<AvailabilitySlot[]>([]);
@@ -47,6 +69,19 @@ export default function AvailabilityPage() {
     const [saving, setSaving] = useState(false);
     const [saved, setSaved] = useState(false);
     const [error, setError] = useState("");
+
+    // Mode toggle
+    const [mode, setMode] = useState<"recurring" | "per_slot">("per_slot");
+
+    // Recurring availability state
+    const [recurring, setRecurring] = useState<RecurringDay[]>(
+        Array.from({ length: 7 }, (_, i) => ({ day_of_week: i, start_time: "09:00", end_time: "17:00", is_active: false }))
+    );
+    const [recurringSaving, setRecurringSaving] = useState(false);
+    const [recurringSaved, setRecurringSaved] = useState(false);
+
+    // Whether the recurring table exists (graceful degradation)
+    const [recurringTableAvailable, setRecurringTableAvailable] = useState(true);
 
     // New slot form — duration-based
     const [newSlot, setNewSlot] = useState({ day: 1, start: "09:00", duration: 30 as number });
@@ -58,8 +93,58 @@ export default function AvailabilityPage() {
         if (session) {
             setUser(session);
             loadSlots(session);
+            loadRecurring(session);
         }
     }, []);
+
+    const loadRecurring = async (u: AuthUser) => {
+        try {
+            if (!u.trainerProfile?.id) return;
+
+            const { data, error: fetchError } = await supabase
+                .from("availability_recurring")
+                .select("*")
+                .eq("trainer_id", u.trainerProfile.id)
+                .order("day_of_week");
+
+            if (fetchError) {
+                if (isTableMissingError(fetchError)) {
+                    console.info("availability_recurring table not found, using fallback per-slot mode");
+                    setRecurringTableAvailable(false);
+                    return;
+                }
+                throw fetchError;
+            }
+
+            if (data && data.length > 0) {
+                // Merge fetched rows into the 7-day state
+                setRecurring((prev) =>
+                    prev.map((day) => {
+                        const match = (data as Array<{ day_of_week: number; start_time: string; end_time: string; is_active: boolean }>).find(
+                            (r) => r.day_of_week === day.day_of_week
+                        );
+                        if (match) {
+                            return {
+                                day_of_week: match.day_of_week,
+                                start_time: match.start_time.slice(0, 5),
+                                end_time: match.end_time.slice(0, 5),
+                                is_active: match.is_active,
+                            };
+                        }
+                        return day;
+                    })
+                );
+                setMode("recurring");
+            }
+        } catch (err) {
+            if (isTableMissingError(err)) {
+                console.info("availability_recurring table not found, using fallback per-slot mode");
+                setRecurringTableAvailable(false);
+            } else {
+                console.error("Failed to load recurring availability:", err);
+            }
+        }
+    };
 
     const loadSlots = async (u: AuthUser) => {
         try {
@@ -179,6 +264,56 @@ export default function AvailabilityPage() {
         }
     };
 
+    const updateRecurringDay = (dayIndex: number, field: keyof RecurringDay, value: string | boolean) => {
+        setRecurring((prev) =>
+            prev.map((d) =>
+                d.day_of_week === dayIndex ? { ...d, [field]: value } : d
+            )
+        );
+    };
+
+    const saveRecurring = async () => {
+        if (!user?.trainerProfile?.id) {
+            setError("Trainer profile not found. Please setup your profile first.");
+            return;
+        }
+
+        // Validate: for active days, end must be after start
+        for (const day of recurring) {
+            if (day.is_active && timeToMinutes(day.end_time) <= timeToMinutes(day.start_time)) {
+                setError(`${DAYS[day.day_of_week]}: End time must be after start time.`);
+                return;
+            }
+        }
+
+        setError("");
+        setRecurringSaving(true);
+        try {
+            const rows = recurring.map((d) => ({
+                trainer_id: user.trainerProfile!.id,
+                day_of_week: d.day_of_week,
+                start_time: d.start_time,
+                end_time: d.end_time,
+                is_active: d.is_active,
+                updated_at: new Date().toISOString(),
+            }));
+
+            const { error: upsertError } = await supabase
+                .from("availability_recurring")
+                .upsert(rows, { onConflict: "trainer_id,day_of_week" });
+
+            if (upsertError) throw upsertError;
+
+            setRecurringSaved(true);
+            setTimeout(() => setRecurringSaved(false), 2000);
+        } catch (err) {
+            console.error("Failed to save recurring availability:", err);
+            setError("Failed to save recurring schedule. Please try again.");
+        } finally {
+            setRecurringSaving(false);
+        }
+    };
+
     // Group slots by day — only show days that have slots
     const slotsByDay = DAYS.map((day, i) => ({
         day,
@@ -199,11 +334,40 @@ export default function AvailabilityPage() {
             <div className="mb-8">
                 <h1 className="text-[32px] font-black font-display italic tracking-wide text-white uppercase mb-1 leading-none drop-shadow-sm">Availability</h1>
                 <p className="text-text-main/60 font-medium text-[15px]">
-                    Add individual time slots — athletes book directly from these.
+                    {mode === "recurring"
+                        ? "Set your recurring weekly schedule — athletes will see these hours."
+                        : "Add individual time slots — athletes book directly from these."}
                 </p>
             </div>
 
-            {saved && (
+            {/* Mode Toggle */}
+            {recurringTableAvailable && (
+                <div className="flex gap-2 mb-8">
+                    <button
+                        onClick={() => setMode("recurring")}
+                        className={`flex items-center gap-2 px-5 py-3 rounded-xl text-[14px] font-bold border transition-all ${
+                            mode === "recurring"
+                                ? "bg-white text-[#0A0D14] border-white shadow-[0_0_12px_rgba(255,255,255,0.15)]"
+                                : "bg-[#12141A] text-text-main/60 border-white/10 hover:border-white/20 hover:text-white"
+                        }`}
+                    >
+                        <CalendarDays size={16} /> Recurring Weekly
+                    </button>
+                    <button
+                        onClick={() => setMode("per_slot")}
+                        className={`flex items-center gap-2 px-5 py-3 rounded-xl text-[14px] font-bold border transition-all ${
+                            mode === "per_slot"
+                                ? "bg-white text-[#0A0D14] border-white shadow-[0_0_12px_rgba(255,255,255,0.15)]"
+                                : "bg-[#12141A] text-text-main/60 border-white/10 hover:border-white/20 hover:text-white"
+                        }`}
+                    >
+                        <List size={16} /> Per-Slot
+                    </button>
+                </div>
+            )}
+
+            {/* Confirmation banners */}
+            {(saved || recurringSaved) && (
                 <div className="p-4 bg-green-500/10 border border-green-500/20 rounded-2xl text-green-500 text-[14px] font-bold mb-6 flex items-center gap-2">
                     <CheckCircle2 size={18} /> Availability updated!
                 </div>
@@ -215,150 +379,227 @@ export default function AvailabilityPage() {
                 </div>
             )}
 
-            {/* Add new slot */}
-            <div className="bg-[#1A1C23] rounded-[20px] border border-white/5 p-6 lg:p-8 mb-8 shadow-md">
-                <h3 className="text-[18px] font-black font-display text-white uppercase tracking-wider mb-6 flex items-center gap-2">
-                    <Plus size={20} className="text-primary" /> Add Time Slot
-                </h3>
-
-                <div className="flex flex-wrap gap-6 items-start">
-                    {/* Day */}
-                    <div className="flex-1 min-w-[200px]">
-                        <label className="block text-[11px] font-bold uppercase tracking-widest text-text-main/40 mb-2">Day</label>
-                        <select
-                            value={newSlot.day}
-                            onChange={(e) => setNewSlot((p) => ({ ...p, day: Number(e.target.value) }))}
-                            className="w-full bg-[#12141A] border border-white/5 rounded-xl text-[15px] font-medium text-white px-4 py-3 outline-none focus:border-primary/50 focus:bg-[#1A1C23] transition-all appearance-none custom-select-arrow"
+            {/* ====== RECURRING MODE ====== */}
+            {mode === "recurring" && recurringTableAvailable && (
+                <div className="flex flex-col gap-4">
+                    {recurring.map((day) => (
+                        <div
+                            key={day.day_of_week}
+                            className={`bg-[#1A1C23] rounded-[20px] border p-6 lg:p-8 shadow-md transition-all ${
+                                day.is_active ? "border-primary/20" : "border-white/5"
+                            }`}
                         >
-                            {DAYS.map((d, i) => (
-                                <option key={d} value={i} className="bg-[#1A1C23]">{d}</option>
-                            ))}
-                        </select>
-                    </div>
+                            <div className="flex flex-wrap items-center gap-4 sm:gap-6">
+                                {/* Day name */}
+                                <div className="w-[110px] shrink-0">
+                                    <h4 className="text-[18px] font-bold text-white tracking-wide">{DAYS[day.day_of_week]}</h4>
+                                </div>
 
-                    {/* Start Time */}
-                    <div className="flex-1 min-w-[160px]">
-                        <label className="block text-[11px] font-bold uppercase tracking-widest text-text-main/40 mb-2">Start Time</label>
-                        <input
-                            type="time"
-                            step="900"
-                            value={newSlot.start}
-                            onChange={(e) => setNewSlot((p) => ({ ...p, start: e.target.value }))}
-                            className="w-full bg-[#12141A] border border-white/5 rounded-xl text-[15px] font-medium text-white px-4 py-3 outline-none focus:border-primary/50 focus:bg-[#1A1C23] transition-all [color-scheme:dark]"
-                        />
-                        <p className="text-primary text-[13px] font-semibold mt-1.5">
-                            Ends at {to12h(endTime)}
-                        </p>
-                    </div>
-
-                    {/* Duration */}
-                    <div>
-                        <label className="block text-[11px] font-bold uppercase tracking-widest text-text-main/40 mb-2">Duration</label>
-                        <div className="flex gap-2">
-                            {DURATIONS.map((d) => (
+                                {/* Toggle */}
                                 <button
-                                    key={d}
-                                    onClick={() => setNewSlot((p) => ({ ...p, duration: d }))}
-                                    className={`px-5 py-3 rounded-xl text-[14px] font-bold border transition-all ${newSlot.duration === d
-                                        ? "bg-white text-[#0A0D14] border-white shadow-[0_0_12px_rgba(255,255,255,0.15)]"
-                                        : "bg-[#12141A] text-text-main/60 border-white/10 hover:border-white/20 hover:text-white"
-                                        }`}
+                                    onClick={() => updateRecurringDay(day.day_of_week, "is_active", !day.is_active)}
+                                    className={`px-4 py-2 rounded-xl text-[13px] font-black uppercase tracking-wider border transition-all ${
+                                        day.is_active
+                                            ? "bg-primary/15 border-primary/30 text-primary"
+                                            : "bg-[#12141A] border-white/10 text-text-main/40 hover:border-white/20 hover:text-text-main/60"
+                                    }`}
                                 >
-                                    {d}m
+                                    {day.is_active ? "Available" : "Off"}
                                 </button>
-                            ))}
+
+                                {/* Time inputs (shown only when active) */}
+                                {day.is_active && (
+                                    <div className="flex items-center gap-3 flex-wrap">
+                                        <div>
+                                            <label className="block text-[11px] font-bold uppercase tracking-widest text-text-main/40 mb-1">Start</label>
+                                            <input
+                                                type="time"
+                                                step="900"
+                                                value={day.start_time}
+                                                onChange={(e) => updateRecurringDay(day.day_of_week, "start_time", e.target.value)}
+                                                className="bg-[#12141A] border border-white/5 rounded-xl text-[15px] font-medium text-white px-4 py-2.5 outline-none focus:border-primary/50 focus:bg-[#1A1C23] transition-all [color-scheme:dark]"
+                                            />
+                                        </div>
+                                        <span className="text-text-main/30 mt-5">—</span>
+                                        <div>
+                                            <label className="block text-[11px] font-bold uppercase tracking-widest text-text-main/40 mb-1">End</label>
+                                            <input
+                                                type="time"
+                                                step="900"
+                                                value={day.end_time}
+                                                onChange={(e) => updateRecurringDay(day.day_of_week, "end_time", e.target.value)}
+                                                className="bg-[#12141A] border border-white/5 rounded-xl text-[15px] font-medium text-white px-4 py-2.5 outline-none focus:border-primary/50 focus:bg-[#1A1C23] transition-all [color-scheme:dark]"
+                                            />
+                                        </div>
+                                        <span className="text-primary text-[13px] font-semibold mt-5">
+                                            {to12h(day.start_time)} – {to12h(day.end_time)}
+                                        </span>
+                                    </div>
+                                )}
+                            </div>
                         </div>
-                    </div>
+                    ))}
+
+                    {/* Save button */}
+                    <button
+                        onClick={saveRecurring}
+                        disabled={recurringSaving}
+                        className="w-full mt-4 py-3.5 rounded-xl bg-[#12141A] border border-white/10 text-white font-black uppercase tracking-widest hover:border-white/20 hover:bg-[#1E2028] transition-all text-[13px] disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        {recurringSaving ? "Saving..." : recurringSaved ? "Saved!" : "Save Weekly Schedule"}
+                    </button>
                 </div>
+            )}
 
-                {/* Slot Preview */}
-                <div className="mt-5">
-                    <label className="block text-[11px] font-bold uppercase tracking-widest text-text-main/40 mb-2">Slot Preview</label>
-                    <span className="inline-block px-4 py-1.5 rounded-full bg-primary/15 border border-primary/25 text-primary text-[13px] font-bold tracking-wide">
-                        {to12h(newSlot.start)} – {to12h(endTime)}
-                    </span>
-                </div>
+            {/* ====== PER-SLOT MODE (existing behavior, unchanged) ====== */}
+            {mode === "per_slot" && (
+                <>
+                    {/* Add new slot */}
+                    <div className="bg-[#1A1C23] rounded-[20px] border border-white/5 p-6 lg:p-8 mb-8 shadow-md">
+                        <h3 className="text-[18px] font-black font-display text-white uppercase tracking-wider mb-6 flex items-center gap-2">
+                            <Plus size={20} className="text-primary" /> Add Time Slot
+                        </h3>
 
-                {/* Add Button */}
-                <button
-                    onClick={addSlot}
-                    disabled={saving}
-                    className="w-full mt-6 py-3.5 rounded-xl bg-[#12141A] border border-white/10 text-white font-black uppercase tracking-widest hover:border-white/20 hover:bg-[#1E2028] transition-all text-[13px] disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                    {saving ? "Adding..." : "+ Add Slot"}
-                </button>
-            </div>
-
-            {/* Weekly view — only days with slots */}
-            <div className="flex flex-col gap-5">
-                {slotsByDay.length === 0 && (
-                    <div className="bg-[#1A1C23] rounded-[20px] border border-white/5 p-8 text-center">
-                        <Clock size={32} className="text-text-main/20 mx-auto mb-3" />
-                        <p className="text-text-main/40 text-[15px] font-medium">No time slots added yet. Add your first slot above.</p>
-                    </div>
-                )}
-
-                {slotsByDay.map(({ day, slots: daySlots }) => {
-                    const availableCount = daySlots.filter((s) => !bookedSlotIds.has(s.id) && !s.is_blocked).length;
-                    const bookedCount = daySlots.filter((s) => bookedSlotIds.has(s.id)).length;
-
-                    return (
-                        <div key={day} className="bg-[#1A1C23] rounded-[20px] border border-white/5 p-6 lg:p-8 shadow-md">
-                            <div className="flex items-center justify-between mb-5">
-                                <h4 className="text-[18px] font-bold text-white tracking-wide">{day}</h4>
-                                <span className="text-[13px] font-medium text-text-main/40">
-                                    {availableCount} available{bookedCount > 0 ? ` · ${bookedCount} booked` : ""}
-                                </span>
+                        <div className="flex flex-wrap gap-6 items-start">
+                            {/* Day */}
+                            <div className="flex-1 min-w-[200px]">
+                                <label className="block text-[11px] font-bold uppercase tracking-widest text-text-main/40 mb-2">Day</label>
+                                <select
+                                    value={newSlot.day}
+                                    onChange={(e) => setNewSlot((p) => ({ ...p, day: Number(e.target.value) }))}
+                                    className="w-full bg-[#12141A] border border-white/5 rounded-xl text-[15px] font-medium text-white px-4 py-3 outline-none focus:border-primary/50 focus:bg-[#1A1C23] transition-all appearance-none custom-select-arrow"
+                                >
+                                    {DAYS.map((d, i) => (
+                                        <option key={d} value={i} className="bg-[#1A1C23]">{d}</option>
+                                    ))}
+                                </select>
                             </div>
 
-                            <div className="flex flex-col gap-3">
-                                {daySlots.map((slot) => {
-                                    const isBooked = bookedSlotIds.has(slot.id);
-                                    const duration = slotDurationMinutes(slot.start_time.slice(0, 5), slot.end_time.slice(0, 5));
+                            {/* Start Time */}
+                            <div className="flex-1 min-w-[160px]">
+                                <label className="block text-[11px] font-bold uppercase tracking-widest text-text-main/40 mb-2">Start Time</label>
+                                <input
+                                    type="time"
+                                    step="900"
+                                    value={newSlot.start}
+                                    onChange={(e) => setNewSlot((p) => ({ ...p, start: e.target.value }))}
+                                    className="w-full bg-[#12141A] border border-white/5 rounded-xl text-[15px] font-medium text-white px-4 py-3 outline-none focus:border-primary/50 focus:bg-[#1A1C23] transition-all [color-scheme:dark]"
+                                />
+                                <p className="text-primary text-[13px] font-semibold mt-1.5">
+                                    Ends at {to12h(endTime)}
+                                </p>
+                            </div>
 
-                                    return (
-                                        <div
-                                            key={slot.id}
-                                            className={`flex items-center justify-between px-5 py-3.5 rounded-xl border transition-all ${isBooked
-                                                ? "bg-white/[0.03] border-white/10"
-                                                : "bg-[#12141A] border-white/5 hover:border-white/10"
+                            {/* Duration */}
+                            <div>
+                                <label className="block text-[11px] font-bold uppercase tracking-widest text-text-main/40 mb-2">Duration</label>
+                                <div className="flex gap-2">
+                                    {DURATIONS.map((d) => (
+                                        <button
+                                            key={d}
+                                            onClick={() => setNewSlot((p) => ({ ...p, duration: d }))}
+                                            className={`px-5 py-3 rounded-xl text-[14px] font-bold border transition-all ${newSlot.duration === d
+                                                ? "bg-white text-[#0A0D14] border-white shadow-[0_0_12px_rgba(255,255,255,0.15)]"
+                                                : "bg-[#12141A] text-text-main/60 border-white/10 hover:border-white/20 hover:text-white"
                                                 }`}
                                         >
-                                            <span className={`text-[15px] font-bold tracking-wide ${isBooked ? "text-primary" : "text-primary"}`}>
-                                                {to12h(slot.start_time.slice(0, 5))} – {to12h(slot.end_time.slice(0, 5))}
-                                            </span>
-
-                                            <div className="flex items-center gap-3">
-                                                <span className="text-[13px] text-text-main/40 font-medium">{duration} min</span>
-
-                                                {isBooked ? (
-                                                    <span className="px-3 py-1 rounded-full bg-red-500/10 border border-red-500/20 text-red-400 text-[11px] font-black uppercase tracking-wider">
-                                                        Booked
-                                                    </span>
-                                                ) : (
-                                                    <span className="px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary text-[11px] font-black uppercase tracking-wider">
-                                                        Available
-                                                    </span>
-                                                )}
-
-                                                {!isBooked && (
-                                                    <button
-                                                        onClick={() => deleteSlot(slot.id)}
-                                                        title="Remove slot"
-                                                        className="w-9 h-9 flex items-center justify-center rounded-lg bg-[#1A1C23] border border-white/10 text-text-main/40 hover:text-red-400 hover:border-red-500/30 transition-all"
-                                                    >
-                                                        <X size={16} />
-                                                    </button>
-                                                )}
-                                            </div>
-                                        </div>
-                                    );
-                                })}
+                                            {d}m
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
                         </div>
-                    );
-                })}
-            </div>
+
+                        {/* Slot Preview */}
+                        <div className="mt-5">
+                            <label className="block text-[11px] font-bold uppercase tracking-widest text-text-main/40 mb-2">Slot Preview</label>
+                            <span className="inline-block px-4 py-1.5 rounded-full bg-primary/15 border border-primary/25 text-primary text-[13px] font-bold tracking-wide">
+                                {to12h(newSlot.start)} – {to12h(endTime)}
+                            </span>
+                        </div>
+
+                        {/* Add Button */}
+                        <button
+                            onClick={addSlot}
+                            disabled={saving}
+                            className="w-full mt-6 py-3.5 rounded-xl bg-[#12141A] border border-white/10 text-white font-black uppercase tracking-widest hover:border-white/20 hover:bg-[#1E2028] transition-all text-[13px] disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {saving ? "Adding..." : "+ Add Slot"}
+                        </button>
+                    </div>
+
+                    {/* Weekly view — only days with slots */}
+                    <div className="flex flex-col gap-5">
+                        {slotsByDay.length === 0 && (
+                            <div className="bg-[#1A1C23] rounded-[20px] border border-white/5 p-8 text-center">
+                                <Clock size={32} className="text-text-main/20 mx-auto mb-3" />
+                                <p className="text-text-main/40 text-[15px] font-medium">No time slots added yet. Add your first slot above.</p>
+                            </div>
+                        )}
+
+                        {slotsByDay.map(({ day, slots: daySlots }) => {
+                            const availableCount = daySlots.filter((s) => !bookedSlotIds.has(s.id) && !s.is_blocked).length;
+                            const bookedCount = daySlots.filter((s) => bookedSlotIds.has(s.id)).length;
+
+                            return (
+                                <div key={day} className="bg-[#1A1C23] rounded-[20px] border border-white/5 p-6 lg:p-8 shadow-md">
+                                    <div className="flex items-center justify-between mb-5">
+                                        <h4 className="text-[18px] font-bold text-white tracking-wide">{day}</h4>
+                                        <span className="text-[13px] font-medium text-text-main/40">
+                                            {availableCount} available{bookedCount > 0 ? ` · ${bookedCount} booked` : ""}
+                                        </span>
+                                    </div>
+
+                                    <div className="flex flex-col gap-3">
+                                        {daySlots.map((slot) => {
+                                            const isBooked = bookedSlotIds.has(slot.id);
+                                            const duration = slotDurationMinutes(slot.start_time.slice(0, 5), slot.end_time.slice(0, 5));
+
+                                            return (
+                                                <div
+                                                    key={slot.id}
+                                                    className={`flex items-center justify-between px-5 py-3.5 rounded-xl border transition-all ${isBooked
+                                                        ? "bg-white/[0.03] border-white/10"
+                                                        : "bg-[#12141A] border-white/5 hover:border-white/10"
+                                                        }`}
+                                                >
+                                                    <span className={`text-[15px] font-bold tracking-wide ${isBooked ? "text-primary" : "text-primary"}`}>
+                                                        {to12h(slot.start_time.slice(0, 5))} – {to12h(slot.end_time.slice(0, 5))}
+                                                    </span>
+
+                                                    <div className="flex items-center gap-3">
+                                                        <span className="text-[13px] text-text-main/40 font-medium">{duration} min</span>
+
+                                                        {isBooked ? (
+                                                            <span className="px-3 py-1 rounded-full bg-red-500/10 border border-red-500/20 text-red-400 text-[11px] font-black uppercase tracking-wider">
+                                                                Booked
+                                                            </span>
+                                                        ) : (
+                                                            <span className="px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary text-[11px] font-black uppercase tracking-wider">
+                                                                Available
+                                                            </span>
+                                                        )}
+
+                                                        {!isBooked && (
+                                                            <button
+                                                                onClick={() => deleteSlot(slot.id)}
+                                                                title="Remove slot"
+                                                                className="w-9 h-9 flex items-center justify-center rounded-lg bg-[#1A1C23] border border-white/10 text-text-main/40 hover:text-red-400 hover:border-red-500/30 transition-all"
+                                                            >
+                                                                <X size={16} />
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </>
+            )}
         </div>
     );
 }
