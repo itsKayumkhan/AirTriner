@@ -12,7 +12,8 @@ interface SubAccount {
         first_name: string;
         last_name: string;
         age?: number;
-        sport?: string;
+        sport?: string;       // legacy, keep for backwards compat
+        sports?: string[];    // new — preferred
         skill_level?: string;
         notes?: string;
     };
@@ -20,6 +21,17 @@ interface SubAccount {
     is_active: boolean;
     created_at: string;
     updated_at: string;
+}
+
+const MAX_SPORTS = 3;
+
+/** Normalize legacy single-sport to sports array for backwards compat */
+function normalizeSports(profileData: SubAccount["profile_data"]): string[] {
+    return profileData.sports?.length
+        ? profileData.sports
+        : profileData.sport
+            ? [profileData.sport]
+            : [];
 }
 
 const MAX_SUB_ACCOUNTS = 6;
@@ -50,7 +62,7 @@ export default function SubAccountsPage() {
         first_name: "",
         last_name: "",
         age: "",
-        sport: "hockey",
+        sports: ["hockey"] as string[],
         skill_level: "beginner",
         notes: "",
     });
@@ -100,7 +112,7 @@ export default function SubAccountsPage() {
     };
 
     const resetForm = () => {
-        setForm({ first_name: "", last_name: "", age: "", sport: "hockey", skill_level: "beginner", notes: "" });
+        setForm({ first_name: "", last_name: "", age: "", sports: ["hockey"], skill_level: "beginner", notes: "" });
         setFormErrors({});
         setSaveError(null);
         setEditingId(null);
@@ -108,11 +120,12 @@ export default function SubAccountsPage() {
     };
 
     const startEdit = (acct: SubAccount) => {
+        const sportsArray = normalizeSports(acct.profile_data);
         setForm({
             first_name: acct.profile_data.first_name || "",
             last_name: acct.profile_data.last_name || "",
             age: String(acct.profile_data.age || ""),
-            sport: acct.profile_data.sport || "hockey",
+            sports: sportsArray.length ? sportsArray : ["hockey"],
             skill_level: acct.profile_data.skill_level || "beginner",
             notes: acct.profile_data.notes || "",
         });
@@ -140,6 +153,10 @@ export default function SubAccountsPage() {
             errors.age = "Age must be between 3 and 99";
         }
 
+        if (form.sports.length === 0) {
+            errors.sports = "Please select at least one sport";
+        }
+
         setFormErrors(errors);
         return Object.keys(errors).length === 0;
     };
@@ -153,7 +170,8 @@ export default function SubAccountsPage() {
             first_name: form.first_name.trim(),
             last_name: form.last_name.trim(),
             age: form.age ? Number(form.age) : undefined,
-            sport: form.sport,
+            sports: form.sports,
+            sport: form.sports[0], // legacy backwards compat
             skill_level: form.skill_level,
             notes: form.notes.trim() || undefined,
         };
@@ -412,14 +430,43 @@ CREATE INDEX ON sub_accounts(parent_user_id);`}</pre>
                             />
                             {formErrors.age && <span className="text-[11px] text-red-500 font-bold mt-1.5 block">{formErrors.age}</span>}
                         </div>
-                        {/* Primary sport */}
-                        <div>
-                            <label className="block text-xs font-bold text-text-main/40 uppercase tracking-widest mb-2">Primary Sport</label>
-                            <select value={form.sport} onChange={(e) => setForm((p) => ({ ...p, sport: e.target.value }))} className={inputStyle}>
-                                {SPORTS.map((s) => (
-                                    <option key={s} value={s}>{s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}</option>
-                                ))}
-                            </select>
+                        {/* Sports (multi-select, max 3) */}
+                        <div className="md:col-span-2">
+                            <label className="block text-xs font-bold text-text-main/40 uppercase tracking-widest mb-2">Sports *</label>
+                            <div className="flex flex-wrap gap-2">
+                                {SPORTS.map((s) => {
+                                    const selected = form.sports.includes(s);
+                                    const atMax = form.sports.length >= MAX_SPORTS;
+                                    const disabled = !selected && atMax;
+                                    return (
+                                        <button
+                                            key={s}
+                                            type="button"
+                                            disabled={disabled}
+                                            onClick={() => {
+                                                setFormErrors((p) => ({ ...p, sports: "" }));
+                                                setForm((p) => ({
+                                                    ...p,
+                                                    sports: selected
+                                                        ? p.sports.filter((x) => x !== s)
+                                                        : [...p.sports, s],
+                                                }));
+                                            }}
+                                            className={`px-3 py-1.5 rounded-full text-[11px] font-black uppercase tracking-widest border transition-colors ${
+                                                selected
+                                                    ? "bg-primary text-bg border-primary"
+                                                    : disabled
+                                                        ? "bg-white/5 text-text-main/30 border-white/5 opacity-40 cursor-not-allowed"
+                                                        : "bg-white/5 text-text-main/60 border-white/5 hover:border-white/10 hover:text-text-main"
+                                            }`}
+                                        >
+                                            {s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                            <p className="text-[11px] text-text-main/40 mt-2">{form.sports.length}/{MAX_SPORTS} selected</p>
+                            {formErrors.sports && <span className="text-[11px] text-red-500 font-bold mt-1 block">{formErrors.sports}</span>}
                         </div>
                         {/* Skill level */}
                         <div>
@@ -459,8 +506,8 @@ CREATE INDEX ON sub_accounts(parent_user_id);`}</pre>
                         </button>
                         <button
                             onClick={saveAccount}
-                            disabled={saving || !form.first_name.trim() || !form.last_name.trim()}
-                            className={`px-8 py-3 rounded-xl bg-primary text-bg font-bold text-sm transition-all w-full sm:w-auto ${(!form.first_name.trim() || !form.last_name.trim()) ? "opacity-30 cursor-not-allowed" : "hover:shadow-[0_0_15px_rgba(69,208,255,0.3)]"}`}
+                            disabled={saving || !form.first_name.trim() || !form.last_name.trim() || form.sports.length === 0}
+                            className={`px-8 py-3 rounded-xl bg-primary text-bg font-bold text-sm transition-all w-full sm:w-auto ${(!form.first_name.trim() || !form.last_name.trim() || form.sports.length === 0) ? "opacity-30 cursor-not-allowed" : "hover:shadow-[0_0_15px_rgba(69,208,255,0.3)]"}`}
                         >
                             {saving ? "Saving..." : editingId ? "Update Member" : "Add Member"}
                         </button>
@@ -536,11 +583,11 @@ CREATE INDEX ON sub_accounts(parent_user_id);`}</pre>
 
                             {/* Tags */}
                             <div className="flex flex-wrap gap-2 mb-5">
-                                {acct.profile_data.sport && (
-                                    <span className="px-3 py-1 rounded-full bg-primary/10 text-primary border border-primary/20 text-[10px] font-black uppercase tracking-widest">
-                                        {acct.profile_data.sport.replace(/_/g, " ")}
+                                {normalizeSports(acct.profile_data).map((sp) => (
+                                    <span key={sp} className="px-3 py-1 rounded-full bg-primary/10 text-primary border border-primary/20 text-[10px] font-black uppercase tracking-widest">
+                                        {sp.replace(/_/g, " ")}
                                     </span>
-                                )}
+                                ))}
                                 {acct.profile_data.skill_level && (
                                     <span className="px-3 py-1 rounded-full bg-white/5 text-text-main/60 border border-white/5 text-[10px] font-black uppercase tracking-widest">
                                         {acct.profile_data.skill_level}

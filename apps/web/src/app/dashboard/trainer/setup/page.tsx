@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { getSession, setSession, AuthUser } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
+import { uploadToCloudinary } from "@/lib/cloudinary";
 import { useRouter } from "next/navigation";
 import { v4 as uuidv4 } from "uuid";
 import {
@@ -22,7 +23,12 @@ import {
     Upload,
     Trash2,
     ExternalLink,
-    ShieldCheck
+    ShieldCheck,
+    Plus,
+    Camera,
+    ChevronDown,
+    ChevronUp,
+    Image as ImageIcon
 } from "lucide-react";
 
 const FALLBACK_SPORTS: { id: string; name: string; slug: string }[] = [
@@ -75,6 +81,23 @@ export default function TrainerEditProfilePage() {
 
     const [newTag, setNewTag] = useState("");
     const [showTagInput, setShowTagInput] = useState(false);
+
+    // Custom session duration input
+    const [customDuration, setCustomDuration] = useState("");
+
+    // Multi-day camp offerings (Change 1)
+    const [campOfferings, setCampOfferings] = useState<Array<{ name: string; hoursPerDay: number; days: number; totalPrice: number }>>([]);
+    const [showCampSection, setShowCampSection] = useState(false);
+    const [showCampForm, setShowCampForm] = useState(false);
+    const [editingCampIndex, setEditingCampIndex] = useState<number | null>(null);
+    const [campForm, setCampForm] = useState({ name: "", hoursPerDay: "", days: "", totalPrice: "" });
+
+    // Profile image upload with admin approval (Change 3)
+    const [profileImageUrl, setProfileImageUrl] = useState<string | null>(null);
+    const [profileImageStatus, setProfileImageStatus] = useState<"none"|"pending"|"approved"|"rejected">("none");
+    const [profileImageRejectionReason, setProfileImageRejectionReason] = useState<string | null>(null);
+    const [imageUploading, setImageUploading] = useState(false);
+    const profileImageInputRef = useRef<HTMLInputElement>(null);
 
     const [requireVerification, setRequireVerification] = useState(true);
 
@@ -156,6 +179,17 @@ export default function TrainerEditProfilePage() {
                 if (latestProfile.session_lengths?.length) setSessionLengths(latestProfile.session_lengths);
                 if (latestProfile.training_locations?.length) setTrainingLocations(latestProfile.training_locations);
                 if (latestProfile.verification_documents?.length) setVerificationDocs(latestProfile.verification_documents);
+
+                // Load camp offerings (Change 1) — skip silently if column doesn't exist yet
+                if (Array.isArray(latestProfile.camp_offerings)) {
+                    setCampOfferings(latestProfile.camp_offerings);
+                    if (latestProfile.camp_offerings.length > 0) setShowCampSection(true);
+                }
+
+                // Load profile image fields (Change 3) — skip silently if columns don't exist yet
+                if (latestProfile.profile_image_url) setProfileImageUrl(latestProfile.profile_image_url);
+                if (latestProfile.profile_image_status) setProfileImageStatus(latestProfile.profile_image_status);
+                if (latestProfile.profile_image_rejection_reason) setProfileImageRejectionReason(latestProfile.profile_image_rejection_reason);
             }
             setLoading(false);
         };
@@ -195,6 +229,7 @@ export default function TrainerEditProfilePage() {
                 "preferredTrainingTimes": formData.preferredTrainingTimes,
                 session_lengths: sessionLengths.length > 0 ? sessionLengths : [60],
                 training_locations: trainingLocations,
+                camp_offerings: campOfferings,
             };
 
             const [profileRes, userRes] = await Promise.all([
@@ -232,26 +267,10 @@ export default function TrainerEditProfilePage() {
             }
 
             const file = e.target.files[0];
-            const fileExt = file.name.split('.').pop();
-            const fileName = `${user.id}-${uuidv4()}.${fileExt}`;
-            const filePath = `${fileName}`;
 
-            // Try to upload to a "avatars" storage bucket
-            const { error: uploadError } = await supabase.storage
-                .from('avatars')
-                .upload(filePath, file);
-
-            if (uploadError) {
-                console.error("Storage upload error details:", uploadError);
-                throw uploadError;
-            }
-
-            // Get public URL
-            const { data: publicUrlData } = supabase.storage
-                .from('avatars')
-                .getPublicUrl(filePath);
-
-            const avatarUrl = publicUrlData.publicUrl;
+            // Upload to Cloudinary
+            const result = await uploadToCloudinary(file, "airtrainer/avatars", { resourceType: "image" });
+            const avatarUrl = result.url;
 
             // Updated auth user
             const { error: updateError } = await supabase
@@ -320,18 +339,9 @@ export default function TrainerEditProfilePage() {
 
         setUploadingDoc(true);
         try {
-            const fileName = `${user.id}/${uuidv4()}.pdf`;
-            const { error: uploadError } = await supabase.storage
-                .from("verification-documents")
-                .upload(fileName, file, { contentType: "application/pdf" });
-
-            if (uploadError) throw uploadError;
-
-            const { data: publicUrlData } = supabase.storage
-                .from("verification-documents")
-                .getPublicUrl(fileName);
-
-            const docUrl = publicUrlData.publicUrl;
+            // Upload PDF to Cloudinary (resource_type: "raw" for non-image files)
+            const result = await uploadToCloudinary(file, "airtrainer/documents", { resourceType: "raw" });
+            const docUrl = result.url;
             const updatedDocs = [...verificationDocs, docUrl];
 
             const { error: updateError } = await supabase
@@ -366,6 +376,94 @@ export default function TrainerEditProfilePage() {
             console.error("Failed to remove document:", err);
             setPopup({ type: "error", message: "Failed to remove document." });
         }
+    };
+
+    const handleUploadProfileImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (!e.target.files || e.target.files.length === 0 || !user) return;
+        const file = e.target.files[0];
+
+        const allowedTypes = ["image/png", "image/jpeg", "image/webp"];
+        if (!allowedTypes.includes(file.type)) {
+            setPopup({ type: "error", message: "Only PNG, JPEG, or WebP images are allowed." });
+            if (profileImageInputRef.current) profileImageInputRef.current.value = "";
+            return;
+        }
+        if (file.size > 5 * 1024 * 1024) {
+            setPopup({ type: "error", message: "Image must be under 5 MB." });
+            if (profileImageInputRef.current) profileImageInputRef.current.value = "";
+            return;
+        }
+
+        setImageUploading(true);
+        try {
+            // Upload profile image to Cloudinary
+            const result = await uploadToCloudinary(file, "airtrainer/trainer-profiles", { resourceType: "image" });
+            const imageUrl = result.url;
+
+            const { error: updateError } = await supabase
+                .from("trainer_profiles")
+                .update({
+                    profile_image_url: imageUrl,
+                    profile_image_status: "pending",
+                    profile_image_rejection_reason: null,
+                })
+                .eq("user_id", user.id);
+
+            if (updateError) throw updateError;
+
+            setProfileImageUrl(imageUrl);
+            setProfileImageStatus("pending");
+            setProfileImageRejectionReason(null);
+            setPopup({ type: "success", message: "Photo uploaded — pending admin approval." });
+        } catch (err: unknown) {
+            console.error("Profile image upload error:", err);
+            const message = err instanceof Error && err.message?.includes("not found")
+                ? "Storage bucket not configured yet. Please contact an administrator."
+                : "Failed to upload profile image. Please try again.";
+            setPopup({ type: "error", message });
+        } finally {
+            setImageUploading(false);
+            if (profileImageInputRef.current) profileImageInputRef.current.value = "";
+        }
+    };
+
+    const handleAddCamp = () => {
+        const name = campForm.name.trim();
+        const hoursPerDay = parseFloat(campForm.hoursPerDay);
+        const days = parseInt(campForm.days);
+        const totalPrice = parseFloat(campForm.totalPrice);
+
+        if (!name || !hoursPerDay || hoursPerDay <= 0 || !days || days <= 0 || !totalPrice || totalPrice <= 0) {
+            setPopup({ type: "error", message: "Please fill in all camp fields with valid values." });
+            return;
+        }
+
+        const camp = { name, hoursPerDay, days, totalPrice };
+
+        if (editingCampIndex !== null) {
+            setCampOfferings(prev => prev.map((c, i) => i === editingCampIndex ? camp : c));
+            setEditingCampIndex(null);
+        } else {
+            setCampOfferings(prev => [...prev, camp]);
+        }
+        setCampForm({ name: "", hoursPerDay: "", days: "", totalPrice: "" });
+        setShowCampForm(false);
+    };
+
+    const handleEditCamp = (index: number) => {
+        const camp = campOfferings[index];
+        setCampForm({
+            name: camp.name,
+            hoursPerDay: camp.hoursPerDay.toString(),
+            days: camp.days.toString(),
+            totalPrice: camp.totalPrice.toString(),
+        });
+        setEditingCampIndex(index);
+        setShowCampForm(true);
+    };
+
+    const handleRemoveCamp = (index: number) => {
+        setCampOfferings(prev => prev.filter((_, i) => i !== index));
     };
 
     const addTag = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -448,6 +546,108 @@ export default function TrainerEditProfilePage() {
                     </div>
                 </div>
             )}
+
+            {/* Profile Photo (Change 3) */}
+            <div className="bg-[#1A1C23] border border-white/5 rounded-[20px] p-6 lg:p-8 shadow-md mb-6">
+                <div className="flex items-center gap-3 mb-6">
+                    <Camera size={20} className="text-primary" strokeWidth={2.5} />
+                    <div>
+                        <h3 className="text-[15px] font-black text-white tracking-widest uppercase">PROFILE PHOTO</h3>
+                        <p className="text-[11px] text-text-main/40 font-medium mt-0.5">Upload a professional photo. Reviewed by admin before display.</p>
+                    </div>
+                </div>
+
+                <div className="flex items-start gap-6">
+                    {/* Preview */}
+                    <div className="shrink-0">
+                        {profileImageUrl ? (
+                            <div className="w-28 h-28 rounded-2xl overflow-hidden border-2 border-white/10 relative">
+                                <img src={profileImageUrl} alt="Profile" className="w-full h-full object-cover" />
+                            </div>
+                        ) : (
+                            <div className="w-28 h-28 rounded-2xl border-2 border-dashed border-white/10 flex items-center justify-center bg-[#12141A]">
+                                <ImageIcon size={32} className="text-text-main/20" />
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="flex-1 space-y-3">
+                        {/* Status badge */}
+                        {profileImageStatus === "none" && (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 text-text-main/50 text-xs font-bold">
+                                No photo uploaded
+                            </span>
+                        )}
+                        {profileImageStatus === "pending" && (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-bold">
+                                <Clock size={12} /> Pending admin approval
+                            </span>
+                        )}
+                        {profileImageStatus === "approved" && (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-bold">
+                                <CheckCircle size={12} /> Approved
+                            </span>
+                        )}
+                        {profileImageStatus === "rejected" && (
+                            <div className="space-y-2">
+                                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-bold">
+                                    <AlertTriangle size={12} /> Rejected{profileImageRejectionReason ? `: ${profileImageRejectionReason}` : ""}
+                                </span>
+                            </div>
+                        )}
+
+                        {/* Upload zone */}
+                        {(profileImageStatus === "none" || profileImageStatus === "rejected") && (
+                            <div
+                                onClick={() => profileImageInputRef.current?.click()}
+                                onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                                onDrop={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    if (e.dataTransfer.files?.length && profileImageInputRef.current) {
+                                        const dt = new DataTransfer();
+                                        dt.items.add(e.dataTransfer.files[0]);
+                                        profileImageInputRef.current.files = dt.files;
+                                        profileImageInputRef.current.dispatchEvent(new Event("change", { bubbles: true }));
+                                    }
+                                }}
+                                className="flex flex-col items-center justify-center py-6 px-4 border border-dashed border-white/10 rounded-xl cursor-pointer hover:border-primary/30 hover:bg-primary/5 transition-all text-center"
+                            >
+                                <Upload size={20} className="text-text-main/30 mb-2" />
+                                <p className="text-text-main/50 text-xs font-medium">Drag & drop or click to upload</p>
+                                <p className="text-text-main/30 text-[10px] mt-1">PNG, JPEG, or WebP — max 5 MB</p>
+                            </div>
+                        )}
+
+                        {profileImageStatus === "pending" && (
+                            <p className="text-text-main/40 text-xs">Your photo is awaiting admin review. You can re-upload to replace it.</p>
+                        )}
+
+                        {(profileImageStatus === "pending" || profileImageStatus === "approved") && (
+                            <button
+                                type="button"
+                                onClick={() => profileImageInputRef.current?.click()}
+                                disabled={imageUploading}
+                                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-text-main/60 text-xs font-bold hover:bg-white/10 hover:text-white transition-all disabled:opacity-50"
+                            >
+                                {imageUploading ? (
+                                    <><div className="w-3.5 h-3.5 border-2 border-primary border-t-transparent rounded-full animate-spin" /> Uploading...</>
+                                ) : (
+                                    <><Upload size={14} /> Replace Photo</>
+                                )}
+                            </button>
+                        )}
+
+                        <input
+                            ref={profileImageInputRef}
+                            type="file"
+                            accept="image/png,image/jpeg,image/webp"
+                            className="hidden"
+                            onChange={handleUploadProfileImage}
+                        />
+                    </div>
+                </div>
+            </div>
 
             {/* Content Blocks */}
             <div className="space-y-6">
@@ -838,7 +1038,7 @@ export default function TrainerEditProfilePage() {
                             <h3 className="text-white font-bold text-sm uppercase tracking-widest mb-1">Session Lengths Offered</h3>
                             <p className="text-zinc-400 text-xs mb-4">Select which session durations you offer</p>
                             <div className="flex flex-wrap gap-3">
-                                {[30, 45, 60, 90].map(mins => (
+                                {[30, 45, 60, 90, 120].map(mins => (
                                     <button
                                         key={mins}
                                         type="button"
@@ -853,12 +1053,201 @@ export default function TrainerEditProfilePage() {
                                                 : 'bg-white/4 text-white/60 border-white/10 hover:border-white/30'
                                         }`}
                                     >
-                                        {mins < 60 ? `${mins} min` : mins === 60 ? '1 hr' : `${mins/60 % 1 === 0 ? mins/60 : '1.5'} hr`}
+                                        {mins < 60 ? `${mins} min` : mins === 60 ? '1 hr' : `${mins / 60} hr`}
+                                    </button>
+                                ))}
+                                {/* Show any custom durations not in presets */}
+                                {sessionLengths.filter(m => ![30, 45, 60, 90, 120].includes(m)).map(mins => (
+                                    <button
+                                        key={mins}
+                                        type="button"
+                                        onClick={() => setSessionLengths(prev => prev.filter(l => l !== mins))}
+                                        className="px-5 py-3 rounded-xl text-sm font-bold border transition-all bg-white text-black border-white"
+                                    >
+                                        {mins >= 60 ? `${mins / 60} hr` : `${mins} min`}
+                                        <X size={12} className="inline ml-1.5 -mt-0.5" />
                                     </button>
                                 ))}
                             </div>
+
+                            {/* Custom duration input */}
+                            <div className="mt-4 flex flex-wrap items-center gap-3">
+                                <div className="flex items-center gap-2">
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        max="600"
+                                        placeholder="Custom (min)"
+                                        value={customDuration}
+                                        onChange={(e) => setCustomDuration(e.target.value)}
+                                        className="w-36 bg-[#12141A] border border-white/5 rounded-xl px-4 py-2.5 text-white text-sm outline-none focus:border-primary/50 transition-colors placeholder:text-text-main/30"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const val = parseInt(customDuration);
+                                            if (val > 0 && !sessionLengths.includes(val)) {
+                                                setSessionLengths(prev => [...prev, val]);
+                                            }
+                                            setCustomDuration("");
+                                        }}
+                                        disabled={!customDuration || parseInt(customDuration) <= 0}
+                                        className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-primary/10 border border-primary/20 text-primary text-xs font-black uppercase tracking-wider hover:bg-primary/20 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                                    >
+                                        <Plus size={14} /> Add
+                                    </button>
+                                </div>
+                                {/* Camp shortcut buttons */}
+                                {!sessionLengths.includes(180) && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setSessionLengths(prev => prev.includes(180) ? prev : [...prev, 180])}
+                                        className="px-4 py-2.5 rounded-xl text-xs font-bold border border-white/10 text-text-main/50 bg-white/4 hover:border-primary/30 hover:text-primary transition-all"
+                                    >
+                                        + 3-hour camp (180m)
+                                    </button>
+                                )}
+                                {!sessionLengths.includes(240) && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setSessionLengths(prev => prev.includes(240) ? prev : [...prev, 240])}
+                                        className="px-4 py-2.5 rounded-xl text-xs font-bold border border-white/10 text-text-main/50 bg-white/4 hover:border-primary/30 hover:text-primary transition-all"
+                                    >
+                                        + 4-hour camp (240m)
+                                    </button>
+                                )}
+                            </div>
+
                             {sessionLengths.length === 0 && (
                                 <p className="text-red-400 text-xs mt-2">Please select at least one session length</p>
+                            )}
+                        </div>
+
+                        {/* Multi-Day Camp Offerings (Change 1) */}
+                        <div className="mb-8 border-t border-white/5 pt-6">
+                            <button
+                                type="button"
+                                onClick={() => setShowCampSection(prev => !prev)}
+                                className="flex items-center gap-2 text-white font-bold text-sm uppercase tracking-widest mb-1 hover:text-primary transition-colors"
+                            >
+                                {showCampSection ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                                Multi-Day Camp Offerings
+                                <span className="text-text-main/40 font-medium text-[10px] normal-case tracking-normal ml-1">(optional)</span>
+                            </button>
+
+                            {showCampSection && (
+                                <div className="mt-4 space-y-3">
+                                    {campOfferings.length === 0 && !showCampForm && (
+                                        <p className="text-text-main/40 text-xs">No camps added yet. Add a multi-day camp offering below.</p>
+                                    )}
+
+                                    {/* Existing camps list */}
+                                    {campOfferings.map((camp, idx) => (
+                                        <div key={idx} className="flex items-center justify-between p-4 bg-[#12141A] border border-white/5 rounded-xl">
+                                            <div className="min-w-0">
+                                                <p className="text-white text-sm font-bold truncate">{camp.name}</p>
+                                                <p className="text-text-main/50 text-xs mt-0.5">
+                                                    {camp.hoursPerDay} hrs/day &times; {camp.days} days &mdash; ${camp.totalPrice.toLocaleString()}
+                                                </p>
+                                            </div>
+                                            <div className="flex items-center gap-2 shrink-0 ml-3">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleEditCamp(idx)}
+                                                    className="p-2 rounded-lg text-text-main/40 hover:text-primary hover:bg-primary/10 transition-all"
+                                                    title="Edit camp"
+                                                >
+                                                    <Pencil size={14} />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleRemoveCamp(idx)}
+                                                    className="p-2 rounded-lg text-text-main/30 hover:text-red-400 hover:bg-red-500/10 transition-all"
+                                                    title="Remove camp"
+                                                >
+                                                    <Trash2 size={14} />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+
+                                    {/* Inline camp form */}
+                                    {showCampForm && (
+                                        <div className="p-4 bg-[#12141A] border border-primary/20 rounded-xl space-y-3">
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                <div>
+                                                    <label className="block text-[10px] font-bold text-text-main/50 uppercase tracking-wider mb-1.5">Camp Name</label>
+                                                    <input
+                                                        value={campForm.name}
+                                                        onChange={(e) => setCampForm(p => ({ ...p, name: e.target.value }))}
+                                                        placeholder="e.g. Summer Hockey Intensive"
+                                                        className="w-full bg-[#1A1C23] border border-white/5 rounded-xl px-4 py-2.5 text-white text-sm outline-none focus:border-primary/50 transition-colors placeholder:text-text-main/30"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-[10px] font-bold text-text-main/50 uppercase tracking-wider mb-1.5">Total Price ($)</label>
+                                                    <input
+                                                        type="number"
+                                                        min="0"
+                                                        value={campForm.totalPrice}
+                                                        onChange={(e) => setCampForm(p => ({ ...p, totalPrice: e.target.value }))}
+                                                        placeholder="e.g. 500"
+                                                        className="w-full bg-[#1A1C23] border border-white/5 rounded-xl px-4 py-2.5 text-white text-sm outline-none focus:border-primary/50 transition-colors placeholder:text-text-main/30"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-[10px] font-bold text-text-main/50 uppercase tracking-wider mb-1.5">Hours Per Day</label>
+                                                    <input
+                                                        type="number"
+                                                        min="0.5"
+                                                        step="0.5"
+                                                        value={campForm.hoursPerDay}
+                                                        onChange={(e) => setCampForm(p => ({ ...p, hoursPerDay: e.target.value }))}
+                                                        placeholder="e.g. 4"
+                                                        className="w-full bg-[#1A1C23] border border-white/5 rounded-xl px-4 py-2.5 text-white text-sm outline-none focus:border-primary/50 transition-colors placeholder:text-text-main/30"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-[10px] font-bold text-text-main/50 uppercase tracking-wider mb-1.5">Number of Days</label>
+                                                    <input
+                                                        type="number"
+                                                        min="1"
+                                                        value={campForm.days}
+                                                        onChange={(e) => setCampForm(p => ({ ...p, days: e.target.value }))}
+                                                        placeholder="e.g. 5"
+                                                        className="w-full bg-[#1A1C23] border border-white/5 rounded-xl px-4 py-2.5 text-white text-sm outline-none focus:border-primary/50 transition-colors placeholder:text-text-main/30"
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-2 pt-1">
+                                                <button
+                                                    type="button"
+                                                    onClick={handleAddCamp}
+                                                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary/10 border border-primary/20 text-primary text-xs font-black uppercase tracking-wider hover:bg-primary/20 transition-all"
+                                                >
+                                                    <CheckCircle size={14} /> {editingCampIndex !== null ? "Update Camp" : "Save Camp"}
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => { setShowCampForm(false); setEditingCampIndex(null); setCampForm({ name: "", hoursPerDay: "", days: "", totalPrice: "" }); }}
+                                                    className="px-4 py-2 rounded-xl text-text-main/50 text-xs font-bold hover:text-white transition-all"
+                                                >
+                                                    Cancel
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {!showCampForm && (
+                                        <button
+                                            type="button"
+                                            onClick={() => { setShowCampForm(true); setEditingCampIndex(null); setCampForm({ name: "", hoursPerDay: "", days: "", totalPrice: "" }); }}
+                                            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/4 border border-white/10 text-text-main/60 text-xs font-bold hover:border-primary/30 hover:text-primary transition-all"
+                                        >
+                                            <Plus size={14} /> Add Camp
+                                        </button>
+                                    )}
+                                </div>
                             )}
                         </div>
 

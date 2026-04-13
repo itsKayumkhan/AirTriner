@@ -5,8 +5,13 @@ import { useRouter } from "next/navigation";
 import { getSession, AuthUser } from "@/lib/auth";
 import { supabase, TrainerProfileRow } from "@/lib/supabase";
 import { PrimaryButton } from "@/components/ui/Buttons";
-import { ArrowRight, Search as SearchIcon, MapPin, ChevronLeft, ChevronRight, ChevronDown, Star, Download } from "lucide-react";
+import { ArrowRight, Search as SearchIcon, MapPin, ChevronLeft, ChevronRight, ChevronDown, Star, Download, List, Map as MapIcon } from "lucide-react";
 import { FoundingBadge, FoundingBadgeTooltip } from "@/components/ui/FoundingBadge";
+import { detectCountry, radiusUnit, formatRadius, miToKm } from "@/lib/units";
+import dynamic from "next/dynamic";
+import type { TrainerPin } from "@/components/search/FindTrainerMap";
+
+const FindTrainerMap = dynamic(() => import("@/components/search/FindTrainerMap"), { ssr: false });
 
 type TrainerWithUser = TrainerProfileRow & {
     user: { first_name: string; last_name: string; avatar_url: string | null };
@@ -168,8 +173,18 @@ export default function SearchTrainersPage() {
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 8;
 
+    // View toggle: list | map
+    const [viewMode, setViewMode] = useState<"list" | "map">("list");
+
     // Mobile filter visibility
     const [showFilters, setShowFilters] = useState(false);
+
+    // Country detection for radius unit display
+    const athleteZip = user?.athleteProfile?.zip_code || "";
+    const athleteCountry = athleteZip ? detectCountry(athleteZip) : ("US" as const);
+    const unit = radiusUnit(athleteCountry);
+    const athleteLat = user?.athleteProfile?.latitude ?? undefined;
+    const athleteLng = user?.athleteProfile?.longitude ?? undefined;
 
     useEffect(() => {
         const fetchSports = async () => {
@@ -560,8 +575,70 @@ export default function SearchTrainersPage() {
                 </div>
             </div>
 
+            {/* View toggle: List | Map */}
+            <div className="flex items-center justify-between mb-4">
+                <div className="flex bg-white/[0.03] border border-white/[0.06] rounded-2xl p-[3px]">
+                    <button
+                        onClick={() => setViewMode("list")}
+                        className={`flex items-center gap-1.5 px-4 py-2 text-[11px] font-extrabold uppercase tracking-[0.1em] rounded-[13px] transition-all duration-300 ${
+                            viewMode === "list"
+                                ? "bg-primary text-[#0A0D14] shadow-[0_0_20px_rgba(69,208,255,0.25)]"
+                                : "text-white/35 hover:text-white/60"
+                        }`}
+                    >
+                        <List size={14} /> List
+                    </button>
+                    <button
+                        onClick={() => setViewMode("map")}
+                        className={`flex items-center gap-1.5 px-4 py-2 text-[11px] font-extrabold uppercase tracking-[0.1em] rounded-[13px] transition-all duration-300 ${
+                            viewMode === "map"
+                                ? "bg-primary text-[#0A0D14] shadow-[0_0_20px_rgba(69,208,255,0.25)]"
+                                : "text-white/35 hover:text-white/60"
+                        }`}
+                    >
+                        <MapIcon size={14} /> Map
+                    </button>
+                </div>
+                {viewMode === "map" && (() => {
+                    const withCoords = filteredTrainers.filter(t => t.latitude && t.longitude).length;
+                    const withoutCoords = filteredTrainers.length - withCoords;
+                    return (
+                        <p className="text-xs text-white/40 font-medium">
+                            {withCoords} trainer{withCoords !== 1 ? "s" : ""} shown on map
+                            {withoutCoords > 0 && (
+                                <span className="text-white/25">
+                                    {" "}· {withoutCoords} trainer{withoutCoords !== 1 ? "s" : ""} don&apos;t have a precise location yet
+                                </span>
+                            )}
+                        </p>
+                    );
+                })()}
+            </div>
+
+            {/* Map View */}
+            {viewMode === "map" && (
+                <FindTrainerMap
+                    trainers={filteredTrainers
+                        .filter((t) => t.latitude && t.longitude)
+                        .map((t) => ({
+                            id: t.id,
+                            name: `${t.user?.first_name || ""} ${t.user?.last_name || ""}`.trim(),
+                            sport: (t.sports || []).map((s: string) => sportLabels[s] || s.replace(/_/g, " ")).join(", "),
+                            rating: t.avg_rating,
+                            reviewCount: t.review_count,
+                            hourlyRate: Number(t.hourly_rate),
+                            lat: t.latitude!,
+                            lng: t.longitude!,
+                            avatarUrl: t.user?.avatar_url || undefined,
+                        } as TrainerPin))}
+                    centerLat={athleteLat}
+                    centerLng={athleteLng}
+                    onTrainerClick={(id) => router.push(`/dashboard/trainers/${id}`)}
+                />
+            )}
+
             {/* Trainer Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {viewMode === "list" && (<><div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                 {paginatedTrainers.map((trainer) => (
                     <div
                         key={trainer.id}
@@ -684,6 +761,7 @@ export default function SearchTrainersPage() {
                     </button>
                 </div>
             )}
+            </>)}
         </div>
     );
 }

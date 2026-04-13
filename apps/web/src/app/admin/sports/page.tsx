@@ -17,6 +17,7 @@ import {
     ImageIcon
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { uploadToCloudinary } from "@/lib/cloudinary";
 import PopupModal from "@/components/common/PopupModal";
 
 interface Sport {
@@ -102,24 +103,8 @@ export default function AdminSportsPage() {
     };
 
     const uploadImage = async (file: File): Promise<string> => {
-        const fileExt = file.name.split('.').pop();
-        const fileName = `${Math.random().toString(36).substring(2)}_${Date.now()}.${fileExt}`;
-        const filePath = fileName; // Upload to the root of the bucket
-
-        const { error: uploadError } = await supabase.storage
-            .from('sport-images')
-            .upload(filePath, file);
-
-        if (uploadError) {
-            console.error("Supabase Storage Error:", uploadError);
-            throw uploadError;
-        }
-
-        const { data: { publicUrl } } = supabase.storage
-            .from('sport-images')
-            .getPublicUrl(filePath);
-
-        return publicUrl;
+        const result = await uploadToCloudinary(file, "airtrainer/sports", { resourceType: "image" });
+        return result.url;
     };
 
     const handleSave = async (e: React.FormEvent) => {

@@ -66,6 +66,15 @@ const SPORT_COVERS: Record<string, string[]> = {
     ]
 };
 
+/** Returns true if the Supabase error indicates the table does not exist. */
+function isTableMissingError(err: unknown): boolean {
+    if (!err || typeof err !== "object") return false;
+    const e = err as Record<string, unknown>;
+    const code = e.code as string | undefined;
+    const msg = (e.message as string | undefined) ?? "";
+    return code === "42P01" || msg.toLowerCase().includes("does not exist") || msg.toLowerCase().includes("relation");
+}
+
 const getSportCover = (sports: string[]) => {
     if (!sports || sports.length === 0) return SPORT_COVERS.default[0];
     const sportStr = sports[0].toLowerCase().replace(/\s+&\s+/g, "_and_").replace(/\s+/g, "_");
@@ -96,6 +105,9 @@ export default function BookTrainerPage() {
     const [pageError, setPageError] = useState<string | null>(null);
     const [processing, setProcessing] = useState(false);
     const { toasts, remove, warning, error: toastError, success } = useToast();
+
+    // Available dates for calendar green highlights (date string → slot count)
+    const [availableDates, setAvailableDates] = useState<Map<string, number>>(new Map());
 
     // Date generation state
     const [currentMonthDate, setCurrentMonthDate] = useState(new Date());
@@ -175,6 +187,114 @@ export default function BookTrainerPage() {
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [trainerProfileId, selectedDate, durationMinutes]);
+
+    // Load available dates for calendar green highlights (next 60 days)
+    useEffect(() => {
+        if (!trainerProfileId || !trainer) return;
+        const loadAvailableDates = async () => {
+            try {
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                const endWindow = new Date(today);
+                endWindow.setDate(endWindow.getDate() + 60);
+
+                const formatDate = (d: Date) => {
+                    const yyyy = d.getFullYear();
+                    const mm = String(d.getMonth() + 1).padStart(2, '0');
+                    const dd = String(d.getDate()).padStart(2, '0');
+                    return `${yyyy}-${mm}-${dd}`;
+                };
+
+                // 1. Fetch non-blocked availability_slots for this trainer
+                const { data: slotsData, error: slotsErr } = await supabase
+                    .from("availability_slots")
+                    .select("day_of_week, start_time, end_time")
+                    .eq("trainer_id", trainerProfileId)
+                    .eq("is_blocked", false);
+
+                if (slotsErr) throw slotsErr;
+
+                // Build map: day_of_week → count of slots
+                const slotsByDow = new Map<number, number>();
+                (slotsData || []).forEach((s: { day_of_week: number }) => {
+                    slotsByDow.set(s.day_of_week, (slotsByDow.get(s.day_of_week) || 0) + 1);
+                });
+
+                // 2. Try to fetch recurring availability (table may not exist yet)
+                let recurringByDow = new Map<number, number>();
+                try {
+                    const { data: recurringData, error: recurringErr } = await supabase
+                        .from("availability_recurring")
+                        .select("day_of_week, start_time, end_time")
+                        .eq("trainer_id", trainerProfileId)
+                        .eq("is_active", true);
+
+                    if (recurringErr) {
+                        // Any error (missing table, missing RLS policy, network, etc.) — silently skip.
+                        // Recurring availability is an enhancement; per-slot logic below still works.
+                        if (!isTableMissingError(recurringErr)) {
+                            console.warn("[calendar] recurring availability unavailable, falling back to per-slot only");
+                        }
+                    } else {
+                        (recurringData || []).forEach((r: { day_of_week: number }) => {
+                            recurringByDow.set(r.day_of_week, (recurringByDow.get(r.day_of_week) || 0) + 1);
+                        });
+                    }
+                } catch {
+                    // Fully silent: recurring availability is optional enhancement
+                }
+
+                // 3. Expand dates in the 60-day window that have at least one slot
+                const dateSlotCounts = new Map<string, number>();
+                for (let d = new Date(today); d <= endWindow; d.setDate(d.getDate() + 1)) {
+                    const dow = d.getDay();
+                    const slotsCount = (slotsByDow.get(dow) || 0) + (recurringByDow.get(dow) || 0);
+                    if (slotsCount > 0) {
+                        dateSlotCounts.set(formatDate(d), slotsCount);
+                    }
+                }
+
+                // 4. Subtract fully-booked dates
+                const trainerUserId = trainer.user_id;
+                if (trainerUserId && dateSlotCounts.size > 0) {
+                    const windowStart = new Date(today).toISOString();
+                    const windowEnd = new Date(endWindow).toISOString();
+
+                    const { data: bookingsData } = await supabase
+                        .from("bookings")
+                        .select("scheduled_at")
+                        .eq("trainer_id", trainerUserId)
+                        .in("status", ["pending", "confirmed"])
+                        .gte("scheduled_at", windowStart)
+                        .lte("scheduled_at", windowEnd);
+
+                    // Count bookings per date
+                    const bookingsByDate = new Map<string, number>();
+                    (bookingsData || []).forEach((b: { scheduled_at: string }) => {
+                        const bd = new Date(b.scheduled_at);
+                        const dateStr = formatDate(bd);
+                        bookingsByDate.set(dateStr, (bookingsByDate.get(dateStr) || 0) + 1);
+                    });
+
+                    // Remove dates where all slots are booked
+                    for (const [dateStr, totalSlots] of dateSlotCounts) {
+                        const booked = bookingsByDate.get(dateStr) || 0;
+                        if (booked >= totalSlots) {
+                            dateSlotCounts.delete(dateStr);
+                        } else {
+                            dateSlotCounts.set(dateStr, totalSlots - booked);
+                        }
+                    }
+                }
+
+                setAvailableDates(dateSlotCounts);
+            } catch (err) {
+                console.error("Failed to load available dates for calendar:", err);
+            }
+        };
+        loadAvailableDates();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [trainerProfileId, trainer?.user_id]);
 
     const formatTimeTo12h = (time24: string) => {
         const [hours, minutes] = time24.split(':');
@@ -750,7 +870,11 @@ export default function BookTrainerPage() {
                                 ))}
 
                                 {/* Dates */}
-                                {dates.map((d, i) => (
+                                {dates.map((d, i) => {
+                                    const slotCount = availableDates.get(d.fullDate) || 0;
+                                    const hasAvailability = slotCount > 0 && !d.isPastDate;
+                                    const isSelected = selectedDate === d.fullDate && !d.isPastDate;
+                                    return (
                                     <div key={`date-${d.fullDate}-${i}`} className="flex justify-center">
                                         <button
                                             onClick={() => {
@@ -759,17 +883,21 @@ export default function BookTrainerPage() {
                                                 }
                                             }}
                                             disabled={d.isPastDate}
+                                            title={hasAvailability ? `${slotCount} slot${slotCount !== 1 ? 's' : ''} available` : undefined}
                                             className={`w-8 h-8 sm:w-9 sm:h-10 rounded-[8px] sm:rounded-[10px] text-xs sm:text-sm font-black flex items-center justify-center transition-all duration-200
                                                 ${!d.isCurrentMonth ? "opacity-30" : ""}
                                                 ${d.isPastDate ? "opacity-20 cursor-not-allowed" : ""}
-                                                ${selectedDate === d.fullDate && !d.isPastDate
+                                                ${isSelected
                                                     ? "bg-primary text-bg shadow-[0_4px_12px_rgba(69,208,255,0.3)] scale-105"
-                                                    : !d.isPastDate ? "text-white hover:bg-white/5 hover:-translate-y-0.5" : "text-white"}`}
+                                                    : hasAvailability && !isSelected
+                                                        ? "bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/25 hover:-translate-y-0.5"
+                                                        : !d.isPastDate ? "text-white hover:bg-white/5 hover:-translate-y-0.5" : "text-white"}`}
                                         >
                                             {d.date}
                                         </button>
                                     </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         </div>
 

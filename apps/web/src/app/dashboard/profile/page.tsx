@@ -5,6 +5,8 @@ import { useEffect, useState, useRef } from "react";
 import { getSession, setSession, clearSession, AuthUser } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
+import LocationAutocomplete, { type LocationValue } from "@/components/forms/LocationAutocomplete";
+import { detectCountry, radiusUnit, formatRadius, kmToMi, miToKm } from "@/lib/units";
 
 const FALLBACK_SPORTS: { id: string; name: string; slug: string }[] = [
     { id: "hockey", name: "Hockey", slug: "hockey" },
@@ -53,9 +55,14 @@ export default function ProfilePage() {
         city: "",
         state: "",
         zipCode: "",
+        country: "",
+        latitude: null as number | null,
+        longitude: null as number | null,
         travelRadius: "25",
         preferredTimes: [] as string[],
     });
+    // Local display value for travel radius (may differ from stored miles when country is CA)
+    const [displayRadius, setDisplayRadius] = useState("25");
 
     useEffect(() => {
         const fetchSports = async () => {
@@ -119,11 +126,17 @@ export default function ProfilePage() {
                 city: tp?.city || "",
                 state: tp?.state || "",
                 zipCode: "",
+                country: "",
+                latitude: tp?.latitude ?? null,
+                longitude: tp?.longitude ?? null,
                 travelRadius: String(tp?.travel_radius_miles || 25),
                 preferredTimes: (tp as any)?.preferredTrainingTimes || [],
             };
         } else {
             const { data: ap } = await supabase.from("athlete_profiles").select("*").eq("user_id", u.id).single();
+            const loadedZip = ap?.zip_code || "";
+            const loadedCountry = (ap as any)?.country || detectCountry(loadedZip);
+            const storedMiles = Number(ap?.travel_radius_miles || 25);
             loaded = {
                 firstName: userData?.first_name || "",
                 lastName: userData?.last_name || "",
@@ -139,10 +152,19 @@ export default function ProfilePage() {
                 addressLine1: ap?.address_line1 || "",
                 city: ap?.city || "",
                 state: ap?.state || "",
-                zipCode: ap?.zip_code || "",
-                travelRadius: String(ap?.travel_radius_miles || 25),
+                zipCode: loadedZip,
+                country: loadedCountry,
+                latitude: (ap as any)?.latitude ?? null,
+                longitude: (ap as any)?.longitude ?? null,
+                travelRadius: String(storedMiles),
                 preferredTimes: (ap as any)?.preferredTrainingTimes || [],
             };
+            // Hydrate display radius: if CA, show km equivalent
+            if (loadedCountry === "CA") {
+                setDisplayRadius(String(Math.round(miToKm(storedMiles))));
+            } else {
+                setDisplayRadius(String(storedMiles));
+            }
         }
         setForm(loaded);
         initialFormRef.current = loaded;
@@ -206,8 +228,12 @@ export default function ProfilePage() {
 
         if (user?.role === "athlete") {
             if (form.sports.length === 0) errors.sports = "Select at least one sport";
-            if (form.zipCode && !/^\d{5}(-\d{4})?$/.test(form.zipCode))
-                errors.zipCode = "Enter a valid ZIP code (e.g. 12345)";
+            if (form.zipCode) {
+                const isUsZip = /^\d{5}(-\d{4})?$/.test(form.zipCode.trim());
+                const isCaPostal = /^[A-Za-z]\d[A-Za-z][ -]?\d[A-Za-z]\d$/.test(form.zipCode.trim());
+                if (!isUsZip && !isCaPostal)
+                    errors.zipCode = "Enter a valid US ZIP or Canadian postal code";
+            }
         }
 
         setFieldErrors(errors);
@@ -247,7 +273,8 @@ export default function ProfilePage() {
                 const { error: pError } = await supabase.from("trainer_profiles").upsert(profileUpdate, { onConflict: 'user_id' });
                 if (pError) throw pError;
             } else {
-                const profileUpdate = {
+                // Storage is always in miles; form.travelRadius is already in miles
+                const profileUpdate: Record<string, unknown> = {
                     user_id: user.id,
                     sports: form.sports,
                     skill_level: form.skillLevel,
@@ -258,8 +285,28 @@ export default function ProfilePage() {
                     travel_radius_miles: Number(form.travelRadius),
                     preferredTrainingTimes: form.preferredTimes,
                 };
+
+                // Attempt to persist location fields; retry without them if columns don't exist yet
+                if (form.country || form.latitude != null || form.longitude != null) {
+                    profileUpdate.country = form.country || null;
+                    profileUpdate.latitude = form.latitude;
+                    profileUpdate.longitude = form.longitude;
+                }
+
                 const { error: pError } = await supabase.from("athlete_profiles").upsert(profileUpdate, { onConflict: 'user_id' });
-                if (pError) throw pError;
+                if (pError) {
+                    // If Supabase rejects due to missing columns, retry without location fields
+                    if (pError.message?.includes("column") || pError.code === "42703") {
+                        console.warn("athlete_profiles missing country/latitude/longitude columns — saving without them. Run migration to add these columns.");
+                        delete profileUpdate.country;
+                        delete profileUpdate.latitude;
+                        delete profileUpdate.longitude;
+                        const { error: retryError } = await supabase.from("athlete_profiles").upsert(profileUpdate, { onConflict: 'user_id' });
+                        if (retryError) throw retryError;
+                    } else {
+                        throw pError;
+                    }
+                }
             }
 
             const updatedUser: AuthUser = {
@@ -469,35 +516,88 @@ export default function ProfilePage() {
                             <label className="block text-[10px] font-bold text-text-main/40 uppercase tracking-[0.12em] mb-2">Address</label>
                             <input value={form.addressLine1} onChange={(e) => updateForm({ addressLine1: e.target.value })} placeholder="123 Training Way" className={inputCls()} />
                         </div>
-                        <div>
-                            <label className="block text-[10px] font-bold text-text-main/40 uppercase tracking-[0.12em] mb-2">City</label>
-                            <input value={form.city} onChange={(e) => updateForm({ city: e.target.value })} className={inputCls()} />
+                        <div className="md:col-span-2">
+                            <label className="block text-[10px] font-bold text-text-main/40 uppercase tracking-[0.12em] mb-2">City / Town</label>
+                            <LocationAutocomplete
+                                value={
+                                    form.city
+                                        ? { city: form.city, state: form.state, country: form.country, lat: form.latitude, lng: form.longitude }
+                                        : null
+                                }
+                                onChange={(loc: LocationValue) => {
+                                    if (loc) {
+                                        updateForm({
+                                            city: loc.city,
+                                            state: loc.state,
+                                            country: loc.country || form.country,
+                                            latitude: loc.lat,
+                                            longitude: loc.lng,
+                                        });
+                                    } else {
+                                        updateForm({ city: "", state: "", country: "", latitude: null, longitude: null });
+                                    }
+                                }}
+                                placeholder="Start typing a city..."
+                            />
                         </div>
-                        <div className="grid grid-cols-2 gap-3">
+                        <div className="grid grid-cols-2 gap-3 md:col-span-2">
                             <div>
-                                <label className="block text-[10px] font-bold text-text-main/40 uppercase tracking-[0.12em] mb-2">State</label>
+                                <label className="block text-[10px] font-bold text-text-main/40 uppercase tracking-[0.12em] mb-2">State / Province</label>
                                 <input value={form.state} onChange={(e) => updateForm({ state: e.target.value })} className={inputCls()} />
                             </div>
                             <div>
-                                <label className="block text-[10px] font-bold text-text-main/40 uppercase tracking-[0.12em] mb-2">Zip Code</label>
-                                <input value={form.zipCode} onChange={(e) => updateForm({ zipCode: e.target.value })} className={inputCls("zipCode")} />
+                                <label className="block text-[10px] font-bold text-text-main/40 uppercase tracking-[0.12em] mb-2">ZIP / Postal Code</label>
+                                <input
+                                    value={form.zipCode}
+                                    onChange={(e) => {
+                                        const zip = e.target.value;
+                                        const newCountry = detectCountry(zip);
+                                        // Re-derive display radius when country changes
+                                        const prevCountry = detectCountry(form.zipCode);
+                                        if (newCountry !== prevCountry) {
+                                            const storedMiles = Number(form.travelRadius) || 25;
+                                            if (newCountry === "CA") {
+                                                setDisplayRadius(String(Math.round(miToKm(storedMiles))));
+                                            } else {
+                                                setDisplayRadius(String(storedMiles));
+                                            }
+                                        }
+                                        updateForm({ zipCode: zip, country: newCountry !== "OTHER" ? newCountry : form.country });
+                                    }}
+                                    className={inputCls("zipCode")}
+                                />
                                 <FieldError field="zipCode" />
                             </div>
                         </div>
-                        <div className="md:col-span-2">
-                            <label className="block text-[10px] font-bold text-text-main/40 uppercase tracking-[0.12em] mb-3">
-                                Travel Radius — <span className="text-text-main/70">{form.travelRadius} miles</span>
-                            </label>
-                            <input
-                                type="range" min="5" max="100" step="5"
-                                value={form.travelRadius}
-                                onChange={(e) => updateForm({ travelRadius: e.target.value })}
-                                className="w-full h-1.5 bg-white/[0.06] rounded-lg appearance-none cursor-pointer accent-primary"
-                            />
-                            <div className="flex justify-between mt-1.5 text-[10px] font-bold text-text-main/25 tracking-widest">
-                                <span>5 MI</span><span>100 MI</span>
-                            </div>
-                        </div>
+                        {(() => {
+                            const country = detectCountry(form.zipCode);
+                            const unit = radiusUnit(country);
+                            return (
+                                <div className="md:col-span-2">
+                                    <label className="block text-[10px] font-bold text-text-main/40 uppercase tracking-[0.12em] mb-3">
+                                        Travel Radius ({unit === "km" ? "kilometers" : "miles"}) — <span className="text-text-main/70">{formatRadius(parseInt(displayRadius || "0"), country)}</span>
+                                    </label>
+                                    <input
+                                        type="range" min="5" max={unit === "km" ? "160" : "100"} step="5"
+                                        value={displayRadius}
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            setDisplayRadius(val);
+                                            // Convert to miles for storage
+                                            if (country === "CA") {
+                                                updateForm({ travelRadius: String(Math.round(kmToMi(Number(val)))) });
+                                            } else {
+                                                updateForm({ travelRadius: val });
+                                            }
+                                        }}
+                                        className="w-full h-1.5 bg-white/[0.06] rounded-lg appearance-none cursor-pointer accent-primary"
+                                    />
+                                    <div className="flex justify-between mt-1.5 text-[10px] font-bold text-text-main/25 tracking-widest">
+                                        <span>5 {unit.toUpperCase()}</span><span>{unit === "km" ? "160" : "100"} {unit.toUpperCase()}</span>
+                                    </div>
+                                </div>
+                            );
+                        })()}
                     </div>
                 </div>
             )}
