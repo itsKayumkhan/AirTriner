@@ -8,6 +8,7 @@ import * as Location from 'expo-location';
 import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Layout} from '../../theme';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
+import LocationAutocomplete, { LocationValue } from '../../components/LocationAutocomplete';
 
 const FALLBACK_SPORTS = ['Hockey', 'Baseball', 'Basketball', 'Soccer', 'Football', 'Tennis', 'Golf', 'Swimming', 'Boxing', 'Lacrosse', 'Volleyball', 'Track & Field'];
 const TRAINING_TYPES = [
@@ -382,15 +383,25 @@ export default function EditProfileScreen({ navigation }: any) {
 
                 {/* Location */}
                 <Text style={styles.sectionTitle}>Location</Text>
-                <View style={styles.row}>
-                    <View style={[styles.formGroup, { flex: 2 }]}>
-                        <Text style={styles.label}>City</Text>
-                        <TextInput style={styles.input} value={city} onChangeText={setCity} placeholderTextColor={Colors.textTertiary} placeholder="City" />
-                    </View>
-                    <View style={[styles.formGroup, { flex: 1 }]}>
-                        <Text style={styles.label}>State</Text>
-                        <TextInput style={styles.input} value={stateVal} onChangeText={setStateVal} placeholderTextColor={Colors.textTertiary} placeholder="State" />
-                    </View>
+                <View style={{ zIndex: 100 }}>
+                    <LocationAutocomplete
+                        value={{ city, state: stateVal, country: '', lat: null, lng: null }}
+                        onChange={(loc: LocationValue) => {
+                            setCity(loc.city);
+                            setStateVal(loc.state);
+                            // If we got lat/lng from GPS or autocomplete, update the profile
+                            if (loc.lat && loc.lng && user) {
+                                const table = isTrainer ? 'trainer_profiles' : 'athlete_profiles';
+                                supabase.from(table).update({
+                                    latitude: loc.lat,
+                                    longitude: loc.lng,
+                                    city: loc.city,
+                                    state: loc.state,
+                                }).eq('user_id', user.id).then(() => {});
+                            }
+                        }}
+                        placeholder="Search city or use GPS..."
+                    />
                 </View>
 
                 {/* Training Locations (trainer only) */}
@@ -425,20 +436,6 @@ export default function EditProfileScreen({ navigation }: any) {
                             </View>
                         )}
                     </>
-                )}
-
-                {/* GPS Location Button (athlete only) */}
-                {!isTrainer && (
-                    <TouchableOpacity style={styles.locationButton} onPress={handleSetLocation} disabled={locationLoading}>
-                        {locationLoading ? (
-                            <ActivityIndicator color="#fff" size="small" />
-                        ) : (
-                            <>
-                                <Ionicons name="map-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
-                                <Text style={styles.locationButtonText}>Set My Location via GPS</Text>
-                            </>
-                        )}
-                    </TouchableOpacity>
                 )}
 
                 {/* Trainer-only sections */}

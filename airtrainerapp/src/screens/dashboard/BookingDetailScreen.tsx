@@ -6,8 +6,10 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Calendar from 'expo-calendar';
+import * as WebBrowser from 'expo-web-browser';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
+import { Config } from '../../lib/config';
 import { createNotification, scheduleRebookReminder } from '../../lib/notifications';
 import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows, Layout} from '../../theme';
 
@@ -61,6 +63,10 @@ export default function BookingDetailScreen({ route, navigation }: any) {
     // Notes modal for completed sessions (trainer)
     const [notesModalVisible, setNotesModalVisible] = useState(false);
 
+    // Payment state
+    const [isPaymentLoading, setIsPaymentLoading] = useState(false);
+    const [paymentStatus, setPaymentStatus] = useState<'unpaid' | 'paid' | 'checking'>('checking');
+
     const fetchExistingReview = useCallback(async (bId: string) => {
         if (!user) return;
         const { data } = await supabase
@@ -99,13 +105,29 @@ export default function BookingDetailScreen({ route, navigation }: any) {
         setRescheduleRequests(data || []);
     }, []);
 
+    // ── Check if booking is already paid ──
+    const checkPaymentStatus = useCallback(async (bId: string) => {
+        const { data } = await supabase
+            .from('payment_transactions')
+            .select('id, status')
+            .eq('booking_id', bId)
+            .maybeSingle();
+        setPaymentStatus(data ? 'paid' : 'unpaid');
+    }, []);
+
     useEffect(() => { fetchBooking(); }, [fetchBooking]);
 
     useEffect(() => {
         if (booking) {
             fetchRescheduleRequests(booking.id);
+            // Check payment status for confirmed/completed bookings
+            if (['confirmed', 'completed'].includes(booking.status)) {
+                checkPaymentStatus(booking.id);
+            } else {
+                setPaymentStatus('unpaid');
+            }
         }
-    }, [booking, fetchRescheduleRequests]);
+    }, [booking, fetchRescheduleRequests, checkPaymentStatus]);
 
     useEffect(() => {
         if (booking && booking.status === 'completed' && user?.role === 'athlete') {
@@ -435,6 +457,51 @@ export default function BookingDetailScreen({ route, navigation }: any) {
             Alert.alert('Error', e.message);
         } finally {
             setIsSubmittingReview(false);
+        }
+    };
+
+    // ── Stripe Payment ──
+    const handlePayNow = async () => {
+        if (!booking || !user) return;
+        setIsPaymentLoading(true);
+        try {
+            // Call the web API to create a Stripe Checkout session
+            const apiUrl = Config.appUrl || Config.apiUrl?.replace('/api/v1', '') || '';
+            const response = await fetch(`${apiUrl}/api/stripe/create-booking-payment`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    bookingId: booking.id,
+                    athleteId: user.id,
+                    athleteEmail: user.email,
+                }),
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.error || 'Failed to create payment session');
+            }
+
+            if (data.url) {
+                // Open Stripe Checkout in a web browser
+                const result = await WebBrowser.openBrowserAsync(data.url, {
+                    dismissButtonStyle: 'cancel',
+                    presentationStyle: WebBrowser.WebBrowserPresentationStyle.FULL_SCREEN,
+                });
+
+                // After returning from browser, re-check payment status
+                if (result.type === 'cancel' || result.type === 'dismiss') {
+                    // User closed the browser - check if they completed payment
+                    await new Promise(resolve => setTimeout(resolve, 1500));
+                }
+                await checkPaymentStatus(booking.id);
+                await fetchBooking();
+            }
+        } catch (error: any) {
+            Alert.alert('Payment Error', error.message || 'Something went wrong with the payment.');
+        } finally {
+            setIsPaymentLoading(false);
         }
     };
 
@@ -783,10 +850,47 @@ export default function BookingDetailScreen({ route, navigation }: any) {
                             </>
                         )}
 
-                        {/* Confirmed: Cancel (with reason), Reschedule, Calendar */}
+                        {/* Confirmed: Pay Now, Cancel (with reason), Reschedule, Calendar */}
                         {(booking.status === 'confirmed' || booking.status === 'reschedule_requested') && (
                             <>
                                 <Text style={styles.sectionTitle}>Actions</Text>
+
+                                {/* Pay Now Button - only for confirmed, unpaid bookings */}
+                                {booking.status === 'confirmed' && paymentStatus === 'unpaid' && (
+                                    <TouchableOpacity
+                                        style={[styles.actionButton, styles.actionPayNow, { flex: 0, width: '100%', marginBottom: Spacing.md }]}
+                                        onPress={handlePayNow}
+                                        disabled={isPaymentLoading}
+                                        activeOpacity={0.8}
+                                    >
+                                        {isPaymentLoading ? (
+                                            <ActivityIndicator size="small" color="#0A0D14" />
+                                        ) : (
+                                            <>
+                                                <Ionicons name="card" size={20} color="#0A0D14" />
+                                                <Text style={styles.actionButtonTextDark}>
+                                                    Pay Now — ${Number(booking.total_paid || booking.price).toFixed(2)}
+                                                </Text>
+                                            </>
+                                        )}
+                                    </TouchableOpacity>
+                                )}
+
+                                {/* Payment confirmed badge */}
+                                {paymentStatus === 'paid' && (
+                                    <View style={styles.paymentPaidBadge}>
+                                        <Ionicons name="checkmark-circle" size={18} color={Colors.success} />
+                                        <Text style={styles.paymentPaidText}>Payment Completed</Text>
+                                    </View>
+                                )}
+
+                                {paymentStatus === 'checking' && booking.status === 'confirmed' && (
+                                    <View style={[styles.paymentPaidBadge, { backgroundColor: Colors.warningLight }]}>
+                                        <ActivityIndicator size="small" color={Colors.warning} />
+                                        <Text style={[styles.paymentPaidText, { color: Colors.warning }]}>Checking payment status...</Text>
+                                    </View>
+                                )}
+
                                 <TouchableOpacity
                                     style={[styles.actionButton, styles.actionReschedule, { flex: 0, width: '100%' }]}
                                     onPress={() => { setRescheduleDate(''); setRescheduleTime(''); setRescheduleReason(''); setRescheduleModalVisible(true); }}
@@ -1284,6 +1388,25 @@ const styles = StyleSheet.create({
 
     // Cancellation header
     cancellationHeader: { flexDirection: 'row', alignItems: 'center', marginTop: Spacing.md, marginBottom: Spacing.md },
+
+    // Payment
+    actionPayNow: {
+        backgroundColor: Colors.success,
+    },
+    paymentPaidBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        backgroundColor: Colors.successLight,
+        borderRadius: BorderRadius.md,
+        padding: Spacing.md,
+        marginBottom: Spacing.md,
+    },
+    paymentPaidText: {
+        fontSize: FontSize.sm,
+        fontWeight: FontWeight.bold,
+        color: Colors.success,
+    },
 
     // Calendar
     actionCalendar: { backgroundColor: Colors.info },

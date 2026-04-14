@@ -3,6 +3,7 @@ import { StatusBar, Platform, LogBox } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { AuthProvider } from './src/contexts/AuthContext';
 import AppNavigator from './src/navigation/AppNavigator';
+import { StripeWrapper } from './src/lib/stripe';
 
 // Suppress known web-only warnings
 if (Platform.OS === 'web') {
@@ -27,10 +28,12 @@ if (Platform.OS === 'web') {
 export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <AuthProvider>
-        <StatusBar barStyle="light-content" backgroundColor="#0a0a0f" />
-        <AppNavigator />
-      </AuthProvider>
+      <StripeWrapper>
+        <AuthProvider>
+          <StatusBar barStyle="light-content" backgroundColor="#0a0a0f" />
+          <AppNavigator />
+        </AuthProvider>
+      </StripeWrapper>
     </GestureHandlerRootView>
   );
 }

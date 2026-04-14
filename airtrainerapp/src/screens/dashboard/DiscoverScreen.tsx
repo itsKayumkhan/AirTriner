@@ -9,6 +9,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { supabase, TrainerProfileRow, UserRow, AthleteProfileRow } from '../../lib/supabase';
 import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows, Layout} from '../../theme';
 import Founding50Badge from '../../components/Founding50Badge';
+import TrainerMapView, { TrainerPin } from '../../components/TrainerMapView';
+import LocationAutocomplete, { LocationValue } from '../../components/LocationAutocomplete';
 
 // ─── Sport categories loaded from DB, with fallback ───
 const FALLBACK_SPORT_OPTIONS: { slug: string; name: string }[] = [
@@ -131,6 +133,9 @@ export default function DiscoverScreen({ navigation }: any) {
     const [minRating, setMinRating] = useState(0);
     const [durationFilter, setDurationFilter] = useState<number | null>(null);
     const [sortBy, setSortBy] = useState('match');
+
+    // View mode: list or map
+    const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
 
     // Filter modal
     const [filterModalVisible, setFilterModalVisible] = useState(false);
@@ -382,6 +387,32 @@ export default function DiscoverScreen({ navigation }: any) {
 
         return result;
     }, [trainers, nameFilter, sportFilter, locationFilter, maxRate, minRating, skillFilter, timeFilter, durationFilter, sortBy]);
+
+    // ─── Map pins from filtered trainers ───
+    const trainerPins: TrainerPin[] = useMemo(() => {
+        return filteredTrainers
+            .filter((t) => t.latitude && t.longitude)
+            .map((t) => ({
+                id: t.id,
+                userId: t.user_id,
+                name: `${t.users?.first_name || ''} ${t.users?.last_name || ''}`.trim(),
+                sport: (t.sports || [])[0]?.replace(/_/g, ' ') || '',
+                rating: t.avg_rating,
+                reviewCount: t.review_count,
+                hourlyRate: Number(t.hourly_rate || 0),
+                lat: Number(t.latitude),
+                lng: Number(t.longitude),
+                avatarUrl: t.users?.avatar_url,
+                isFounder: !!t.is_founding_50,
+                isTopRated: t.is_top_rated,
+                isNew: t.is_new,
+            }));
+    }, [filteredTrainers]);
+
+    // ─── Location autocomplete handler ───
+    const handleLocationSelect = (loc: LocationValue) => {
+        setLocationFilter(loc.city ? `${loc.city}${loc.state ? `, ${loc.state}` : ''}` : '');
+    };
 
     const onRefresh = async () => {
         setRefreshing(true);
@@ -658,21 +689,31 @@ export default function DiscoverScreen({ navigation }: any) {
                 )}
             </ScrollView>
 
-            {/* ── Location filter inline ── */}
+            {/* ── Location Autocomplete ── */}
             <View style={styles.locationFilterRow}>
-                <Ionicons name="location-outline" size={14} color={Colors.textTertiary} />
-                <TextInput
-                    style={styles.locationInput}
-                    placeholder="Filter by location..."
-                    placeholderTextColor={Colors.textMuted}
-                    value={locationFilter}
-                    onChangeText={setLocationFilter}
+                <LocationAutocomplete
+                    value={locationFilter ? { city: locationFilter, state: '', country: '', lat: null, lng: null } : null}
+                    onChange={handleLocationSelect}
+                    placeholder="Search by city or use GPS..."
                 />
-                {locationFilter.length > 0 && (
-                    <TouchableOpacity onPress={() => setLocationFilter('')}>
-                        <Ionicons name="close-circle" size={16} color={Colors.textTertiary} />
-                    </TouchableOpacity>
-                )}
+            </View>
+
+            {/* ── List / Map Toggle ── */}
+            <View style={styles.viewToggleRow}>
+                <TouchableOpacity
+                    style={[styles.viewToggleButton, viewMode === 'list' && styles.viewToggleButtonActive]}
+                    onPress={() => setViewMode('list')}
+                >
+                    <Ionicons name="list" size={16} color={viewMode === 'list' ? Colors.primary : Colors.textTertiary} />
+                    <Text style={[styles.viewToggleText, viewMode === 'list' && styles.viewToggleTextActive]}>List</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                    style={[styles.viewToggleButton, viewMode === 'map' && styles.viewToggleButtonActive]}
+                    onPress={() => setViewMode('map')}
+                >
+                    <Ionicons name="map" size={16} color={viewMode === 'map' ? Colors.primary : Colors.textTertiary} />
+                    <Text style={[styles.viewToggleText, viewMode === 'map' && styles.viewToggleTextActive]}>Map</Text>
+                </TouchableOpacity>
             </View>
 
             {/* ── Quick filter pills: Rating + Duration + Sort ── */}
@@ -719,24 +760,38 @@ export default function DiscoverScreen({ navigation }: any) {
                 </View>
             </ScrollView>
 
-            {/* ── Trainer List ── */}
-            <FlatList
-                data={filteredTrainers}
-                renderItem={renderTrainerCard}
-                keyExtractor={(item) => item.id}
-                contentContainerStyle={styles.listContent}
-                showsVerticalScrollIndicator={false}
-                refreshControl={
-                    <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />
-                }
-                ListEmptyComponent={
-                    <View style={styles.emptyState}>
-                        <Ionicons name="search-outline" size={48} color={Colors.textTertiary} />
-                        <Text style={styles.emptyTitle}>No trainers found</Text>
-                        <Text style={styles.emptyText}>Try adjusting your filters</Text>
-                    </View>
-                }
-            />
+            {/* ── Trainer List OR Map ── */}
+            {viewMode === 'list' ? (
+                <FlatList
+                    data={filteredTrainers}
+                    renderItem={renderTrainerCard}
+                    keyExtractor={(item) => item.id}
+                    contentContainerStyle={styles.listContent}
+                    showsVerticalScrollIndicator={false}
+                    refreshControl={
+                        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />
+                    }
+                    ListEmptyComponent={
+                        <View style={styles.emptyState}>
+                            <Ionicons name="search-outline" size={48} color={Colors.textTertiary} />
+                            <Text style={styles.emptyTitle}>No trainers found</Text>
+                            <Text style={styles.emptyText}>Try adjusting your filters</Text>
+                        </View>
+                    }
+                />
+            ) : (
+                <View style={styles.mapContainer}>
+                    <TrainerMapView
+                        trainers={trainerPins}
+                        onTrainerPress={(userId) =>
+                            navigation.navigate('TrainerDetail', {
+                                trainerId: userId,
+                                trainer: filteredTrainers.find((t) => t.user_id === userId),
+                            })
+                        }
+                    />
+                </View>
+            )}
 
             {/* ══════════════════════════════════════════════════════
                   Filter Modal (Skill Level, Time, Price in modal)
@@ -1084,24 +1139,51 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
 
-    // Location inline filter
+    // Location autocomplete wrapper
     locationFilterRow: {
+        marginHorizontal: Spacing.xxl,
+        marginBottom: Spacing.sm,
+        zIndex: 100,
+    },
+
+    // View toggle (List / Map)
+    viewToggleRow: {
         flexDirection: 'row',
-        alignItems: 'center',
         marginHorizontal: Spacing.xxl,
         marginBottom: Spacing.sm,
         backgroundColor: Colors.card,
         borderRadius: BorderRadius.md,
         borderWidth: 1,
         borderColor: Colors.border,
-        paddingHorizontal: Spacing.md,
-        height: 38,
-        gap: 6,
+        padding: 3,
+        gap: 2,
     },
-    locationInput: {
+    viewToggleButton: {
         flex: 1,
-        color: Colors.text,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 6,
+        paddingVertical: 8,
+        borderRadius: BorderRadius.sm,
+    },
+    viewToggleButtonActive: {
+        backgroundColor: 'rgba(69,208,255,0.1)',
+    },
+    viewToggleText: {
         fontSize: FontSize.sm,
+        fontWeight: FontWeight.bold,
+        color: Colors.textTertiary,
+    },
+    viewToggleTextActive: {
+        color: Colors.primary,
+    },
+
+    // Map container
+    mapContainer: {
+        flex: 1,
+        marginHorizontal: Spacing.xxl,
+        marginBottom: Spacing.md,
     },
 
     // Quick filter pills scroll

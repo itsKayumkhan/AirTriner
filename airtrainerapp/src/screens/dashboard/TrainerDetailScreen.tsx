@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
     View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator,
-    Modal, TextInput, Image,
+    Modal, TextInput, Image, Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { MapView, Marker as MapsMarker, Circle as MapsCircle, PROVIDER_GOOGLE, MAPS_AVAILABLE } from '../../lib/maps';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase, ReviewRow, UserRow } from '../../lib/supabase';
 import { createNotification, scheduleSessionReminder } from '../../lib/notifications';
@@ -521,6 +522,57 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
                             </Text>
                         </View>
                     )}
+
+                    {/* Mini Map (native only) */}
+                    {trainer.latitude && trainer.longitude && MAPS_AVAILABLE && (
+                        <View style={styles.miniMapContainer}>
+                            <MapView
+                                style={styles.miniMap}
+                                provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
+                                initialRegion={{
+                                    latitude: Number(trainer.latitude),
+                                    longitude: Number(trainer.longitude),
+                                    latitudeDelta: 0.05,
+                                    longitudeDelta: 0.05,
+                                }}
+                                scrollEnabled={false}
+                                zoomEnabled={false}
+                                rotateEnabled={false}
+                                pitchEnabled={false}
+                                customMapStyle={[
+                                    { elementType: 'geometry', stylers: [{ color: '#0A0D14' }] },
+                                    { elementType: 'labels.text.stroke', stylers: [{ color: '#0A0D14' }] },
+                                    { elementType: 'labels.text.fill', stylers: [{ color: '#6b6b7b' }] },
+                                    { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#161B22' }] },
+                                    { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0d1018' }] },
+                                    { featureType: 'poi', elementType: 'geometry', stylers: [{ color: '#111520' }] },
+                                ]}
+                            >
+                                <MapsMarker
+                                    coordinate={{
+                                        latitude: Number(trainer.latitude),
+                                        longitude: Number(trainer.longitude),
+                                    }}
+                                >
+                                    <View style={styles.miniMapPin}>
+                                        <Ionicons name="person" size={14} color="#0A0D14" />
+                                    </View>
+                                </MapsMarker>
+                                {trainer.travel_radius_miles > 0 && (
+                                    <MapsCircle
+                                        center={{
+                                            latitude: Number(trainer.latitude),
+                                            longitude: Number(trainer.longitude),
+                                        }}
+                                        radius={trainer.travel_radius_miles * 1609.34}
+                                        fillColor="rgba(69,208,255,0.08)"
+                                        strokeColor="rgba(69,208,255,0.3)"
+                                        strokeWidth={1}
+                                    />
+                                )}
+                            </MapView>
+                        </View>
+                    )}
                 </View>
 
                 {/* Pricing Info */}
@@ -931,6 +983,27 @@ const styles = StyleSheet.create({
     certChipText: { fontSize: FontSize.sm, fontWeight: FontWeight.medium, color: Colors.text },
     locationCard: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, padding: Spacing.lg, backgroundColor: '#161B22', borderRadius: BorderRadius.md, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
     locationText: { fontSize: FontSize.md, color: '#FFFFFF' },
+    miniMapContainer: {
+        marginTop: Spacing.md,
+        height: 180,
+        borderRadius: BorderRadius.md,
+        overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+    },
+    miniMap: {
+        flex: 1,
+    },
+    miniMapPin: {
+        width: 28,
+        height: 28,
+        borderRadius: 14,
+        backgroundColor: Colors.primary,
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 2,
+        borderColor: '#fff',
+    },
     pricingCard: { backgroundColor: '#161B22', borderRadius: BorderRadius.md, padding: Spacing.lg, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
     pricingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: Spacing.sm },
     pricingLabel: { fontSize: FontSize.sm, color: Colors.textSecondary },
