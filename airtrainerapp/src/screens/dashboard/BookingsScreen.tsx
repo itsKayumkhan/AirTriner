@@ -1,11 +1,16 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import {
-    View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator, Linking,
-} from 'react-native';
+import { View, Text, StyleSheet, FlatList, RefreshControl, Pressable } from 'react-native';
+import Animated, { FadeInUp, Layout as ReanimatedLayout } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase, BookingRow, UserRow } from '../../lib/supabase';
-import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows, Layout} from '../../theme';
+import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows } from '../../theme';
+import {
+    ScreenWrapper,
+    Avatar,
+    EmptyState,
+    LoadingScreen,
+} from '../../components/ui';
 
 type BookingWithUsers = BookingRow & {
     athlete: UserRow;
@@ -21,6 +26,16 @@ const STATUS_CONFIG: Record<string, { color: string; bg: string; icon: string; l
     disputed:   { color: '#fff',    bg: Colors.error,        icon: 'warning-outline',          label: 'Disputed' },
 };
 
+/** Map status to the date-tile and top-accent color */
+const STATUS_ACCENT: Record<string, string> = {
+    pending:   '#ffab00',
+    confirmed: '#45D0FF',
+    completed: Colors.success,
+    cancelled: Colors.error,
+    no_show:   '#6b6b7b',
+    disputed:  Colors.error,
+};
+
 type FilterTab = 'all' | 'pending' | 'confirmed' | 'completed' | 'cancelled';
 
 const TABS: { key: FilterTab; label: string }[] = [
@@ -31,6 +46,13 @@ const TABS: { key: FilterTab; label: string }[] = [
     { key: 'cancelled', label: 'Cancelled' },
 ];
 
+/* ─────────────────── stat mini-card config ─────────────────── */
+const STAT_CARDS: { key: 'confirmed' | 'completed' | 'pending'; label: string; icon: keyof typeof Ionicons.glyphMap; tint: string; tintBg: string }[] = [
+    { key: 'confirmed', label: 'Upcoming',  icon: 'calendar-outline',           tint: '#45D0FF',      tintBg: 'rgba(69,208,255,0.10)' },
+    { key: 'completed', label: 'Completed', icon: 'checkmark-done-outline',     tint: Colors.success, tintBg: 'rgba(16,185,129,0.10)' },
+    { key: 'pending',   label: 'Pending',   icon: 'time-outline',               tint: '#ffab00',      tintBg: 'rgba(255,171,0,0.10)' },
+];
+
 export default function BookingsScreen({ navigation }: any) {
     const { user } = useAuth();
     const [bookings, setBookings] = useState<BookingWithUsers[]>([]);
@@ -38,6 +60,7 @@ export default function BookingsScreen({ navigation }: any) {
     const [refreshing, setRefreshing] = useState(false);
     const [activeTab, setActiveTab] = useState<FilterTab>('all');
 
+    /* ── data fetching ── */
     const fetchBookings = useCallback(async () => {
         if (!user) return;
         try {
@@ -65,6 +88,7 @@ export default function BookingsScreen({ navigation }: any) {
         setRefreshing(false);
     };
 
+    /* ── helpers ── */
     const getCountForTab = (tab: FilterTab): number => {
         if (tab === 'all') return bookings.length;
         return bookings.filter((b) => b.status === tab).length;
@@ -75,19 +99,19 @@ export default function BookingsScreen({ navigation }: any) {
         return bookings.filter((b) => b.status === activeTab);
     };
 
-    const formatDate = (dateStr: string) => {
-        const d = new Date(dateStr);
-        return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-    };
-
     const formatTime = (dateStr: string) => {
         const d = new Date(dateStr);
         return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
     };
 
-    const getInitials = (u: UserRow | undefined): string => {
-        if (!u) return '??';
-        return ((u.first_name?.[0] || '') + (u.last_name?.[0] || '')).toUpperCase();
+    const getEmptyIcon = (): keyof typeof Ionicons.glyphMap => {
+        switch (activeTab) {
+            case 'pending':   return 'time-outline';
+            case 'confirmed': return 'checkmark-circle-outline';
+            case 'completed': return 'trophy-outline';
+            case 'cancelled': return 'close-circle-outline';
+            default:          return 'calendar-outline';
+        }
     };
 
     const getEmptyMessage = (): string => {
@@ -100,120 +124,168 @@ export default function BookingsScreen({ navigation }: any) {
         }
     };
 
-    const renderBookingCard = ({ item }: { item: BookingWithUsers }) => {
-        const config = STATUS_CONFIG[item.status] || STATUS_CONFIG.pending;
-        const otherUser = user?.role === 'trainer' ? item.athlete : item.trainer;
+    /* ────────────────────────── render helpers ────────────────────────── */
 
-        return (
-            <TouchableOpacity
-                style={styles.bookingCard}
-                activeOpacity={0.7}
-                onPress={() => navigation.navigate('BookingDetail', { bookingId: item.id })}
-            >
-                <View style={styles.cardTop}>
-                    {/* Date block */}
-                    <View style={styles.dateContainer}>
-                        <Text style={styles.dateDay}>{new Date(item.scheduled_at).getDate()}</Text>
-                        <Text style={styles.dateMonth}>
-                            {new Date(item.scheduled_at).toLocaleDateString('en-US', { month: 'short' })}
-                        </Text>
-                    </View>
-
-                    <View style={styles.cardContent}>
-                        {/* Sport + status badge */}
-                        <View style={styles.sportRow}>
-                            <Text style={styles.sportLabel}>{item.sport}</Text>
-                            <View style={[styles.statusBadge, { backgroundColor: config.bg }]}>
-                                <Ionicons name={config.icon as any} size={12} color={config.color} />
-                                <Text style={[styles.statusText, { color: config.color }]}>{config.label}</Text>
-                            </View>
+    /** Stats summary row */
+    const renderStatsRow = () => (
+        <View style={styles.statsRow}>
+            {STAT_CARDS.map((s) => {
+                const count = getCountForTab(s.key);
+                return (
+                    <View key={s.key} style={[styles.statCard, { backgroundColor: s.tintBg }]}>
+                        <View style={[styles.statAccent, { backgroundColor: s.tint }]} />
+                        <View style={styles.statBody}>
+                            <Ionicons name={s.icon} size={18} color={s.tint} />
+                            <Text style={[styles.statCount, { color: s.tint }]}>{count}</Text>
+                            <Text style={styles.statLabel}>{s.label}</Text>
                         </View>
+                    </View>
+                );
+            })}
+        </View>
+    );
 
-                        {/* Other user with initials */}
-                        <View style={styles.personRow}>
-                            <View style={styles.personAvatar}>
-                                <Text style={styles.personAvatarText}>{getInitials(otherUser)}</Text>
-                            </View>
-                            <Text style={styles.personName}>
-                                {otherUser?.first_name} {otherUser?.last_name}
+    /** Pill-style tab filter */
+    const renderPillTabs = () => (
+        <View style={styles.pillRow}>
+            {TABS.map((t) => {
+                const isActive = activeTab === t.key;
+                const count = getCountForTab(t.key);
+                return (
+                    <Pressable
+                        key={t.key}
+                        onPress={() => setActiveTab(t.key)}
+                        style={[styles.pill, isActive ? styles.pillActive : styles.pillInactive]}
+                        accessibilityLabel={`${t.label} filter, ${count} bookings`}
+                        accessibilityRole="button"
+                    >
+                        <Text style={[styles.pillText, isActive && styles.pillTextActive]}>
+                            {t.label}
+                        </Text>
+                        <View style={[styles.pillBadge, isActive ? styles.pillBadgeActive : styles.pillBadgeInactive]}>
+                            <Text style={[styles.pillBadgeText, isActive && styles.pillBadgeTextActive]}>
+                                {count}
                             </Text>
                         </View>
+                    </Pressable>
+                );
+            })}
+        </View>
+    );
 
-                        {/* Info: time, duration, price */}
-                        <View style={styles.infoRow}>
-                            <View style={styles.infoItem}>
-                                <Ionicons name="time-outline" size={14} color={Colors.textTertiary} />
-                                <Text style={styles.infoText}>{formatTime(item.scheduled_at)}</Text>
+    /** Single booking card */
+    const renderBookingCard = ({ item, index }: { item: BookingWithUsers; index: number }) => {
+        const config = STATUS_CONFIG[item.status] || STATUS_CONFIG.pending;
+        const accent = STATUS_ACCENT[item.status] || '#ffab00';
+        const otherUser = user?.role === 'trainer' ? item.athlete : item.trainer;
+        const otherName = `${otherUser?.first_name || ''} ${otherUser?.last_name || ''}`.trim();
+        const d = new Date(item.scheduled_at);
+        const dayNum = d.getDate();
+        const monthStr = d.toLocaleDateString('en-US', { month: 'short' }).toUpperCase();
+
+        return (
+            <Animated.View
+                entering={FadeInUp.delay(index * 30).duration(250)}
+                layout={ReanimatedLayout}
+            >
+                <Pressable
+                    onPress={() => navigation.navigate('BookingDetail', { bookingId: item.id })}
+                    style={({ pressed }) => [
+                        styles.card,
+                        pressed && { opacity: 0.95, transform: [{ scale: 0.98 }] },
+                    ]}
+                    accessibilityLabel={`${item.sport} booking with ${otherName}, ${config.label}`}
+                    accessibilityRole="button"
+                >
+                    {/* top accent bar */}
+                    <View style={[styles.cardAccentBar, { backgroundColor: accent }]} />
+
+                    <View style={styles.cardInner}>
+                        {/* LEFT: date tile */}
+                        <View style={[styles.dateTile, { backgroundColor: accent + '18' }]}>
+                            <Text style={[styles.dateTileDay, { color: accent }]}>{dayNum}</Text>
+                            <Text style={[styles.dateTileMonth, { color: accent }]}>{monthStr}</Text>
+                        </View>
+
+                        {/* CENTER */}
+                        <View style={styles.cardCenter}>
+                            <Text style={styles.sportName} numberOfLines={1}>{item.sport}</Text>
+
+                            {/* person row */}
+                            <View style={styles.personRow}>
+                                <Avatar uri={otherUser?.avatar_url} name={otherName} size={24} />
+                                <Text style={styles.personName} numberOfLines={1}>{otherName}</Text>
                             </View>
-                            <View style={styles.infoItem}>
-                                <Ionicons name="hourglass-outline" size={14} color={Colors.textTertiary} />
-                                <Text style={styles.infoText}>{item.duration_minutes}min</Text>
-                            </View>
-                            <View style={styles.infoItem}>
-                                <Ionicons name="cash-outline" size={14} color="#45D0FF" />
-                                <Text style={[styles.infoText, { color: '#45D0FF' }]}>${Number(item.total_paid).toFixed(0)}</Text>
+
+                            {/* time + duration */}
+                            <View style={styles.metaRow}>
+                                <View style={styles.metaItem}>
+                                    <Ionicons name="time-outline" size={13} color={Colors.textTertiary} />
+                                    <Text style={styles.metaText}>{formatTime(item.scheduled_at)}</Text>
+                                </View>
+                                <View style={styles.metaDot} />
+                                <View style={styles.metaItem}>
+                                    <Ionicons name="hourglass-outline" size={13} color={Colors.textTertiary} />
+                                    <Text style={styles.metaText}>{item.duration_minutes} min</Text>
+                                </View>
                             </View>
                         </View>
-                    </View>
-                </View>
 
-                {/* Date line beneath card content */}
-                <View style={styles.dateLine}>
-                    <Ionicons name="calendar-outline" size={13} color={Colors.textTertiary} />
-                    <Text style={styles.dateLineText}>{formatDate(item.scheduled_at)}</Text>
-                </View>
-            </TouchableOpacity>
+                        {/* RIGHT: price */}
+                        <View style={styles.priceWrap}>
+                            <Text style={styles.priceDollar}>$</Text>
+                            <Text style={styles.priceAmount}>{Number(item.total_paid).toFixed(0)}</Text>
+                        </View>
+                    </View>
+
+                    {/* bottom separator + view details */}
+                    <View style={styles.cardFooter}>
+                        <View style={styles.cardFooterSep} />
+                        <View style={styles.cardFooterContent}>
+                            <View style={[styles.statusDot, { backgroundColor: accent }]} />
+                            <Text style={[styles.statusText, { color: accent }]}>{config.label}</Text>
+                            <View style={{ flex: 1 }} />
+                            <Text style={styles.viewDetails}>View Details</Text>
+                            <Ionicons name="arrow-forward" size={14} color={Colors.primary} style={{ marginLeft: 2 }} />
+                        </View>
+                    </View>
+                </Pressable>
+            </Animated.View>
         );
     };
 
+    /* ────────────────────────── loading state ────────────────────────── */
     if (isLoading) {
-        return (
-            <View style={[styles.container, styles.center]}>
-                <ActivityIndicator size="large" color={Colors.primary} />
-            </View>
-        );
+        return <LoadingScreen message="Loading bookings..." />;
     }
 
     const filtered = getFilteredBookings();
 
+    /* ────────────────────────── main render ────────────────────────── */
     return (
-        <View style={styles.container}>
+        <ScreenWrapper scrollable={false} noPadding>
+            {/* HEADER */}
             <View style={styles.header}>
-                <Text style={styles.headerTitle}>Bookings</Text>
-                <Text style={styles.headerSubtitle}>{bookings.length} total sessions</Text>
+                <View>
+                    <Text style={styles.headerTitle}>Bookings</Text>
+                    <Text style={styles.headerSubtitle}>{bookings.length} total sessions</Text>
+                </View>
+                <Pressable
+                    style={styles.filterBtn}
+                    accessibilityLabel="Open filters"
+                    accessibilityRole="button"
+                >
+                    <Ionicons name="options-outline" size={22} color={Colors.text} />
+                </Pressable>
             </View>
 
-            {/* Filter Tabs */}
-            <View style={styles.tabsWrapper}>
-                <FlatList
-                    data={TABS}
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    keyExtractor={(t) => t.key}
-                    contentContainerStyle={styles.tabsContainer}
-                    renderItem={({ item: tab }) => {
-                        const count = getCountForTab(tab.key);
-                        const isActive = activeTab === tab.key;
-                        return (
-                            <TouchableOpacity
-                                style={[styles.tab, isActive && styles.tabActive]}
-                                onPress={() => setActiveTab(tab.key)}
-                            >
-                                <Text style={[styles.tabText, isActive && styles.tabTextActive]}>
-                                    {tab.label}
-                                </Text>
-                                <View style={[styles.tabCount, isActive && styles.tabCountActive]}>
-                                    <Text style={[styles.tabCountText, isActive && styles.tabCountTextActive]}>
-                                        {count}
-                                    </Text>
-                                </View>
-                            </TouchableOpacity>
-                        );
-                    }}
-                />
-            </View>
+            {/* STATS ROW */}
+            {renderStatsRow()}
 
-            {/* Bookings List */}
+            {/* PILL TABS */}
+            {renderPillTabs()}
+
+            {/* LIST */}
             <FlatList
                 data={filtered}
                 renderItem={renderBookingCard}
@@ -221,133 +293,284 @@ export default function BookingsScreen({ navigation }: any) {
                 contentContainerStyle={styles.listContent}
                 showsVerticalScrollIndicator={false}
                 refreshControl={
-                    <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />
+                    <RefreshControl
+                        refreshing={refreshing}
+                        onRefresh={onRefresh}
+                        tintColor={Colors.primary}
+                        colors={[Colors.primary]}
+                    />
                 }
                 ListEmptyComponent={
-                    <View style={styles.emptyState}>
-                        <Ionicons name="calendar-outline" size={48} color={Colors.textTertiary} />
-                        <Text style={styles.emptyTitle}>No bookings</Text>
-                        <Text style={styles.emptyText}>{getEmptyMessage()}</Text>
-                    </View>
+                    <EmptyState
+                        icon={getEmptyIcon()}
+                        title="No bookings"
+                        description={getEmptyMessage()}
+                    />
                 }
             />
-        </View>
+        </ScreenWrapper>
     );
 }
 
+/* ═══════════════════════════ STYLES ═══════════════════════════ */
+
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#0A0D14' },
-    center: { justifyContent: 'center', alignItems: 'center' },
-
-    // Header
-    header: { paddingHorizontal: Layout.screenPadding, paddingTop: Layout.headerTopPadding, paddingBottom: Spacing.lg },
-    headerTitle: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: '#FFFFFF' },
-    headerSubtitle: { fontSize: FontSize.sm, color: Colors.textSecondary, marginTop: 2 },
-
-    // Tabs
-    tabsWrapper: { marginBottom: Spacing.md },
-    tabsContainer: { paddingHorizontal: Layout.screenPadding, gap: Spacing.sm },
-    tab: {
+    /* ── Header ── */
+    header: {
         flexDirection: 'row',
+        justifyContent: 'space-between',
         alignItems: 'center',
         paddingHorizontal: Spacing.lg,
-        paddingVertical: Spacing.md,
-        borderRadius: BorderRadius.pill,
-        backgroundColor: Colors.surface,
-        borderWidth: 1,
-        borderColor: Colors.border,
-        gap: Spacing.sm,
+        paddingTop: Spacing.md,
+        paddingBottom: Spacing.sm,
     },
-    tabActive: {
-        backgroundColor: Colors.surface,
-        borderColor: Colors.border,
-        borderBottomWidth: 2,
-        borderBottomColor: '#45D0FF',
+    headerTitle: {
+        fontSize: 28,
+        fontWeight: FontWeight.bold,
+        color: Colors.text,
     },
-    tabText: { fontSize: FontSize.sm, fontWeight: FontWeight.medium, color: Colors.textSecondary },
-    tabTextActive: { color: '#45D0FF' },
-    tabCount: {
-        minWidth: 20,
-        height: 20,
-        borderRadius: 10,
-        backgroundColor: 'rgba(255,255,255,0.06)',
-        alignItems: 'center',
-        justifyContent: 'center',
-        paddingHorizontal: 5,
+    headerSubtitle: {
+        fontSize: FontSize.sm,
+        color: Colors.textTertiary,
+        marginTop: 2,
     },
-    tabCountActive: { backgroundColor: 'rgba(69,208,255,0.15)' },
-    tabCountText: { fontSize: FontSize.xs, fontWeight: FontWeight.bold, color: Colors.textTertiary },
-    tabCountTextActive: { color: '#45D0FF' },
-
-    // List
-    listContent: { paddingHorizontal: Layout.screenPadding, paddingBottom: 100 },
-
-    // Booking Card
-    bookingCard: {
-        backgroundColor: '#161B22',
-        borderRadius: BorderRadius.lg,
-        padding: Spacing.lg,
-        marginBottom: Spacing.md,
-        borderWidth: 1,
-        borderColor: Colors.border,
-        ...Shadows.small,
-    },
-    cardTop: { flexDirection: 'row', gap: Spacing.lg },
-    dateContainer: {
-        width: 50,
-        height: 56,
+    filterBtn: {
+        width: 44,
+        height: 44,
         borderRadius: BorderRadius.md,
-        backgroundColor: Colors.primaryGlow,
+        backgroundColor: Colors.glass,
+        borderWidth: 1,
+        borderColor: Colors.glassBorder,
         justifyContent: 'center',
         alignItems: 'center',
     },
-    dateDay: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: '#45D0FF' },
-    dateMonth: { fontSize: FontSize.xs, fontWeight: FontWeight.medium, color: '#45D0FF', textTransform: 'uppercase' },
-    cardContent: { flex: 1 },
-    sportRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
-    sportLabel: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: '#FFFFFF' },
-    statusBadge: {
+
+    /* ── Stats row ── */
+    statsRow: {
+        flexDirection: 'row',
+        paddingHorizontal: Spacing.lg,
+        gap: Spacing.sm,
+        marginTop: Spacing.md,
+        marginBottom: Spacing.lg,
+    },
+    statCard: {
+        flex: 1,
+        flexDirection: 'row',
+        borderRadius: BorderRadius.md,
+        overflow: 'hidden',
+        minHeight: 62,
+    },
+    statAccent: {
+        width: 3,
+    },
+    statBody: {
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: Spacing.sm,
+        gap: 2,
+    },
+    statCount: {
+        fontSize: FontSize.xl,
+        fontWeight: FontWeight.bold,
+    },
+    statLabel: {
+        fontSize: FontSize.xxs,
+        fontWeight: FontWeight.medium,
+        color: Colors.textTertiary,
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
+    },
+
+    /* ── Pill tabs ── */
+    pillRow: {
+        flexDirection: 'row',
+        paddingHorizontal: Spacing.lg,
+        gap: Spacing.sm,
+        marginBottom: Spacing.md,
+    },
+    pill: {
         flexDirection: 'row',
         alignItems: 'center',
         paddingHorizontal: Spacing.md,
-        paddingVertical: 3,
+        paddingVertical: Spacing.sm,
         borderRadius: BorderRadius.pill,
-        gap: 4,
+        gap: 6,
+        minHeight: 44,
     },
-    statusText: { fontSize: FontSize.xs, fontWeight: FontWeight.semibold },
+    pillActive: {
+        backgroundColor: Colors.primary,
+    },
+    pillInactive: {
+        backgroundColor: Colors.glass,
+        borderWidth: 1,
+        borderColor: Colors.glassBorder,
+    },
+    pillText: {
+        fontSize: FontSize.sm,
+        fontWeight: FontWeight.medium,
+        color: Colors.textTertiary,
+    },
+    pillTextActive: {
+        color: Colors.textInverse,
+        fontWeight: FontWeight.semibold,
+    },
+    pillBadge: {
+        minWidth: 20,
+        height: 20,
+        borderRadius: 10,
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingHorizontal: 5,
+    },
+    pillBadgeActive: {
+        backgroundColor: 'rgba(10,13,20,0.25)',
+    },
+    pillBadgeInactive: {
+        backgroundColor: Colors.glassLight,
+    },
+    pillBadgeText: {
+        fontSize: FontSize.xxs,
+        fontWeight: FontWeight.bold,
+        color: Colors.textTertiary,
+    },
+    pillBadgeTextActive: {
+        color: '#fff',
+    },
 
-    // Person row with avatar
-    personRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: 6 },
-    personAvatar: {
-        width: 22,
-        height: 22,
-        borderRadius: 11,
-        backgroundColor: Colors.primaryGlow,
+    /* ── List ── */
+    listContent: {
+        paddingHorizontal: Spacing.lg,
+        paddingBottom: 100,
+        gap: 12,
+    },
+
+    /* ── Card ── */
+    card: {
+        backgroundColor: Colors.card,
+        borderRadius: BorderRadius.lg,
+        overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: Colors.border,
+        ...Shadows.medium,
+    },
+    cardAccentBar: {
+        height: 4,
+        width: '100%',
+    },
+    cardInner: {
+        flexDirection: 'row',
+        padding: Spacing.lg,
+        gap: Spacing.md,
+        alignItems: 'center',
+    },
+
+    /* date tile */
+    dateTile: {
+        width: 54,
+        height: 60,
+        borderRadius: BorderRadius.md,
         justifyContent: 'center',
         alignItems: 'center',
     },
-    personAvatarText: { fontSize: 9, fontWeight: FontWeight.bold, color: '#45D0FF' },
-    personName: { fontSize: FontSize.sm, color: Colors.textSecondary },
+    dateTileDay: {
+        fontSize: 24,
+        fontWeight: FontWeight.bold,
+        lineHeight: 28,
+    },
+    dateTileMonth: {
+        fontSize: FontSize.xxs,
+        fontWeight: FontWeight.semibold,
+        textTransform: 'uppercase',
+        letterSpacing: 0.8,
+    },
 
-    // Info row
-    infoRow: { flexDirection: 'row', gap: Spacing.lg },
-    infoItem: { flexDirection: 'row', alignItems: 'center', gap: 3 },
-    infoText: { fontSize: FontSize.xs, color: Colors.textTertiary },
-
-    // Date line
-    dateLine: {
+    /* center content */
+    cardCenter: {
+        flex: 1,
+        gap: 4,
+    },
+    sportName: {
+        fontSize: FontSize.lg,
+        fontWeight: FontWeight.bold,
+        color: Colors.text,
+    },
+    personRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 4,
-        marginTop: Spacing.md,
-        paddingTop: Spacing.md,
-        borderTopWidth: 1,
-        borderTopColor: Colors.border,
+        gap: Spacing.sm,
     },
-    dateLineText: { fontSize: FontSize.xs, color: Colors.textTertiary },
+    personName: {
+        fontSize: FontSize.sm,
+        color: Colors.textSecondary,
+        flex: 1,
+    },
+    metaRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        marginTop: 2,
+    },
+    metaItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 3,
+    },
+    metaDot: {
+        width: 3,
+        height: 3,
+        borderRadius: 1.5,
+        backgroundColor: Colors.textTertiary,
+    },
+    metaText: {
+        fontSize: FontSize.xs,
+        color: Colors.textTertiary,
+    },
 
-    // Empty state
-    emptyState: { alignItems: 'center', paddingTop: 80, gap: Spacing.md },
-    emptyTitle: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: '#FFFFFF' },
-    emptyText: { fontSize: FontSize.md, color: Colors.textSecondary, textAlign: 'center' },
+    /* price */
+    priceWrap: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+    },
+    priceDollar: {
+        fontSize: FontSize.sm,
+        fontWeight: FontWeight.bold,
+        color: Colors.primary,
+        marginTop: 2,
+    },
+    priceAmount: {
+        fontSize: FontSize.xxl,
+        fontWeight: FontWeight.bold,
+        color: Colors.primary,
+    },
+
+    /* footer */
+    cardFooter: {
+        paddingHorizontal: Spacing.lg,
+        paddingBottom: Spacing.md,
+    },
+    cardFooterSep: {
+        height: 1,
+        backgroundColor: Colors.border,
+        marginBottom: Spacing.sm,
+    },
+    cardFooterContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    statusDot: {
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+        marginRight: 6,
+    },
+    statusText: {
+        fontSize: FontSize.xs,
+        fontWeight: FontWeight.semibold,
+    },
+    viewDetails: {
+        fontSize: FontSize.sm,
+        fontWeight: FontWeight.medium,
+        color: Colors.primary,
+    },
 });

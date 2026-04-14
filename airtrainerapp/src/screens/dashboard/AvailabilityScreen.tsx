@@ -4,22 +4,25 @@ import {
     Text,
     StyleSheet,
     ScrollView,
-    TouchableOpacity,
+    Pressable,
     Alert,
-    ActivityIndicator,
-    RefreshControl,
-    SafeAreaView,
 } from 'react-native';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
-import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Layout} from '../../theme';
+import { Colors, Spacing, BorderRadius, FontSize, FontWeight } from '../../theme';
+import ScreenWrapper from '../../components/ui/ScreenWrapper';
+import ScreenHeader from '../../components/ui/ScreenHeader';
+import Card from '../../components/ui/Card';
+import Button from '../../components/ui/Button';
+import LoadingScreen from '../../components/ui/LoadingScreen';
+import SectionHeader from '../../components/ui/SectionHeader';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const DAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const DURATIONS = [30, 45, 60] as const;
 
-// Helper: add minutes to a HH:MM time string
 function addMinutes(time: string, mins: number): string {
     const [h, m] = time.split(':').map(Number);
     const total = h * 60 + m + mins;
@@ -28,14 +31,12 @@ function addMinutes(time: string, mins: number): string {
     return `${String(newH).padStart(2, '0')}:${String(newM).padStart(2, '0')}`;
 }
 
-// Detect duration from existing slot's start/end
 function slotDurationMinutes(start: string, end: string): number {
     const [sh, sm] = start.split(':').map(Number);
     const [eh, em] = end.split(':').map(Number);
     return eh * 60 + em - (sh * 60 + sm);
 }
 
-// Hourly slots 06:00–20:00
 const TIME_SLOTS: { label: string; start: string }[] = [];
 for (let h = 6; h <= 20; h++) {
     const start = `${String(h).padStart(2, '0')}:00`;
@@ -44,7 +45,6 @@ for (let h = 6; h <= 20; h++) {
     TIME_SLOTS.push({ label: `${display12}:00 ${period}`, start });
 }
 
-// selectedSlots shape: { [dayIndex: number]: Set<startTime> }
 type SelectedSlots = Record<number, Set<string>>;
 
 export default function AvailabilityScreen({ navigation }: any) {
@@ -61,7 +61,6 @@ export default function AvailabilityScreen({ navigation }: any) {
     const fetchAvailability = useCallback(async () => {
         if (!user) return;
         try {
-            // Resolve trainer profile id
             let profileId: string | null =
                 (user.trainerProfile as any)?.id ?? null;
 
@@ -91,7 +90,6 @@ export default function AvailabilityScreen({ navigation }: any) {
                 if (!built[d]) built[d] = new Set();
                 built[d].add(slot.start_time as string);
 
-                // Detect duration from first slot that has both start and end
                 if (detectedDuration === null && slot.start_time && slot.end_time) {
                     const dur = slotDurationMinutes(slot.start_time, slot.end_time);
                     if (dur === 30 || dur === 45 || dur === 60) {
@@ -104,7 +102,6 @@ export default function AvailabilityScreen({ navigation }: any) {
                 setSlotDuration(detectedDuration);
             }
 
-            // Fetch bookings for conflict detection
             const { data: bookings } = await supabase
                 .from('bookings')
                 .select('scheduled_at, duration_minutes, status')
@@ -117,7 +114,6 @@ export default function AvailabilityScreen({ navigation }: any) {
                     const bDate = new Date(b.scheduled_at);
                     const bDay = bDate.getDay();
                     const bTime = `${String(bDate.getHours()).padStart(2, '0')}:${String(bDate.getMinutes()).padStart(2, '0')}`;
-                    // Key: "dayIndex-startTime"
                     booked.add(`${bDay}-${bTime}`);
                 }
                 setBookedSlots(booked);
@@ -142,7 +138,6 @@ export default function AvailabilityScreen({ navigation }: any) {
     };
 
     const toggleSlot = (startTime: string) => {
-        // Do not toggle booked slots
         if (bookedSlots.has(`${selectedDay}-${startTime}`)) return;
 
         setSelectedSlots((prev) => {
@@ -165,7 +160,6 @@ export default function AvailabilityScreen({ navigation }: any) {
         }
         setIsSaving(true);
         try {
-            // 1. Delete all existing slots for this trainer
             const { error: deleteError } = await supabase
                 .from('availability_slots')
                 .delete()
@@ -173,13 +167,11 @@ export default function AvailabilityScreen({ navigation }: any) {
 
             if (deleteError) throw deleteError;
 
-            // 2. Build insert array from selectedSlots using selected duration
             const toInsert: {
                 trainer_id: string;
                 day_of_week: number;
                 start_time: string;
                 end_time: string;
-                is_available: boolean;
             }[] = [];
 
             for (const [dayStr, times] of Object.entries(selectedSlots)) {
@@ -191,7 +183,6 @@ export default function AvailabilityScreen({ navigation }: any) {
                         day_of_week: day,
                         start_time: startTime,
                         end_time: endTime,
-                        is_available: true,
                     });
                 }
             }
@@ -219,268 +210,166 @@ export default function AvailabilityScreen({ navigation }: any) {
     );
 
     if (isLoading) {
-        return (
-            <View style={[styles.container, styles.center]}>
-                <ActivityIndicator size="large" color={Colors.primary} />
-            </View>
-        );
+        return <LoadingScreen message="Loading availability..." />;
     }
 
     return (
-        <View style={styles.container}>
-            {/* Header */}
-            <View style={styles.header}>
-                <TouchableOpacity
-                    onPress={() => navigation.goBack()}
-                    style={styles.backButton}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                    <Ionicons name="arrow-back" size={22} color={Colors.text} />
-                </TouchableOpacity>
-                <Text style={styles.headerTitle}>Availability</Text>
-                <View style={{ width: 44 }} />
-            </View>
+        <ScreenWrapper
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+        >
+            <ScreenHeader
+                title="Availability"
+                subtitle="Set your weekly schedule"
+                onBack={() => navigation.goBack()}
+            />
 
-            <ScrollView
-                contentContainerStyle={styles.contentContainer}
-                showsVerticalScrollIndicator={false}
-                refreshControl={
-                    <RefreshControl
-                        refreshing={refreshing}
-                        onRefresh={onRefresh}
-                        tintColor={Colors.primary}
-                        colors={[Colors.primary]}
-                    />
-                }
-            >
-                {/* Subtitle */}
+            {/* Description */}
+            <Animated.View entering={FadeInDown.duration(250)}>
                 <Text style={styles.subtitle}>
-                    Set your weekly recurring availability. Athletes can only book during these
-                    windows.
+                    Set your weekly recurring availability. Athletes can only book during these windows.
                 </Text>
+            </Animated.View>
 
-                {/* Duration selector pills */}
-                <View style={styles.durationRow}>
-                    <Ionicons name="time-outline" size={16} color={Colors.textSecondary} />
-                    <Text style={styles.durationLabel}>Session length:</Text>
-                    {DURATIONS.map((dur) => {
-                        const isActive = slotDuration === dur;
-                        return (
-                            <TouchableOpacity
-                                key={dur}
-                                style={[
-                                    styles.durationPill,
-                                    isActive && styles.durationPillActive,
-                                ]}
-                                onPress={() => setSlotDuration(dur)}
-                                activeOpacity={0.7}
-                            >
-                                <Text
-                                    style={[
-                                        styles.durationPillText,
-                                        isActive && styles.durationPillTextActive,
+            {/* Duration selector - segmented control style */}
+            <Animated.View entering={FadeInDown.duration(250).delay(30)}>
+                <Card style={styles.durationCard}>
+                    <Text style={styles.durationHeading}>Session Duration</Text>
+                    <View style={styles.segmentedControl}>
+                        {DURATIONS.map((dur) => {
+                            const isActive = slotDuration === dur;
+                            return (
+                                <Pressable
+                                    key={dur}
+                                    style={({ pressed }) => [
+                                        styles.segment,
+                                        isActive && styles.segmentActive,
+                                        pressed && { opacity: 0.9 },
                                     ]}
+                                    onPress={() => setSlotDuration(dur)}
+                                    accessibilityLabel={`${dur} minute sessions`}
                                 >
-                                    {dur}min
-                                </Text>
-                            </TouchableOpacity>
-                        );
-                    })}
-                </View>
+                                    <Text style={[styles.segmentText, isActive && styles.segmentTextActive]}>
+                                        {dur} min
+                                    </Text>
+                                </Pressable>
+                            );
+                        })}
+                    </View>
+                </Card>
+            </Animated.View>
 
-                {/* Day tabs */}
+            {/* Day selector - horizontal scroll of day cards */}
+            <Animated.View entering={FadeInDown.duration(250).delay(60)}>
                 <ScrollView
                     horizontal
                     showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.dayTabsContent}
-                    style={styles.dayTabs}
+                    contentContainerStyle={styles.dayCardsContent}
+                    style={styles.dayCards}
                 >
                     {DAYS.map((day, i) => {
                         const count = selectedSlots[i]?.size ?? 0;
                         const isActive = selectedDay === i;
                         return (
-                            <TouchableOpacity
+                            <Pressable
                                 key={day}
-                                style={[styles.dayTab, isActive && styles.dayTabActive]}
+                                style={({ pressed }) => [
+                                    styles.dayCard,
+                                    isActive && styles.dayCardActive,
+                                    pressed && { opacity: 0.9, transform: [{ scale: 0.98 }] },
+                                ]}
                                 onPress={() => setSelectedDay(i)}
+                                accessibilityLabel={`${DAY_LABELS[i]}, ${count} slots selected`}
                             >
-                                <Text
-                                    style={[
-                                        styles.dayTabLabel,
-                                        isActive && styles.dayTabLabelActive,
-                                    ]}
-                                >
+                                <Text style={[styles.dayCardAbbr, isActive && styles.dayCardAbbrActive]}>
                                     {day}
                                 </Text>
-                                {count > 0 && (
-                                    <View
-                                        style={[
-                                            styles.dayTabBadge,
-                                            isActive && styles.dayTabBadgeActive,
-                                        ]}
-                                    >
-                                        <Text
-                                            style={[
-                                                styles.dayTabBadgeText,
-                                                isActive && styles.dayTabBadgeTextActive,
-                                            ]}
-                                        >
-                                            {count}
-                                        </Text>
-                                    </View>
-                                )}
-                            </TouchableOpacity>
+                                <Text style={[styles.dayCardCount, isActive && styles.dayCardCountActive]}>
+                                    {count}
+                                </Text>
+                                <Text style={[styles.dayCardSlotLabel, isActive && styles.dayCardSlotLabelActive]}>
+                                    slot{count !== 1 ? 's' : ''}
+                                </Text>
+                            </Pressable>
                         );
                     })}
                 </ScrollView>
+            </Animated.View>
 
-                {/* Day heading */}
-                <View style={styles.dayHeadingRow}>
-                    <Text style={styles.dayHeading}>{DAY_LABELS[selectedDay]}</Text>
-                    <Text style={styles.daySlotCount}>
-                        {totalSelectedForDay} slot{totalSelectedForDay !== 1 ? 's' : ''} selected
-                    </Text>
-                </View>
+            {/* Day heading */}
+            <SectionHeader
+                title={DAY_LABELS[selectedDay]}
+                actionLabel={`${totalSelectedForDay} slot${totalSelectedForDay !== 1 ? 's' : ''}`}
+            />
 
-                {/* Time slot grid */}
-                <View style={styles.slotsGrid}>
-                    {TIME_SLOTS.map((slot) => {
-                        const active = selectedSlots[selectedDay]?.has(slot.start) ?? false;
-                        const isBooked = bookedSlots.has(`${selectedDay}-${slot.start}`);
+            {/* Time slot grid - pill buttons */}
+            <Animated.View entering={FadeInDown.duration(250).delay(30)} style={styles.slotsGrid}>
+                {TIME_SLOTS.map((slot) => {
+                    const active = selectedSlots[selectedDay]?.has(slot.start) ?? false;
+                    const isBooked = bookedSlots.has(`${selectedDay}-${slot.start}`);
 
-                        if (isBooked) {
-                            return (
-                                <View
-                                    key={slot.start}
-                                    style={[styles.slotButton, styles.slotButtonBooked]}
-                                >
-                                    <View>
-                                        <Text style={styles.slotTextBooked}>
-                                            {slot.label}
-                                        </Text>
-                                        <Text style={styles.bookedLabel}>BOOKED</Text>
-                                    </View>
-                                    <Ionicons
-                                        name="lock-closed"
-                                        size={18}
-                                        color="#92400E"
-                                    />
-                                </View>
-                            );
-                        }
-
+                    if (isBooked) {
                         return (
-                            <TouchableOpacity
-                                key={slot.start}
-                                style={[styles.slotButton, active && styles.slotButtonActive]}
-                                onPress={() => toggleSlot(slot.start)}
-                                activeOpacity={0.7}
-                            >
-                                <Text
-                                    style={[styles.slotText, active && styles.slotTextActive]}
-                                >
-                                    {slot.label}
-                                </Text>
-                                {active ? (
-                                    <Ionicons
-                                        name="checkmark-circle"
-                                        size={18}
-                                        color={Colors.background}
-                                    />
-                                ) : (
-                                    <Ionicons
-                                        name="add-circle-outline"
-                                        size={18}
-                                        color={Colors.textTertiary}
-                                    />
-                                )}
-                            </TouchableOpacity>
+                            <View key={slot.start} style={styles.slotPillBooked}>
+                                <Text style={styles.slotPillBookedText}>{slot.label}</Text>
+                                <Ionicons name="lock-closed" size={12} color={Colors.warning} />
+                            </View>
                         );
-                    })}
-                </View>
+                    }
 
-                {/* Weekly summary */}
-                <View style={styles.summaryCard}>
-                    <Ionicons
-                        name="calendar-outline"
-                        size={20}
-                        color={Colors.primary}
-                    />
-                    <Text style={styles.summaryText}>
-                        <Text style={{ fontWeight: FontWeight.bold, color: Colors.primary }}>
-                            {totalSelected}
-                        </Text>{' '}
-                        total weekly slot{totalSelected !== 1 ? 's' : ''} across all days
-                    </Text>
-                </View>
+                    return (
+                        <Pressable
+                            key={slot.start}
+                            style={({ pressed }) => [
+                                styles.slotPill,
+                                active && styles.slotPillActive,
+                                pressed && { opacity: 0.9, transform: [{ scale: 0.97 }] },
+                            ]}
+                            onPress={() => toggleSlot(slot.start)}
+                            accessibilityLabel={`${slot.label}${active ? ', selected' : ''}`}
+                        >
+                            <Text style={[styles.slotPillText, active && styles.slotPillTextActive]}>
+                                {slot.label}
+                            </Text>
+                            {active && (
+                                <Ionicons name="checkmark" size={14} color={Colors.textInverse} />
+                            )}
+                        </Pressable>
+                    );
+                })}
+            </Animated.View>
 
-                {/* Bottom padding for fixed button */}
-                <View style={{ height: 100 }} />
-            </ScrollView>
+            {/* Weekly summary */}
+            <Animated.View entering={FadeInDown.duration(250).delay(120)}>
+                <Card style={styles.summaryCard}>
+                    <View style={styles.summaryRow}>
+                        <Ionicons name="calendar-outline" size={20} color={Colors.primary} />
+                        <Text style={styles.summaryText}>
+                            <Text style={{ fontWeight: FontWeight.bold, color: Colors.primary }}>
+                                {totalSelected}
+                            </Text>{' '}
+                            total weekly slot{totalSelected !== 1 ? 's' : ''} across all days
+                        </Text>
+                    </View>
+                </Card>
+            </Animated.View>
 
-            {/* Fixed save button */}
-            <View style={styles.saveContainer}>
-                <TouchableOpacity
-                    style={[styles.saveButton, isSaving && styles.saveButtonDisabled]}
+            {/* Save button */}
+            <Animated.View entering={FadeInDown.duration(250).delay(50)} style={styles.saveArea}>
+                <Button
+                    title="Save Availability"
                     onPress={saveAvailability}
+                    icon="save-outline"
+                    loading={isSaving}
                     disabled={isSaving}
-                    activeOpacity={0.85}
-                >
-                    {isSaving ? (
-                        <ActivityIndicator size="small" color={Colors.background} />
-                    ) : (
-                        <>
-                            <Ionicons name="save-outline" size={20} color={Colors.background} />
-                            <Text style={styles.saveButtonText}>Save Availability</Text>
-                        </>
-                    )}
-                </TouchableOpacity>
-            </View>
-        </View>
+                    size="lg"
+                />
+            </Animated.View>
+        </ScreenWrapper>
     );
 }
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: Colors.background,
-    },
-    center: {
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-
-    // Header
-    header: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingHorizontal: Spacing.xxl,
-        paddingTop: Layout.headerTopPadding,
-        paddingBottom: Spacing.lg,
-        borderBottomWidth: 1,
-        borderBottomColor: Colors.border,
-    },
-    backButton: {
-        width: 44,
-        height: 44,
-        borderRadius: BorderRadius.md,
-        backgroundColor: Colors.surface,
-        justifyContent: 'center',
-        alignItems: 'center',
-        borderWidth: 1,
-        borderColor: Colors.border,
-    },
-    headerTitle: {
-        fontSize: FontSize.lg,
-        fontWeight: FontWeight.bold,
-        color: Colors.text,
-    },
-
-    contentContainer: {
-        paddingHorizontal: Spacing.xxl,
-        paddingTop: Spacing.xl,
-    },
     subtitle: {
         fontSize: FontSize.sm,
         color: Colors.textSecondary,
@@ -488,160 +377,151 @@ const styles = StyleSheet.create({
         marginBottom: Spacing.lg,
     },
 
-    // Duration selector
-    durationRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: Spacing.sm,
-        marginBottom: Spacing.xl,
+    // Duration - segmented control
+    durationCard: {
+        marginBottom: Spacing.xxl,
     },
-    durationLabel: {
-        fontSize: FontSize.sm,
-        color: Colors.textSecondary,
-        marginRight: Spacing.xs,
-    },
-    durationPill: {
-        paddingHorizontal: Spacing.lg,
-        paddingVertical: Spacing.sm,
-        borderRadius: BorderRadius.pill,
-        backgroundColor: Colors.surface,
-        borderWidth: 1,
-        borderColor: Colors.border,
-    },
-    durationPillActive: {
-        backgroundColor: Colors.primary,
-        borderColor: Colors.primary,
-    },
-    durationPillText: {
+    durationHeading: {
         fontSize: FontSize.sm,
         fontWeight: FontWeight.semibold,
         color: Colors.textSecondary,
-    },
-    durationPillTextActive: {
-        color: Colors.background,
-    },
-
-    // Day tabs
-    dayTabs: {
-        marginBottom: Spacing.xl,
-    },
-    dayTabsContent: {
-        gap: Spacing.sm,
-        paddingRight: Spacing.xxl,
-    },
-    dayTab: {
-        paddingHorizontal: Spacing.lg,
-        paddingVertical: Spacing.sm,
-        borderRadius: BorderRadius.pill,
-        backgroundColor: Colors.surface,
-        borderWidth: 1,
-        borderColor: Colors.border,
-        alignItems: 'center',
-        minWidth: 56,
-        gap: 4,
-    },
-    dayTabActive: {
-        backgroundColor: Colors.primary,
-        borderColor: Colors.primary,
-    },
-    dayTabLabel: {
-        fontSize: FontSize.sm,
-        fontWeight: FontWeight.semibold,
-        color: Colors.textSecondary,
-    },
-    dayTabLabelActive: {
-        color: Colors.background,
-    },
-    dayTabBadge: {
-        backgroundColor: Colors.primaryGlow,
-        borderRadius: BorderRadius.pill,
-        paddingHorizontal: 6,
-        paddingVertical: 1,
-    },
-    dayTabBadgeActive: {
-        backgroundColor: 'rgba(10, 13, 20, 0.25)',
-    },
-    dayTabBadgeText: {
-        fontSize: FontSize.xs,
-        fontWeight: FontWeight.bold,
-        color: Colors.primary,
-    },
-    dayTabBadgeTextActive: {
-        color: Colors.background,
-    },
-
-    // Day heading
-    dayHeadingRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
         marginBottom: Spacing.md,
     },
-    dayHeading: {
-        fontSize: FontSize.md,
-        fontWeight: FontWeight.bold,
-        color: Colors.text,
+    segmentedControl: {
+        flexDirection: 'row',
+        backgroundColor: Colors.surface,
+        borderRadius: BorderRadius.md,
+        padding: 3,
     },
-    daySlotCount: {
-        fontSize: FontSize.xs,
-        color: Colors.textTertiary,
+    segment: {
+        flex: 1,
+        paddingVertical: Spacing.md,
+        borderRadius: BorderRadius.sm,
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: 44,
+    },
+    segmentActive: {
+        backgroundColor: Colors.primary,
+    },
+    segmentText: {
+        fontSize: FontSize.sm,
+        fontWeight: FontWeight.semibold,
+        color: Colors.textSecondary,
+    },
+    segmentTextActive: {
+        color: Colors.textInverse,
+        fontWeight: FontWeight.bold,
     },
 
-    // Slots grid
+    // Day cards - horizontal scroll
+    dayCards: {
+        marginBottom: Spacing.xxl,
+    },
+    dayCardsContent: {
+        gap: Spacing.md,
+        paddingVertical: Spacing.xs,
+    },
+    dayCard: {
+        width: 72,
+        paddingVertical: Spacing.lg,
+        borderRadius: BorderRadius.lg,
+        backgroundColor: Colors.card,
+        borderWidth: 1.5,
+        borderColor: Colors.border,
+        alignItems: 'center',
+        gap: Spacing.xs,
+    },
+    dayCardActive: {
+        backgroundColor: Colors.primary,
+        borderColor: Colors.primary,
+    },
+    dayCardAbbr: {
+        fontSize: FontSize.md,
+        fontWeight: FontWeight.bold,
+        color: Colors.textSecondary,
+    },
+    dayCardAbbrActive: {
+        color: Colors.textInverse,
+    },
+    dayCardCount: {
+        fontSize: FontSize.xl,
+        fontWeight: FontWeight.heavy,
+        color: Colors.text,
+    },
+    dayCardCountActive: {
+        color: Colors.textInverse,
+    },
+    dayCardSlotLabel: {
+        fontSize: FontSize.xxs,
+        color: Colors.textTertiary,
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
+    },
+    dayCardSlotLabelActive: {
+        color: 'rgba(10, 13, 20, 0.5)',
+    },
+
+    // Slots grid - pill buttons
     slotsGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
         gap: Spacing.sm,
         marginBottom: Spacing.xxl,
     },
-    slotButton: {
+    slotPill: {
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'space-between',
+        gap: Spacing.xs,
         paddingHorizontal: Spacing.lg,
         paddingVertical: Spacing.md,
-        borderRadius: BorderRadius.md,
-        backgroundColor: Colors.surface,
+        borderRadius: BorderRadius.pill,
+        backgroundColor: Colors.card,
         borderWidth: 1,
         borderColor: Colors.border,
+        minHeight: 44,
     },
-    slotButtonActive: {
+    slotPillActive: {
         backgroundColor: Colors.primary,
         borderColor: Colors.primary,
     },
-    slotButtonBooked: {
-        backgroundColor: '#FEF3C7',
-        borderColor: '#F59E0B',
+    slotPillBooked: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.xs,
+        paddingHorizontal: Spacing.lg,
+        paddingVertical: Spacing.md,
+        borderRadius: BorderRadius.pill,
+        backgroundColor: Colors.warningMuted,
+        borderWidth: 1,
+        borderColor: Colors.warning,
+        minHeight: 44,
     },
-    slotText: {
-        fontSize: FontSize.md,
+    slotPillText: {
+        fontSize: FontSize.sm,
         fontWeight: FontWeight.medium,
         color: Colors.text,
     },
-    slotTextActive: {
-        color: Colors.background,
+    slotPillTextActive: {
+        color: Colors.textInverse,
         fontWeight: FontWeight.bold,
     },
-    slotTextBooked: {
-        fontSize: FontSize.md,
+    slotPillBookedText: {
+        fontSize: FontSize.sm,
         fontWeight: FontWeight.medium,
-        color: '#92400E',
-    },
-    bookedLabel: {
-        fontSize: FontSize.xs,
-        fontWeight: FontWeight.bold,
-        color: '#D97706',
-        marginTop: 2,
+        color: Colors.warning,
     },
 
     // Summary
     summaryCard: {
+        backgroundColor: Colors.primaryGlow,
+        borderColor: Colors.borderActive,
+        marginBottom: Spacing.xxl,
+    },
+    summaryRow: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: Spacing.md,
-        padding: Spacing.lg,
-        backgroundColor: Colors.primaryGlow,
-        borderRadius: BorderRadius.md,
-        borderWidth: 1,
-        borderColor: Colors.borderActive,
     },
     summaryText: {
         flex: 1,
@@ -650,34 +530,8 @@ const styles = StyleSheet.create({
         lineHeight: 20,
     },
 
-    // Save button
-    saveContainer: {
-        position: 'absolute',
-        bottom: 0,
-        left: 0,
-        right: 0,
-        paddingHorizontal: Spacing.xxl,
-        paddingBottom: 34,
-        paddingTop: Spacing.md,
-        backgroundColor: Colors.background,
-        borderTopWidth: 1,
-        borderTopColor: Colors.border,
-    },
-    saveButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: Spacing.sm,
-        backgroundColor: '#45D0FF',
-        borderRadius: BorderRadius.lg,
-        paddingVertical: Spacing.lg,
-    },
-    saveButtonDisabled: {
-        opacity: 0.6,
-    },
-    saveButtonText: {
-        fontSize: FontSize.md,
-        fontWeight: FontWeight.bold,
-        color: '#0A0D14',
+    // Save
+    saveArea: {
+        marginBottom: Spacing.lg,
     },
 });

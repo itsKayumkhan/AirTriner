@@ -1,13 +1,20 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-    View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator, Alert,
+    View, Text, StyleSheet, FlatList, Pressable, RefreshControl, Alert,
 } from 'react-native';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase, ReviewRow } from '../../lib/supabase';
-import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows, Layout} from '../../theme';
+import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows } from '../../theme';
+import ScreenWrapper from '../../components/ui/ScreenWrapper';
+import ScreenHeader from '../../components/ui/ScreenHeader';
+import Card from '../../components/ui/Card';
+import Avatar from '../../components/ui/Avatar';
+import EmptyState from '../../components/ui/EmptyState';
+import LoadingScreen from '../../components/ui/LoadingScreen';
 
 type ReviewWithUser = ReviewRow & {
     reviewer?: { first_name: string; last_name: string };
@@ -80,16 +87,16 @@ export default function ReviewsScreen({ navigation }: any) {
     }));
 
     const getBarColor = (star: number) => {
-        if (star >= 4) return '#10B981';
-        if (star === 3) return '#F59E0B';
-        return '#EF4444';
+        if (star >= 4) return Colors.success;
+        if (star === 3) return Colors.warning;
+        return Colors.error;
     };
 
     const renderStars = (rating: number, size: number = 16) => (
         <View style={styles.starsRow}>
             {[1, 2, 3, 4, 5].map((star) => (
-                <Text key={star} style={{ fontSize: size, color: star <= rating ? '#F59E0B' : 'rgba(255,255,255,0.1)' }}>
-                    ★
+                <Text key={star} style={{ fontSize: size, color: star <= rating ? Colors.warning : Colors.glass }}>
+                    {'\u2605'}
                 </Text>
             ))}
         </View>
@@ -122,96 +129,94 @@ export default function ReviewsScreen({ navigation }: any) {
         }
     };
 
-    const renderReview = ({ item }: { item: ReviewWithUser }) => {
-        const initials = item.reviewer
-            ? `${item.reviewer.first_name[0]}${item.reviewer.last_name[0]}`
-            : '?';
+    const renderReview = ({ item, index }: { item: ReviewWithUser; index: number }) => {
         const name = item.reviewer
             ? `${item.reviewer.first_name} ${item.reviewer.last_name}`
             : 'Anonymous';
 
         return (
-            <View style={styles.reviewCard}>
-                <View style={styles.reviewHeader}>
-                    <View style={styles.reviewHeaderLeft}>
-                        <View style={styles.reviewAvatar}>
-                            <Text style={styles.reviewAvatarText}>{initials}</Text>
-                        </View>
-                        <View style={styles.reviewInfo}>
-                            <Text style={styles.reviewName}>{name}</Text>
-                            <Text style={styles.reviewDate}>
-                                {new Date(item.created_at).toLocaleDateString('en-US', {
-                                    month: 'long', day: 'numeric', year: 'numeric',
-                                })}
-                            </Text>
+            <Animated.View entering={FadeInDown.duration(200).delay(index * 30)}>
+                <Card style={styles.reviewCard}>
+                    {/* Avatar left, name+stars+date header */}
+                    <View style={styles.reviewHeader}>
+                        <Avatar name={name} size={48} />
+                        <View style={styles.reviewHeaderRight}>
+                            <View style={styles.reviewNameRow}>
+                                <Text style={styles.reviewName}>{name}</Text>
+                                <Text style={styles.reviewDate}>
+                                    {new Date(item.created_at).toLocaleDateString('en-US', {
+                                        month: 'short', day: 'numeric', year: 'numeric',
+                                    })}
+                                </Text>
+                            </View>
+                            {renderStars(item.rating, 16)}
                         </View>
                     </View>
-                    {renderStars(item.rating, 18)}
-                </View>
-                {item.review_text ? (
-                    <View style={styles.reviewTextContainer}>
-                        <Text style={styles.reviewText}>{item.review_text}</Text>
-                    </View>
-                ) : (
-                    <Text style={styles.reviewTextEmpty}>No written review provided.</Text>
-                )}
-            </View>
+                    {/* Text below */}
+                    {item.review_text ? (
+                        <View style={styles.reviewTextContainer}>
+                            <Text style={styles.reviewText}>{item.review_text}</Text>
+                        </View>
+                    ) : (
+                        <Text style={styles.reviewTextEmpty}>No written review provided.</Text>
+                    )}
+                </Card>
+            </Animated.View>
         );
     };
 
     const renderSummary = () => (
-        <View style={styles.summaryCard}>
-            <View style={styles.summaryLeft}>
-                <Text style={styles.summaryRating}>{avgRating || '\u2014'}</Text>
-                {renderStars(Math.round(avgRating), 22)}
-                <Text style={styles.summaryCount}>
-                    {reviews.length} {reviews.length === 1 ? 'Review' : 'Reviews'}
-                </Text>
-            </View>
-            <View style={styles.summaryDivider} />
-            <View style={styles.summaryRight}>
-                {ratingDist.map((d) => (
-                    <View key={d.stars} style={styles.distributionRow}>
-                        <View style={styles.distributionLabel}>
-                            <Text style={styles.distributionStar}>{d.stars}</Text>
-                            <Text style={styles.distributionStarIcon}>★</Text>
-                        </View>
-                        <View style={styles.distributionBarBg}>
-                            <View
-                                style={[
-                                    styles.distributionBarFill,
-                                    {
-                                        width: `${d.pct}%`,
-                                        backgroundColor: getBarColor(d.stars),
-                                    },
-                                ]}
-                            />
-                        </View>
-                        <Text style={styles.distributionCount}>{d.count}</Text>
+        <Animated.View entering={FadeInDown.duration(250)}>
+            {/* Rating summary card: big average number + star visualization + distribution bars */}
+            <Card style={styles.summaryCard} variant="elevated">
+                <View style={styles.summaryContent}>
+                    <View style={styles.summaryLeft}>
+                        <Text style={styles.summaryRating}>{avgRating || '\u2014'}</Text>
+                        {renderStars(Math.round(avgRating), 22)}
+                        <Text style={styles.summaryCount}>
+                            {reviews.length} {reviews.length === 1 ? 'Review' : 'Reviews'}
+                        </Text>
                     </View>
-                ))}
-            </View>
-        </View>
+                    <View style={styles.summaryDivider} />
+                    <View style={styles.summaryRight}>
+                        {ratingDist.map((d) => (
+                            <View key={d.stars} style={styles.distributionRow}>
+                                <View style={styles.distributionLabel}>
+                                    <Text style={styles.distributionStar}>{d.stars}</Text>
+                                    <Text style={styles.distributionStarIcon}>{'\u2605'}</Text>
+                                </View>
+                                <View style={styles.distributionBarBg}>
+                                    <View
+                                        style={[
+                                            styles.distributionBarFill,
+                                            {
+                                                width: `${d.pct}%`,
+                                                backgroundColor: getBarColor(d.stars),
+                                            },
+                                        ]}
+                                    />
+                                </View>
+                                <Text style={styles.distributionCount}>{d.count}</Text>
+                            </View>
+                        ))}
+                    </View>
+                </View>
+            </Card>
+        </Animated.View>
     );
 
     if (isLoading) {
-        return (
-            <View style={[styles.container, styles.center]}>
-                <ActivityIndicator size="large" color={Colors.primary} />
-            </View>
-        );
+        return <LoadingScreen message="Loading reviews..." />;
     }
 
     return (
         <View style={styles.container}>
-            <View style={styles.header}>
-                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerButton}>
-                    <Ionicons name="arrow-back" size={24} color={Colors.text} />
-                </TouchableOpacity>
-                <Text style={styles.headerTitle}>My Reviews</Text>
-                <TouchableOpacity onPress={handleExportCSV} style={styles.headerButton}>
-                    <Ionicons name="download-outline" size={22} color={Colors.text} />
-                </TouchableOpacity>
+            <View style={styles.headerWrap}>
+                <ScreenHeader
+                    title="My Reviews"
+                    onBack={() => navigation.goBack()}
+                    rightAction={{ icon: 'download-outline', onPress: handleExportCSV }}
+                />
             </View>
 
             <FlatList
@@ -225,13 +230,11 @@ export default function ReviewsScreen({ navigation }: any) {
                 }
                 ListHeaderComponent={reviews.length > 0 ? renderSummary : null}
                 ListEmptyComponent={
-                    <View style={styles.emptyState}>
-                        <View style={styles.emptyIconContainer}>
-                            <Ionicons name="document-text-outline" size={48} color={Colors.textMuted} />
-                        </View>
-                        <Text style={styles.emptyTitle}>No reviews yet</Text>
-                        <Text style={styles.emptyText}>Complete sessions to start receiving reviews!</Text>
-                    </View>
+                    <EmptyState
+                        icon="document-text-outline"
+                        title="No reviews yet"
+                        description="Complete sessions to start receiving reviews!"
+                    />
                 }
             />
         </View>
@@ -243,51 +246,24 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: Colors.background,
     },
-    center: {
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    header: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingHorizontal: Spacing.xxl,
-        paddingTop: Layout.headerTopPadding,
-        paddingBottom: Spacing.lg,
-        borderBottomWidth: 1,
-        borderBottomColor: Colors.border,
-    },
-    headerButton: {
-        width: 44,
-        height: 44,
-        borderRadius: 14,
-        backgroundColor: Colors.surface,
-        justifyContent: 'center',
-        alignItems: 'center',
-        borderWidth: 1,
-        borderColor: Colors.border,
-    },
-    headerTitle: {
-        fontSize: FontSize.lg,
-        fontWeight: FontWeight.bold,
-        color: Colors.text,
+    headerWrap: {
+        paddingHorizontal: Spacing.xl,
+        paddingTop: Spacing.huge,
     },
     listContent: {
-        paddingHorizontal: Spacing.xxl,
-        paddingTop: Spacing.lg,
+        paddingHorizontal: Spacing.xl,
+        paddingTop: Spacing.sm,
         paddingBottom: 100,
     },
+
     // Summary card
     summaryCard: {
+        marginBottom: Spacing.xxl,
+        ...Shadows.medium,
+    },
+    summaryContent: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: Colors.card,
-        borderRadius: BorderRadius.xl,
-        borderWidth: 1,
-        borderColor: Colors.border,
-        padding: Spacing.xl,
-        marginBottom: Spacing.xl,
-        ...Shadows.medium,
     },
     summaryLeft: {
         alignItems: 'center',
@@ -318,6 +294,7 @@ const styles = StyleSheet.create({
         letterSpacing: 1.5,
         marginTop: Spacing.xs,
     },
+
     // Distribution
     distributionRow: {
         flexDirection: 'row',
@@ -338,7 +315,7 @@ const styles = StyleSheet.create({
     },
     distributionStarIcon: {
         fontSize: FontSize.xs,
-        color: '#F59E0B',
+        color: Colors.warning,
     },
     distributionBarBg: {
         flex: 1,
@@ -361,56 +338,37 @@ const styles = StyleSheet.create({
         fontWeight: FontWeight.bold,
         color: Colors.textTertiary,
     },
+
     // Stars
     starsRow: {
         flexDirection: 'row',
         gap: 2,
     },
-    // Review card
+
+    // Review card - avatar left, header right, text below
     reviewCard: {
-        backgroundColor: Colors.card,
-        borderRadius: BorderRadius.xl,
-        padding: Spacing.lg,
         marginBottom: Spacing.md,
-        borderWidth: 1,
-        borderColor: Colors.border,
-        ...Shadows.medium,
+        ...Shadows.small,
     },
     reviewHeader: {
         flexDirection: 'row',
         alignItems: 'flex-start',
-        justifyContent: 'space-between',
+        gap: Spacing.md,
         marginBottom: Spacing.md,
     },
-    reviewHeaderLeft: {
+    reviewHeaderRight: {
+        flex: 1,
+        gap: Spacing.xs,
+    },
+    reviewNameRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        flex: 1,
-    },
-    reviewAvatar: {
-        width: 44,
-        height: 44,
-        borderRadius: 14,
-        backgroundColor: 'rgba(255,255,255,0.06)',
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginRight: Spacing.md,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.08)',
-    },
-    reviewAvatarText: {
-        fontSize: FontSize.sm,
-        fontWeight: FontWeight.heavy,
-        color: Colors.textSecondary,
-    },
-    reviewInfo: {
-        flex: 1,
+        justifyContent: 'space-between',
     },
     reviewName: {
         fontSize: FontSize.md,
         fontWeight: FontWeight.bold,
         color: Colors.text,
-        marginBottom: 2,
     },
     reviewDate: {
         fontSize: FontSize.xs,
@@ -433,25 +391,5 @@ const styles = StyleSheet.create({
         fontSize: FontSize.md,
         color: Colors.textMuted,
         fontStyle: 'italic',
-    },
-    // Empty state
-    emptyState: {
-        alignItems: 'center',
-        paddingTop: 80,
-        paddingHorizontal: Spacing.xxl,
-    },
-    emptyIconContainer: {
-        marginBottom: Spacing.lg,
-    },
-    emptyTitle: {
-        fontSize: FontSize.xl,
-        fontWeight: FontWeight.bold,
-        color: Colors.text,
-        marginBottom: Spacing.sm,
-    },
-    emptyText: {
-        fontSize: FontSize.md,
-        color: Colors.textSecondary,
-        textAlign: 'center',
     },
 });

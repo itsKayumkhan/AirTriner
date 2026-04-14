@@ -1,28 +1,35 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-    View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl,
-    ActivityIndicator, useWindowDimensions,
+    View, Text, StyleSheet, Pressable, Platform,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { DrawerActions } from '@react-navigation/native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase, BookingRow } from '../../lib/supabase';
-import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows } from '../../theme';
+import {
+    Colors, Spacing, BorderRadius, FontSize, FontWeight, Layout, Shadows,
+    getStatusColor, getStatusBg, getStatusLabel, formatTime, formatDate,
+} from '../../theme';
+import {
+    ScreenWrapper, Card, SectionHeader,
+    Badge, EmptyState, LoadingScreen,
+} from '../../components/ui';
 
 type BookingWithOtherUser = BookingRow & {
     other_user?: { first_name: string; last_name: string };
 };
 
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
 export default function TrainerDashboardScreen({ navigation }: any) {
     const { user } = useAuth();
-    const insets = useSafeAreaInsets();
-    const { width: screenWidth } = useWindowDimensions();
-    const isSmallScreen = screenWidth < 380;
     const [stats, setStats] = useState({
         totalBookings: 0,
         upcomingBookings: 0,
         completedBookings: 0,
+        pendingBookings: 0,
         totalEarnings: 0,
         averageRating: 0,
         totalReviews: 0,
@@ -39,16 +46,17 @@ export default function TrainerDashboardScreen({ navigation }: any) {
         return 'Evening';
     };
 
-    const today = new Date().toLocaleDateString('en-US', {
-        weekday: 'long',
-        month: 'long',
-        day: 'numeric',
-    });
+    const getTodayDate = () => {
+        return new Date().toLocaleDateString('en-US', {
+            weekday: 'long',
+            month: 'long',
+            day: 'numeric',
+        });
+    };
 
     const fetchDashboardData = useCallback(async () => {
         if (!user) return;
         try {
-            // Fetch platform settings (matching web dashboard page)
             const { data: platformData } = await supabase
                 .from('platform_settings')
                 .select('require_trainer_verification')
@@ -57,7 +65,6 @@ export default function TrainerDashboardScreen({ navigation }: any) {
                 setRequireVerification(platformData.require_trainer_verification);
             }
 
-            // Fetch all bookings (matching web TrainerContext pattern)
             const { data: bookings } = await supabase
                 .from('bookings')
                 .select('*')
@@ -67,7 +74,6 @@ export default function TrainerDashboardScreen({ navigation }: any) {
             const allBookings = (bookings || []) as BookingRow[];
             const now = new Date().toISOString();
 
-            // Fetch reviews (matching web TrainerContext pattern)
             const { data: reviews } = await supabase
                 .from('reviews')
                 .select('*')
@@ -78,11 +84,13 @@ export default function TrainerDashboardScreen({ navigation }: any) {
                     ? reviews.reduce((sum: number, r: any) => sum + r.rating, 0) / reviews.length
                     : 0;
 
-            // Compute stats exactly as web does
             setStats({
                 totalBookings: allBookings.length,
                 upcomingBookings: allBookings.filter(
                     (b) => b.status === 'confirmed' && b.scheduled_at > now
+                ).length,
+                pendingBookings: allBookings.filter(
+                    (b) => b.status === 'pending'
                 ).length,
                 completedBookings: allBookings.filter(
                     (b) => b.status === 'completed'
@@ -94,7 +102,6 @@ export default function TrainerDashboardScreen({ navigation }: any) {
                 totalReviews: reviews?.length || 0,
             });
 
-            // Get recent 5 bookings with other user info (matching web pattern)
             const recentIds = allBookings.slice(0, 5);
             const otherUserIds = recentIds.map((b) => b.athlete_id);
 
@@ -135,60 +142,9 @@ export default function TrainerDashboardScreen({ navigation }: any) {
         setRefreshing(false);
     };
 
-    const formatTime = (dateStr: string) => {
-        const d = new Date(dateStr);
-        return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-    };
-
-    const formatDate = (dateStr: string) => {
-        const d = new Date(dateStr);
-        return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    };
-
-    const getStatusColor = (status: string) => {
-        switch (status) {
-            case 'pending': return Colors.warning;
-            case 'confirmed': return Colors.info;
-            case 'completed': return Colors.success;
-            case 'cancelled': return Colors.error;
-            case 'no_show': return Colors.textTertiary;
-            case 'disputed': return Colors.error;
-            default: return Colors.warning;
-        }
-    };
-
-    const getStatusBg = (status: string) => {
-        switch (status) {
-            case 'pending': return Colors.warningLight;
-            case 'confirmed': return Colors.infoLight;
-            case 'completed': return Colors.successLight;
-            case 'cancelled': return Colors.errorLight;
-            case 'no_show': return 'rgba(107,107,123,0.1)';
-            case 'disputed': return Colors.errorLight;
-            default: return Colors.warningLight;
-        }
-    };
-
-    const getStatusLabel = (status: string) => {
-        switch (status) {
-            case 'pending': return 'Pending';
-            case 'confirmed': return 'Confirmed';
-            case 'completed': return 'Completed';
-            case 'cancelled': return 'Cancelled';
-            case 'no_show': return 'No Show';
-            case 'disputed': return 'Disputed';
-            default: return status.charAt(0).toUpperCase() + status.slice(1);
-        }
-    };
-
-    const getInitials = (firstName?: string, lastName?: string) => {
-        return (firstName?.[0] || '') + (lastName?.[0] || '');
-    };
-
-    // Next session: upcoming confirmed session (matching web logic)
-    const upcomingSession = recentBookings.find(
+    const upcomingSessions = recentBookings.filter(
         (b) => b.status === 'confirmed' && new Date(b.scheduled_at) > new Date()
-    );
+    ).slice(0, 3);
 
     const isVerificationPending =
         requireVerification &&
@@ -196,704 +152,603 @@ export default function TrainerDashboardScreen({ navigation }: any) {
         !user.trainerProfile.is_verified;
 
     if (isLoading) {
-        return (
-            <View style={[styles.container, styles.center]}>
-                <ActivityIndicator size="large" color={Colors.primary} />
-            </View>
-        );
+        return <LoadingScreen message="Loading dashboard..." />;
     }
 
-    const statCards = [
-        { label: 'Total Sessions', value: `${stats.totalBookings}`, icon: 'pulse-outline' as const },
-        { label: 'Upcoming', value: `${stats.upcomingBookings}`, icon: 'time-outline' as const },
-        { label: 'Completed', value: `${stats.completedBookings}`, icon: 'checkmark-circle-outline' as const },
-        { label: 'Earnings', value: `$${stats.totalEarnings.toFixed(0)}`, icon: 'wallet-outline' as const },
-        { label: 'Avg Rating', value: stats.averageRating > 0 ? `${stats.averageRating}` : '\u2014', icon: 'star-outline' as const },
-        { label: 'Reviews', value: `${stats.totalReviews}`, icon: 'chatbubble-outline' as const },
+    const responseRate = stats.totalBookings > 0
+        ? Math.min(100, Math.round(((stats.completedBookings + stats.upcomingBookings) / stats.totalBookings) * 100))
+        : 0;
+
+    // ── Stats grid data ──
+    const gridStats = [
+        { label: 'Active Bookings', value: `${stats.upcomingBookings}`, icon: 'calendar' as const, color: Colors.info, bg: Colors.infoLight },
+        { label: 'Pending', value: `${stats.pendingBookings}`, icon: 'hourglass' as const, color: Colors.warning, bg: Colors.warningLight },
+        { label: 'Completed', value: `${stats.completedBookings}`, icon: 'checkmark-circle' as const, color: Colors.success, bg: Colors.successLight },
+        { label: 'Revenue', value: `$${stats.totalEarnings.toFixed(0)}`, icon: 'cash' as const, color: Colors.primary, bg: Colors.primaryGlow },
+        { label: 'Rating', value: stats.averageRating > 0 ? `${stats.averageRating}` : '\u2014', icon: 'star' as const, color: '#FBBF24', bg: 'rgba(251,191,36,0.12)' },
+        { label: 'Response Rate', value: `${responseRate}%`, icon: 'flash' as const, color: Colors.info, bg: Colors.infoLight },
     ];
 
+    // ── Quick actions (2x2) ──
     const quickActions = [
-        { label: 'Update Availability', icon: 'time-outline' as const, screen: 'Availability' },
-        { label: 'View Bookings', icon: 'calendar-outline' as const, screen: 'Bookings' },
-        { label: 'Earnings & Payouts', icon: 'wallet-outline' as const, screen: 'Earnings' },
-        { label: 'Edit Profile', icon: 'person-outline' as const, screen: 'EditProfile' },
+        { label: 'Availability', icon: 'time' as const, screen: 'Availability', color: Colors.primary, bg: Colors.primaryGlow },
+        { label: 'Offers', icon: 'pricetag' as const, screen: 'Bookings', color: Colors.warning, bg: Colors.warningLight },
+        { label: 'Earnings', icon: 'wallet' as const, screen: 'Earnings', color: Colors.success, bg: Colors.successLight },
+        { label: 'Reviews', icon: 'star' as const, screen: 'Reviews', color: '#FBBF24', bg: 'rgba(251,191,36,0.12)' },
     ];
+
+    // ── Performance insight ──
+    const getInsightText = () => {
+        if (stats.completedBookings >= 10 && stats.averageRating >= 4.5) {
+            return `Outstanding! ${stats.completedBookings} sessions completed with a ${stats.averageRating} rating. You're a top-performing trainer.`;
+        }
+        if (stats.completedBookings > 0) {
+            return `You've completed ${stats.completedBookings} session${stats.completedBookings > 1 ? 's' : ''} so far. Keep your availability updated to attract more athletes and grow your revenue.`;
+        }
+        return 'Complete your profile and set your availability to start receiving bookings from athletes in your area.';
+    };
+
+    const getDateTile = (dateStr: string) => {
+        const d = new Date(dateStr);
+        return {
+            day: d.getDate().toString(),
+            month: d.toLocaleDateString('en-US', { month: 'short' }).toUpperCase(),
+        };
+    };
 
     return (
-        <ScrollView
-            style={styles.container}
-            contentContainerStyle={[styles.contentContainer, { paddingTop: insets.top + 16, paddingHorizontal: isSmallScreen ? Spacing.lg : Spacing.xxl }]}
-            showsVerticalScrollIndicator={false}
-            refreshControl={
-                <RefreshControl
-                    refreshing={refreshing}
-                    onRefresh={onRefresh}
-                    tintColor={Colors.primary}
-                />
-            }
-        >
-            {/* Verification Banner */}
-            {isVerificationPending && (
-                <View style={styles.verificationBanner}>
-                    <View style={styles.verificationIcon}>
-                        <Ionicons name="warning-outline" size={16} color={Colors.warning} />
-                    </View>
-                    <View style={styles.verificationContent}>
-                        <Text style={styles.verificationTitle}>Profile verification pending</Text>
-                        <Text style={styles.verificationText}>
-                            Your profile is hidden from athletes until an admin verifies your account.{' '}
-                            <Text
-                                style={styles.verificationLink}
-                                onPress={() => navigation.navigate('EditProfile')}
-                            >
-                                Complete your setup
-                            </Text>{' '}
-                            to speed up the process.
-                        </Text>
-                    </View>
-                </View>
-            )}
+        <ScreenWrapper refreshing={refreshing} onRefresh={onRefresh}>
 
-            {/* Header */}
-            <View style={styles.header}>
-                <View style={styles.headerLeft}>
-                    <TouchableOpacity
-                        style={styles.menuButton}
-                        onPress={() => navigation.dispatch(DrawerActions.openDrawer())}
-                    >
-                        <Ionicons name="menu-outline" size={24} color={Colors.text} />
-                    </TouchableOpacity>
-                    <View style={styles.headerTextContainer}>
-                        <Text style={styles.dateText}>{today.toUpperCase()}</Text>
-                        <Text style={[styles.headerTitle, isSmallScreen && { fontSize: FontSize.xl }]} numberOfLines={1}>
-                            Good {getGreeting()},{' '}
-                            <Text style={{ color: Colors.primary }}>{user?.firstName}</Text>
-                        </Text>
-                        <Text style={styles.subtitle}>Your training business at a glance.</Text>
-                    </View>
+            {/* ─── 1. HEADER ─── */}
+            <Animated.View entering={FadeInDown.duration(250).delay(0)} style={styles.header}>
+                <Pressable
+                    onPress={() => navigation.dispatch(DrawerActions.openDrawer())}
+                    style={styles.headerBtn}
+                    accessibilityLabel="Open menu"
+                >
+                    <Ionicons name="menu" size={24} color={Colors.text} />
+                </Pressable>
+
+                <View style={styles.headerCenter}>
+                    <Text style={styles.headerDate}>{getTodayDate()}</Text>
+                    <Text style={styles.headerGreeting}>
+                        Hey, {user?.firstName || 'Trainer'}{' '}
+                        <Text style={styles.waveEmoji}>{getGreeting() === 'Morning' ? '\u2600\uFE0F' : getGreeting() === 'Afternoon' ? '\uD83D\uDC4B' : '\uD83C\uDF19'}</Text>
+                    </Text>
                 </View>
-                <TouchableOpacity
-                    style={styles.notifButton}
+
+                <Pressable
                     onPress={() => navigation.navigate('Notifications')}
+                    style={styles.headerBtn}
+                    accessibilityLabel="Notifications"
                 >
                     <Ionicons name="notifications-outline" size={22} color={Colors.text} />
-                </TouchableOpacity>
-            </View>
+                </Pressable>
+            </Animated.View>
 
-            {/* Stats Grid (6 stats, 3 columns x 2 rows) */}
-            <View style={styles.statsGrid}>
-                {statCards.map((card, i) => (
-                    <View key={i} style={styles.statCard}>
-                        <View style={styles.statCardHeader}>
-                            <Text style={styles.statLabel}>{card.label.toUpperCase()}</Text>
-                            <Ionicons name={card.icon} size={13} color={Colors.textTertiary} />
+            {/* ─── Verification Banner ─── */}
+            {isVerificationPending && (
+                <Animated.View entering={FadeInDown.duration(250).delay(80)}>
+                    <View style={styles.verifyBanner}>
+                        <View style={styles.verifyIconWrap}>
+                            <Ionicons name="shield-half-outline" size={20} color="#92400E" />
                         </View>
-                        <Text style={styles.statValue}>{card.value}</Text>
+                        <View style={styles.verifyContent}>
+                            <Text style={styles.verifyTitle}>Profile verification pending</Text>
+                            <Text style={styles.verifyDesc}>
+                                Your profile is hidden until verified.
+                            </Text>
+                        </View>
+                        <Pressable
+                            style={styles.verifyCta}
+                            onPress={() => navigation.navigate('EditProfile')}
+                        >
+                            <Text style={styles.verifyCtaText}>Complete</Text>
+                            <Ionicons name="arrow-forward" size={14} color="#92400E" />
+                        </Pressable>
+                    </View>
+                </Animated.View>
+            )}
+
+            {/* ─── 2. EARNINGS HERO CARD ─── */}
+            <Animated.View entering={FadeInDown.duration(250).delay(120)} style={styles.heroWrapper}>
+                <LinearGradient
+                    colors={[Colors.gradientStart, Colors.gradientEnd]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.heroGradient}
+                >
+                    {/* Decorative circles */}
+                    <View style={styles.heroDecor1} />
+                    <View style={styles.heroDecor2} />
+
+                    <View style={styles.heroBody}>
+                        <Text style={styles.heroLabel}>Total Earnings</Text>
+                        <Text style={styles.heroAmount}>
+                            ${stats.totalEarnings.toLocaleString('en-US', { minimumFractionDigits: 0 })}
+                        </Text>
+
+                        <View style={styles.heroStatsRow}>
+                            <View style={styles.heroStat}>
+                                <Text style={styles.heroStatValue}>{stats.completedBookings}</Text>
+                                <Text style={styles.heroStatLabel}>Sessions</Text>
+                            </View>
+                            <View style={styles.heroStatDivider} />
+                            <View style={styles.heroStat}>
+                                <Text style={styles.heroStatValue}>{stats.pendingBookings}</Text>
+                                <Text style={styles.heroStatLabel}>Pending</Text>
+                            </View>
+                            <View style={styles.heroStatDivider} />
+                            <View style={styles.heroStat}>
+                                <Text style={styles.heroStatValue}>
+                                    {stats.averageRating > 0 ? stats.averageRating.toFixed(1) : '\u2014'}
+                                </Text>
+                                <Text style={styles.heroStatLabel}>Rating</Text>
+                            </View>
+                        </View>
+                    </View>
+                </LinearGradient>
+            </Animated.View>
+
+            {/* ─── 3. STATS GRID (3x2) ─── */}
+            <Animated.View entering={FadeInDown.duration(250).delay(60)} style={styles.statsGrid}>
+                {gridStats.map((stat, i) => (
+                    <View key={i} style={styles.statsGridItem}>
+                        <View style={[styles.statsIconCircle, { backgroundColor: stat.bg }]}>
+                            <Ionicons name={stat.icon} size={18} color={stat.color} />
+                        </View>
+                        <Text style={styles.statsValue}>{stat.value}</Text>
+                        <Text style={styles.statsLabel} numberOfLines={1}>{stat.label}</Text>
                     </View>
                 ))}
-            </View>
+            </Animated.View>
 
-            {/* Recent Sessions */}
-            <View style={styles.section}>
-                <View style={styles.sectionHeaderRow}>
-                    <Text style={styles.sectionTitle}>Recent Sessions</Text>
-                    <TouchableOpacity
-                        style={styles.viewAllBtn}
-                        onPress={() => navigation.navigate('Bookings')}
-                    >
-                        <Text style={styles.viewAllText}>View all</Text>
-                        <Ionicons name="chevron-forward" size={14} color={Colors.textTertiary} />
-                    </TouchableOpacity>
-                </View>
-                {recentBookings.length === 0 ? (
-                    <View style={styles.emptyCard}>
-                        <Ionicons name="file-tray-outline" size={32} color={Colors.textTertiary} />
-                        <Text style={styles.emptyTitle}>No sessions yet</Text>
-                        <Text style={styles.emptySubtext}>
-                            Bookings will appear here once athletes schedule sessions.
-                        </Text>
-                    </View>
+            {/* ─── 4. UPCOMING SESSIONS ─── */}
+            <Animated.View entering={FadeInDown.duration(250).delay(30)} style={styles.section}>
+                <SectionHeader
+                    title="Upcoming Sessions"
+                    actionLabel="View all"
+                    onAction={() => navigation.navigate('Bookings')}
+                />
+
+                {upcomingSessions.length === 0 ? (
+                    <Card>
+                        <EmptyState
+                            icon="calendar-outline"
+                            title="No upcoming sessions"
+                            description="Your confirmed sessions will show up here."
+                        />
+                    </Card>
                 ) : (
-                    <View style={styles.sessionsCard}>
-                        {recentBookings.map((booking, index) => {
-                            const initials = booking.other_user
-                                ? getInitials(booking.other_user.first_name, booking.other_user.last_name)
-                                : '?';
+                    <View style={styles.sessionsList}>
+                        {upcomingSessions.map((booking, index) => {
                             const name = booking.other_user
                                 ? `${booking.other_user.first_name} ${booking.other_user.last_name}`
                                 : 'Unknown';
-                            const date = new Date(booking.scheduled_at);
+                            const tile = getDateTile(booking.scheduled_at);
 
                             return (
-                                <TouchableOpacity
+                                <AnimatedPressable
                                     key={booking.id}
-                                    style={[
-                                        styles.sessionRow,
-                                        index < recentBookings.length - 1 && styles.sessionRowBorder,
-                                    ]}
-                                    onPress={() =>
-                                        navigation.navigate('BookingDetail', { bookingId: booking.id })
-                                    }
+                                    entering={FadeInDown.duration(250).delay(60 + index * 30)}
+                                    style={styles.sessionCard}
+                                    onPress={() => navigation.navigate('BookingDetail', { bookingId: booking.id })}
+                                    accessibilityLabel={`Session with ${name}`}
                                 >
-                                    <View style={styles.sessionAvatar}>
-                                        <Text style={styles.sessionAvatarText}>{initials}</Text>
+                                    {/* Date tile */}
+                                    <View style={styles.dateTile}>
+                                        <Text style={styles.dateTileDay}>{tile.day}</Text>
+                                        <Text style={styles.dateTileMonth}>{tile.month}</Text>
                                     </View>
-                                    <View style={styles.sessionInfo}>
-                                        <Text style={styles.sessionName}>{name}</Text>
-                                        <View style={styles.sessionMeta}>
-                                            <Text style={styles.sessionSport}>{booking.sport}</Text>
-                                            <Text style={styles.sessionDot}> . </Text>
-                                            <Text style={styles.sessionDuration}>
-                                                {booking.duration_minutes}min
-                                            </Text>
-                                        </View>
+
+                                    {/* Center info */}
+                                    <View style={styles.sessionCenter}>
+                                        <Text style={styles.sessionName} numberOfLines={1}>{name}</Text>
+                                        <Text style={styles.sessionMeta}>
+                                            {booking.sport} {'\u00B7'} {booking.duration_minutes}min
+                                        </Text>
                                     </View>
+
+                                    {/* Right: time + badge */}
                                     <View style={styles.sessionRight}>
-                                        <Text style={styles.sessionDate}>
-                                            {date.toLocaleDateString('en-US', {
-                                                month: 'short',
-                                                day: 'numeric',
-                                            })}
-                                        </Text>
                                         <Text style={styles.sessionTime}>
-                                            {date.toLocaleTimeString('en-US', {
-                                                hour: 'numeric',
-                                                minute: '2-digit',
-                                            })}
+                                            {formatTime(booking.scheduled_at)}
                                         </Text>
-                                    </View>
-                                    <View
-                                        style={[
-                                            styles.statusBadge,
-                                            { backgroundColor: getStatusBg(booking.status) },
-                                        ]}
-                                    >
-                                        <View
-                                            style={[
-                                                styles.statusDot,
-                                                { backgroundColor: getStatusColor(booking.status) },
-                                            ]}
+                                        <Badge
+                                            label={getStatusLabel(booking.status)}
+                                            color={getStatusColor(booking.status)}
+                                            bgColor={getStatusBg(booking.status)}
+                                            dot
                                         />
-                                        <Text
-                                            style={[
-                                                styles.statusText,
-                                                { color: getStatusColor(booking.status) },
-                                            ]}
-                                        >
-                                            {getStatusLabel(booking.status)}
-                                        </Text>
                                     </View>
-                                </TouchableOpacity>
+                                </AnimatedPressable>
                             );
                         })}
                     </View>
                 )}
-            </View>
+            </Animated.View>
 
-            {/* Next Session Card */}
-            <View style={styles.section}>
-                <View style={styles.nextSessionCard}>
-                    <View style={styles.nextSessionAccent} />
-                    <View style={styles.nextSessionContent}>
-                        <View style={styles.nextSessionHeader}>
-                            <View
-                                style={[
-                                    styles.nextSessionDot,
-                                    {
-                                        backgroundColor: upcomingSession
-                                            ? Colors.info
-                                            : 'rgba(255,255,255,0.15)',
-                                    },
-                                ]}
-                            />
-                            <Text style={styles.nextSessionLabel}>NEXT SESSION</Text>
-                        </View>
-
-                        {upcomingSession ? (
-                            <>
-                                <View style={styles.nextSessionUser}>
-                                    <View style={styles.nextSessionAvatar}>
-                                        <Text style={styles.nextSessionAvatarText}>
-                                            {upcomingSession.other_user
-                                                ? getInitials(
-                                                      upcomingSession.other_user.first_name,
-                                                      upcomingSession.other_user.last_name
-                                                  )
-                                                : '?'}
-                                        </Text>
-                                    </View>
-                                    <View>
-                                        <Text style={styles.nextSessionName}>
-                                            {upcomingSession.other_user
-                                                ? `${upcomingSession.other_user.first_name} ${upcomingSession.other_user.last_name}`
-                                                : 'Unknown'}
-                                        </Text>
-                                        <Text style={styles.nextSessionSport}>
-                                            {upcomingSession.sport} . {upcomingSession.duration_minutes}min
-                                        </Text>
-                                    </View>
-                                </View>
-                                <View style={styles.nextSessionGrid}>
-                                    <View style={styles.nextSessionGridItem}>
-                                        <Text style={styles.nextSessionGridLabel}>DATE</Text>
-                                        <Text style={styles.nextSessionGridValue}>
-                                            {formatDate(upcomingSession.scheduled_at)}
-                                        </Text>
-                                    </View>
-                                    <View style={styles.nextSessionGridItem}>
-                                        <Text style={styles.nextSessionGridLabel}>TIME</Text>
-                                        <Text style={styles.nextSessionGridValue}>
-                                            {formatTime(upcomingSession.scheduled_at)}
-                                        </Text>
-                                    </View>
-                                </View>
-                            </>
-                        ) : (
-                            <Text style={styles.nextSessionEmpty}>
-                                No upcoming sessions scheduled.
-                            </Text>
-                        )}
-                    </View>
-                </View>
-            </View>
-
-            {/* Quick Actions */}
-            <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Quick Actions</Text>
-                <View style={styles.quickActionsCard}>
-                    {quickActions.map((action, index) => (
-                        <TouchableOpacity
-                            key={action.screen}
-                            style={[
-                                styles.quickActionRow,
-                                index < quickActions.length - 1 && styles.quickActionRowBorder,
-                            ]}
+            {/* ─── 5. QUICK ACTIONS (2x2) ─── */}
+            <Animated.View entering={FadeInDown.duration(250).delay(450)} style={styles.section}>
+                <SectionHeader title="Quick Actions" />
+                <View style={styles.actionsGrid}>
+                    {quickActions.map((action, i) => (
+                        <Pressable
+                            key={action.screen + i}
+                            style={styles.actionCard}
                             onPress={() => navigation.navigate(action.screen)}
+                            accessibilityLabel={action.label}
                         >
-                            <View style={styles.quickActionIcon}>
-                                <Ionicons name={action.icon} size={14} color={Colors.textTertiary} />
+                            <View style={[styles.actionIconCircle, { backgroundColor: action.bg }]}>
+                                <Ionicons name={action.icon} size={22} color={action.color} />
                             </View>
-                            <Text style={styles.quickActionLabel}>{action.label}</Text>
-                            <Ionicons name="chevron-forward" size={14} color={Colors.textTertiary} />
-                        </TouchableOpacity>
+                            <Text style={styles.actionLabel}>{action.label}</Text>
+                        </Pressable>
                     ))}
                 </View>
-            </View>
+            </Animated.View>
 
-            {/* Insight Card */}
-            <View style={styles.section}>
-                <View style={styles.insightCard}>
-                    <View style={styles.insightHeader}>
-                        <Ionicons name="trending-up-outline" size={14} color={Colors.primary} />
-                        <Text style={styles.insightLabel}>INSIGHT</Text>
+            {/* ─── 6. PERFORMANCE INSIGHT ─── */}
+            <Animated.View entering={FadeInDown.duration(250).delay(550)} style={styles.section}>
+                <Card variant="elevated">
+                    <View style={styles.insightRow}>
+                        <View style={styles.insightIconCircle}>
+                            <Ionicons name="trending-up" size={18} color={Colors.primary} />
+                        </View>
+                        <Text style={styles.insightTitle}>Performance Insight</Text>
                     </View>
-                    <Text style={styles.insightText}>
-                        {stats.completedBookings > 0
-                            ? `You've completed ${stats.completedBookings} session${stats.completedBookings > 1 ? 's' : ''}. Keep your availability updated to attract more athletes.`
-                            : 'Complete your profile and set your availability to start receiving bookings.'}
-                    </Text>
-                    <TouchableOpacity
-                        style={styles.insightAction}
-                        onPress={() => navigation.navigate('EditProfile')}
+                    <Text style={styles.insightText}>{getInsightText()}</Text>
+                    <Pressable
+                        style={styles.insightLink}
+                        onPress={() => navigation.navigate('Earnings')}
+                        accessibilityLabel="View analytics"
                     >
-                        <Text style={styles.insightActionText}>Update profile</Text>
-                        <Ionicons name="arrow-up-outline" size={12} color={Colors.primary} style={{ transform: [{ rotate: '45deg' }] }} />
-                    </TouchableOpacity>
-                </View>
-            </View>
+                        <Text style={styles.insightLinkText}>View analytics</Text>
+                        <Ionicons name="arrow-forward" size={14} color={Colors.primary} />
+                    </Pressable>
+                </Card>
+            </Animated.View>
 
-            <View style={{ height: 100 }} />
-        </ScrollView>
+        </ScreenWrapper>
     );
 }
 
-const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#0A0D14' },
-    center: { justifyContent: 'center', alignItems: 'center' },
-    contentContainer: { paddingBottom: 20 },
+/* ════════════════════════════════════════════════════════════ */
+/*                        STYLES                               */
+/* ════════════════════════════════════════════════════════════ */
 
-    // Verification Banner
-    verificationBanner: {
+const styles = StyleSheet.create({
+    /* ── Header ── */
+    header: {
         flexDirection: 'row',
-        alignItems: 'flex-start',
-        gap: Spacing.lg,
-        padding: Spacing.lg,
-        borderRadius: BorderRadius.lg,
-        backgroundColor: 'rgba(255,171,0,0.05)',
-        borderWidth: 1,
-        borderColor: 'rgba(255,171,0,0.2)',
-        marginBottom: Spacing.xl,
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: Spacing.lg,
     },
-    verificationIcon: {
-        width: 32,
-        height: 32,
-        borderRadius: Spacing.sm,
-        backgroundColor: 'rgba(255,171,0,0.1)',
+    headerBtn: {
+        width: 42,
+        height: 42,
+        borderRadius: BorderRadius.md,
+        backgroundColor: Colors.glass,
+        borderWidth: 1,
+        borderColor: Colors.glassBorder,
         justifyContent: 'center',
         alignItems: 'center',
     },
-    verificationContent: { flex: 1 },
-    verificationTitle: {
+    headerCenter: {
+        flex: 1,
+        alignItems: 'center',
+    },
+    headerDate: {
+        fontSize: FontSize.xxs,
+        color: Colors.textTertiary,
+        letterSpacing: 0.5,
+        marginBottom: 2,
+    },
+    headerGreeting: {
+        fontSize: FontSize.lg,
+        fontWeight: FontWeight.bold,
+        color: Colors.text,
+    },
+    waveEmoji: {
+        fontSize: FontSize.md,
+    },
+
+    /* ── Verification Banner ── */
+    verifyBanner: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(245, 158, 11, 0.12)',
+        borderWidth: 1,
+        borderColor: 'rgba(245, 158, 11, 0.25)',
+        borderRadius: BorderRadius.lg,
+        padding: Spacing.md,
+        marginBottom: Spacing.lg,
+        gap: Spacing.md,
+    },
+    verifyIconWrap: {
+        width: 36,
+        height: 36,
+        borderRadius: BorderRadius.sm,
+        backgroundColor: 'rgba(245, 158, 11, 0.18)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    verifyContent: {
+        flex: 1,
+    },
+    verifyTitle: {
         fontSize: FontSize.sm,
+        fontWeight: FontWeight.bold,
+        color: '#FBBF24',
+    },
+    verifyDesc: {
+        fontSize: FontSize.xs,
+        color: Colors.textSecondary,
+        marginTop: 2,
+    },
+    verifyCta: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(245, 158, 11, 0.2)',
+        paddingHorizontal: Spacing.md,
+        paddingVertical: Spacing.sm,
+        borderRadius: BorderRadius.sm,
+        gap: 4,
+    },
+    verifyCtaText: {
+        fontSize: FontSize.xs,
+        fontWeight: FontWeight.bold,
+        color: '#FBBF24',
+    },
+
+    /* ── Earnings Hero ── */
+    heroWrapper: {
+        marginBottom: Layout.sectionGap,
+        borderRadius: BorderRadius.xl,
+        overflow: 'hidden',
+        // Subtle glow border
+        borderWidth: 1,
+        borderColor: 'rgba(69, 208, 255, 0.2)',
+    },
+    heroGradient: {
+        borderRadius: BorderRadius.xl,
+        padding: Spacing.xxl,
+        overflow: 'hidden',
+        position: 'relative',
+    },
+    heroDecor1: {
+        position: 'absolute',
+        width: 140,
+        height: 140,
+        borderRadius: 70,
+        backgroundColor: 'rgba(255,255,255,0.06)',
+        top: -40,
+        right: -20,
+    },
+    heroDecor2: {
+        position: 'absolute',
+        width: 80,
+        height: 80,
+        borderRadius: 40,
+        backgroundColor: 'rgba(255,255,255,0.04)',
+        bottom: -20,
+        left: 20,
+    },
+    heroBody: {
+        alignItems: 'center',
+    },
+    heroLabel: {
+        fontSize: FontSize.sm,
+        fontWeight: FontWeight.medium,
+        color: 'rgba(255,255,255,0.7)',
+        marginBottom: Spacing.xs,
+        letterSpacing: 1,
+        textTransform: 'uppercase',
+    },
+    heroAmount: {
+        fontSize: 36,
+        fontWeight: FontWeight.heavy,
+        color: '#FFFFFF',
+        marginBottom: Spacing.xl,
+    },
+    heroStatsRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(0,0,0,0.2)',
+        borderRadius: BorderRadius.lg,
+        paddingVertical: Spacing.md,
+        paddingHorizontal: Spacing.lg,
+        width: '100%',
+    },
+    heroStat: {
+        flex: 1,
+        alignItems: 'center',
+    },
+    heroStatValue: {
+        fontSize: FontSize.lg,
         fontWeight: FontWeight.bold,
         color: '#FFFFFF',
     },
-    verificationText: {
-        fontSize: FontSize.xs,
-        color: 'rgba(255,255,255,0.5)',
+    heroStatLabel: {
+        fontSize: FontSize.xxs,
+        color: 'rgba(255,255,255,0.6)',
         marginTop: 2,
-        lineHeight: 18,
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
     },
-    verificationLink: {
-        color: Colors.primary,
-    },
-
-    // Header
-    header: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: Spacing.xxl,
-    },
-    headerLeft: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: Spacing.md,
-        flex: 1,
-    },
-    headerTextContainer: {
-        flex: 1,
-    },
-    dateText: {
-        fontSize: 10,
-        fontWeight: FontWeight.medium,
-        color: 'rgba(255,255,255,0.3)',
-        letterSpacing: 2,
-        marginBottom: 4,
-    },
-    headerTitle: {
-        fontSize: FontSize.xxl,
-        fontWeight: FontWeight.heavy,
-        color: '#FFFFFF',
-    },
-    subtitle: {
-        fontSize: FontSize.sm,
-        color: 'rgba(255,255,255,0.4)',
-        marginTop: 4,
-    },
-    menuButton: {
-        width: 44,
-        height: 44,
-        borderRadius: 14,
-        backgroundColor: Colors.surface,
-        justifyContent: 'center',
-        alignItems: 'center',
-        borderWidth: 1,
-        borderColor: Colors.border,
-    },
-    notifButton: {
-        width: 44,
-        height: 44,
-        borderRadius: 14,
-        backgroundColor: Colors.surface,
-        justifyContent: 'center',
-        alignItems: 'center',
-        borderWidth: 1,
-        borderColor: Colors.border,
+    heroStatDivider: {
+        width: 1,
+        height: 28,
+        backgroundColor: 'rgba(255,255,255,0.15)',
     },
 
-    // Stats Grid (6 cards, 3 per row)
+    /* ── Stats Grid ── */
     statsGrid: {
         flexDirection: 'row',
         flexWrap: 'wrap',
         gap: Spacing.sm,
-        marginBottom: Spacing.xxl,
+        marginBottom: Layout.sectionGap,
     },
-    statCard: {
+    statsGridItem: {
         width: '31%',
         flexGrow: 1,
-        backgroundColor: '#161B22',
+        backgroundColor: Colors.card,
+        borderWidth: 1,
+        borderColor: Colors.border,
         borderRadius: BorderRadius.lg,
         padding: Spacing.md,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.06)',
-    },
-    statCardHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: Spacing.xs,
     },
-    statLabel: {
-        fontSize: 9,
-        fontWeight: FontWeight.bold,
-        color: 'rgba(255,255,255,0.3)',
-        letterSpacing: 1,
-    },
-    statValue: {
-        fontSize: FontSize.xl,
-        fontWeight: FontWeight.heavy,
-        color: '#FFFFFF',
-    },
-
-    // Section
-    section: { marginBottom: Spacing.xl },
-    sectionHeaderRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: Spacing.md,
-    },
-    sectionTitle: {
-        fontSize: FontSize.sm,
-        fontWeight: FontWeight.bold,
-        color: '#FFFFFF',
-        marginBottom: Spacing.md,
-    },
-    viewAllBtn: { flexDirection: 'row', alignItems: 'center', gap: 2, marginBottom: Spacing.md },
-    viewAllText: { fontSize: FontSize.xs, fontWeight: FontWeight.bold, color: Colors.textTertiary },
-
-    // Recent Sessions
-    sessionsCard: {
-        backgroundColor: '#161B22',
-        borderRadius: BorderRadius.lg,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.06)',
-        overflow: 'hidden',
-    },
-    sessionRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: Spacing.lg,
-        paddingVertical: Spacing.md,
-    },
-    sessionRowBorder: {
-        borderBottomWidth: 1,
-        borderBottomColor: 'rgba(255,255,255,0.04)',
-    },
-    sessionAvatar: {
-        width: 36,
-        height: 36,
-        borderRadius: 18,
-        backgroundColor: 'rgba(255,255,255,0.05)',
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.07)',
+    statsIconCircle: {
+        width: 38,
+        height: 38,
+        borderRadius: 19,
         justifyContent: 'center',
         alignItems: 'center',
-        marginRight: Spacing.md,
+        marginBottom: Spacing.sm,
     },
-    sessionAvatarText: {
-        fontSize: FontSize.xs,
+    statsValue: {
+        fontSize: FontSize.lg,
         fontWeight: FontWeight.bold,
-        color: 'rgba(255,255,255,0.5)',
+        color: Colors.text,
+        marginBottom: 2,
     },
-    sessionInfo: { flex: 1, marginRight: Spacing.sm },
-    sessionName: {
-        fontSize: FontSize.sm,
-        fontWeight: FontWeight.semibold,
-        color: 'rgba(255,255,255,0.8)',
-    },
-    sessionMeta: { flexDirection: 'row', alignItems: 'center', marginTop: 2 },
-    sessionSport: {
-        fontSize: FontSize.xs,
-        color: 'rgba(255,255,255,0.3)',
-        textTransform: 'capitalize',
-    },
-    sessionDot: { fontSize: FontSize.xs, color: 'rgba(255,255,255,0.1)' },
-    sessionDuration: { fontSize: FontSize.xs, color: 'rgba(255,255,255,0.3)' },
-    sessionRight: { alignItems: 'flex-end', marginRight: Spacing.sm },
-    sessionDate: {
-        fontSize: FontSize.xs,
-        fontWeight: FontWeight.medium,
-        color: 'rgba(255,255,255,0.4)',
-    },
-    sessionTime: { fontSize: 10, color: 'rgba(255,255,255,0.25)', marginTop: 2 },
-    statusBadge: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: Spacing.sm,
-        paddingVertical: 3,
-        borderRadius: BorderRadius.pill,
-        gap: 4,
-    },
-    statusDot: { width: 6, height: 6, borderRadius: 3 },
-    statusText: { fontSize: 10, fontWeight: FontWeight.bold, textTransform: 'uppercase', letterSpacing: 0.5 },
-
-    // Empty state
-    emptyCard: {
-        backgroundColor: '#161B22',
-        borderRadius: BorderRadius.lg,
-        padding: Spacing.xxl,
-        alignItems: 'center',
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.06)',
-    },
-    emptyTitle: {
-        fontSize: FontSize.sm,
-        fontWeight: FontWeight.bold,
-        color: 'rgba(255,255,255,0.4)',
-        marginTop: Spacing.md,
-    },
-    emptySubtext: {
-        fontSize: FontSize.xs,
-        color: 'rgba(255,255,255,0.25)',
-        marginTop: 4,
+    statsLabel: {
+        fontSize: FontSize.xxs,
+        color: Colors.textTertiary,
         textAlign: 'center',
     },
 
-    // Next Session Card
-    nextSessionCard: {
-        backgroundColor: '#161B22',
-        borderRadius: BorderRadius.lg,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.06)',
-        overflow: 'hidden',
+    /* ── Section ── */
+    section: {
+        marginBottom: Layout.sectionGap,
     },
-    nextSessionAccent: {
-        height: 2,
-        backgroundColor: Colors.primary,
-        opacity: 0.6,
+
+    /* ── Upcoming Sessions ── */
+    sessionsList: {
+        gap: Spacing.sm,
     },
-    nextSessionContent: { padding: Spacing.lg },
-    nextSessionHeader: {
+    sessionCard: {
         flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: Colors.card,
+        borderWidth: 1,
+        borderColor: Colors.border,
+        borderRadius: BorderRadius.lg,
+        padding: Spacing.md,
+        gap: Spacing.md,
+    },
+    dateTile: {
+        width: 48,
+        height: 52,
+        borderRadius: BorderRadius.md,
+        backgroundColor: Colors.primaryGlow,
+        borderWidth: 1,
+        borderColor: 'rgba(69, 208, 255, 0.15)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    dateTileDay: {
+        fontSize: FontSize.xl,
+        fontWeight: FontWeight.bold,
+        color: Colors.primary,
+        lineHeight: 24,
+    },
+    dateTileMonth: {
+        fontSize: FontSize.xxs,
+        fontWeight: FontWeight.bold,
+        color: Colors.primaryLight,
+        letterSpacing: 1,
+    },
+    sessionCenter: {
+        flex: 1,
+    },
+    sessionName: {
+        fontSize: FontSize.sm,
+        fontWeight: FontWeight.semibold,
+        color: Colors.text,
+        marginBottom: 2,
+    },
+    sessionMeta: {
+        fontSize: FontSize.xs,
+        color: Colors.textTertiary,
+        textTransform: 'capitalize',
+    },
+    sessionRight: {
+        alignItems: 'flex-end',
+        gap: Spacing.xs,
+    },
+    sessionTime: {
+        fontSize: FontSize.xs,
+        fontWeight: FontWeight.medium,
+        color: Colors.textSecondary,
+    },
+
+    /* ── Quick Actions 2x2 ── */
+    actionsGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: Spacing.sm,
+    },
+    actionCard: {
+        width: '48%',
+        flexGrow: 1,
+        backgroundColor: Colors.card,
+        borderWidth: 1,
+        borderColor: Colors.border,
+        borderRadius: BorderRadius.lg,
+        padding: Spacing.lg,
         alignItems: 'center',
         gap: Spacing.sm,
-        marginBottom: Spacing.lg,
     },
-    nextSessionDot: { width: 8, height: 8, borderRadius: 4 },
-    nextSessionLabel: {
-        fontSize: 10,
-        fontWeight: FontWeight.bold,
-        color: 'rgba(255,255,255,0.4)',
-        letterSpacing: 2,
-    },
-    nextSessionUser: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: Spacing.md,
-        marginBottom: Spacing.lg,
-    },
-    nextSessionAvatar: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        backgroundColor: 'rgba(255,255,255,0.05)',
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.07)',
+    actionIconCircle: {
+        width: 48,
+        height: 48,
+        borderRadius: 24,
         justifyContent: 'center',
         alignItems: 'center',
     },
-    nextSessionAvatarText: {
+    actionLabel: {
         fontSize: FontSize.sm,
-        fontWeight: FontWeight.bold,
-        color: 'rgba(255,255,255,0.6)',
-    },
-    nextSessionName: {
-        fontSize: FontSize.sm,
-        fontWeight: FontWeight.bold,
-        color: '#FFFFFF',
-    },
-    nextSessionSport: {
-        fontSize: FontSize.xs,
-        color: 'rgba(255,255,255,0.4)',
-        textTransform: 'capitalize',
-        marginTop: 2,
-    },
-    nextSessionGrid: { flexDirection: 'row', gap: Spacing.sm },
-    nextSessionGridItem: {
-        flex: 1,
-        backgroundColor: 'rgba(10,13,20,0.6)',
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.05)',
-        borderRadius: BorderRadius.md,
-        padding: Spacing.md,
-    },
-    nextSessionGridLabel: {
-        fontSize: 10,
-        color: 'rgba(255,255,255,0.25)',
-        letterSpacing: 1,
-        marginBottom: 6,
-    },
-    nextSessionGridValue: {
-        fontSize: FontSize.sm,
-        fontWeight: FontWeight.bold,
-        color: '#FFFFFF',
-    },
-    nextSessionEmpty: {
-        fontSize: FontSize.sm,
-        color: 'rgba(255,255,255,0.25)',
+        fontWeight: FontWeight.semibold,
+        color: Colors.textSecondary,
+        textAlign: 'center',
     },
 
-    // Quick Actions
-    quickActionsCard: {
-        backgroundColor: '#161B22',
-        borderRadius: BorderRadius.lg,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.06)',
-        overflow: 'hidden',
-    },
-    quickActionRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: Spacing.lg,
-        paddingVertical: Spacing.md,
-    },
-    quickActionRowBorder: {
-        borderBottomWidth: 1,
-        borderBottomColor: 'rgba(255,255,255,0.04)',
-    },
-    quickActionIcon: {
-        width: 28,
-        height: 28,
-        borderRadius: Spacing.sm,
-        backgroundColor: 'rgba(255,255,255,0.04)',
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.06)',
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginRight: Spacing.md,
-    },
-    quickActionLabel: {
-        flex: 1,
-        fontSize: FontSize.sm,
-        fontWeight: FontWeight.medium,
-        color: 'rgba(255,255,255,0.55)',
-    },
-
-    // Insight Card
-    insightCard: {
-        backgroundColor: '#161B22',
-        borderRadius: BorderRadius.lg,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.06)',
-        padding: Spacing.lg,
-    },
-    insightHeader: {
+    /* ── Performance Insight ── */
+    insightRow: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: Spacing.sm,
         marginBottom: Spacing.md,
     },
-    insightLabel: {
-        fontSize: 10,
+    insightIconCircle: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        backgroundColor: Colors.primaryGlow,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    insightTitle: {
+        fontSize: FontSize.sm,
         fontWeight: FontWeight.bold,
-        color: 'rgba(255,255,255,0.4)',
-        letterSpacing: 2,
+        color: Colors.text,
     },
     insightText: {
         fontSize: FontSize.sm,
-        color: 'rgba(255,255,255,0.55)',
-        lineHeight: 20,
+        color: Colors.textSecondary,
+        lineHeight: 22,
     },
-    insightAction: {
+    insightLink: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 4,
+        gap: Spacing.xs,
         marginTop: Spacing.lg,
     },
-    insightActionText: {
-        fontSize: FontSize.xs,
+    insightLinkText: {
+        fontSize: FontSize.sm,
         fontWeight: FontWeight.bold,
         color: Colors.primary,
     },

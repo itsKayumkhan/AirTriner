@@ -3,8 +3,7 @@ import {
     View,
     Text,
     StyleSheet,
-    ScrollView,
-    TouchableOpacity,
+    Pressable,
     Modal,
     TextInput,
     Alert,
@@ -12,10 +11,12 @@ import {
     KeyboardAvoidingView,
     Platform,
 } from 'react-native';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
-import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Layout} from '../../theme';
+import { Colors, Spacing, BorderRadius, FontSize, FontWeight } from '../../theme';
+import { ScreenWrapper, ScreenHeader, Card, Badge, EmptyState, Button, Input } from '../../components/ui';
 
 type Certification = {
     name: string;
@@ -26,13 +27,11 @@ type Certification = {
 export default function CertificationsScreen({ navigation }: any) {
     const { user, refreshUser } = useAuth();
 
-    // Normalise certs from trainerProfile
     const rawCerts = (user?.trainerProfile?.certifications as any[]) || [];
     const certs: Certification[] = rawCerts.map((c: any) =>
         typeof c === 'string' ? { name: c } : c,
     );
 
-    // Modal state
     const [modalVisible, setModalVisible] = useState(false);
     const [certName, setCertName] = useState('');
     const [certIssuer, setCertIssuer] = useState('');
@@ -123,110 +122,89 @@ export default function CertificationsScreen({ navigation }: any) {
     };
 
     return (
-        <View style={styles.container}>
-            {/* Header */}
-            <View style={styles.header}>
-                <TouchableOpacity
-                    onPress={() => navigation.goBack()}
-                    style={styles.backButton}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                    <Ionicons name="arrow-back" size={22} color={Colors.text} />
-                </TouchableOpacity>
-                <Text style={styles.headerTitle}>Certifications</Text>
-                <TouchableOpacity
-                    onPress={openModal}
-                    style={styles.addButton}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                    <Ionicons name="add" size={24} color={Colors.primary} />
-                </TouchableOpacity>
-            </View>
+        <ScreenWrapper>
+            <ScreenHeader
+                title="Certifications"
+                onBack={() => navigation.goBack()}
+                rightAction={{ icon: 'add', onPress: openModal }}
+            />
 
-            <ScrollView
-                contentContainerStyle={styles.contentContainer}
-                showsVerticalScrollIndicator={false}
-            >
-                {/* Info banner */}
-                <View style={styles.infoCard}>
+            {/* Info banner */}
+            <Animated.View entering={FadeInDown.duration(250)}>
+            <Card variant="outlined" style={styles.infoCard}>
+                <View style={styles.infoRow}>
                     <Ionicons name="ribbon-outline" size={22} color={Colors.primary} />
                     <Text style={styles.infoText}>
                         Add your coaching certifications to build trust with athletes. Verified
                         trainers get more bookings!
                     </Text>
                 </View>
+            </Card>
+            </Animated.View>
 
-                {/* Cert count */}
-                {certs.length > 0 && (
-                    <View style={styles.sectionHeadingRow}>
-                        <Text style={styles.sectionHeading}>Your Certifications</Text>
-                        <Text style={styles.sectionCount}>
-                            {certs.length} cert{certs.length !== 1 ? 's' : ''}
-                        </Text>
-                    </View>
-                )}
-
-                {/* Cert list */}
-                {certs.length === 0 ? (
-                    <View style={styles.emptyState}>
-                        <View style={styles.emptyIconWrap}>
-                            <Ionicons
-                                name="document-text-outline"
-                                size={40}
-                                color={Colors.primary}
-                            />
-                        </View>
-                        <Text style={styles.emptyTitle}>No certifications added yet</Text>
-                        <Text style={styles.emptyText}>
-                            Tap the + button in the top right to add your first certification.
-                        </Text>
-                        <TouchableOpacity style={styles.emptyAddButton} onPress={openModal}>
-                            <Ionicons name="add" size={18} color={Colors.background} />
-                            <Text style={styles.emptyAddButtonText}>Add Certification</Text>
-                        </TouchableOpacity>
-                    </View>
-                ) : (
-                    certs.map((cert, i) => (
-                        <TouchableOpacity
-                            key={i}
-                            style={styles.certCard}
-                            onLongPress={() => handleRemoveCert(i)}
-                            activeOpacity={0.85}
-                            delayLongPress={500}
-                        >
-                            <View style={styles.certIconWrap}>
-                                <Ionicons name="ribbon" size={22} color={Colors.primary} />
-                            </View>
-                            <View style={styles.certInfo}>
-                                <Text style={styles.certName}>{cert.name}</Text>
-                                {cert.issuer ? (
-                                    <Text style={styles.certIssuer}>{cert.issuer}</Text>
-                                ) : null}
-                            </View>
-                            <View style={styles.certRight}>
-                                {cert.year ? (
-                                    <View style={styles.yearBadge}>
-                                        <Text style={styles.yearBadgeText}>{cert.year}</Text>
-                                    </View>
-                                ) : null}
-                                <Ionicons
-                                    name="ellipsis-vertical"
-                                    size={16}
-                                    color={Colors.textTertiary}
-                                />
-                            </View>
-                        </TouchableOpacity>
-                    ))
-                )}
-
-                {certs.length > 0 && (
-                    <Text style={styles.longPressHint}>
-                        Long press a certification to remove it
+            {/* Cert count */}
+            {certs.length > 0 && (
+                <View style={styles.sectionHeadingRow}>
+                    <Text style={styles.sectionHeading}>Your Certifications</Text>
+                    <Text style={styles.sectionCount}>
+                        {certs.length} cert{certs.length !== 1 ? 's' : ''}
                     </Text>
-                )}
+                </View>
+            )}
 
-                <View style={{ height: 60 }} />
-            </ScrollView>
+            {/* Cert list */}
+            {certs.length === 0 ? (
+                <EmptyState
+                    icon="document-text-outline"
+                    title="No certifications added yet"
+                    description="Tap the + button in the top right to add your first certification."
+                    actionLabel="Add Certification"
+                    onAction={openModal}
+                />
+            ) : (
+                certs.map((cert, i) => (
+                    <Animated.View key={i} entering={FadeInDown.duration(200).delay(i * 100)}>
+                        <Pressable
+                            delayLongPress={500}
+                            onLongPress={() => handleRemoveCert(i)}
+                            accessibilityLabel={`Certification: ${cert.name}`}
+                            style={({ pressed }) => [pressed && { opacity: 0.9, transform: [{ scale: 0.98 }] }]}
+                        >
+                            <Card style={styles.certCard}>
+                                <View style={styles.certRow}>
+                                    <View style={styles.certIconWrap}>
+                                        <Ionicons name="document-text" size={22} color={Colors.primary} />
+                                    </View>
+                                    <View style={styles.certInfo}>
+                                        <Text style={styles.certName}>{cert.name}</Text>
+                                        {cert.issuer ? (
+                                            <Text style={styles.certIssuer}>{cert.issuer}</Text>
+                                        ) : null}
+                                    </View>
+                                    <View style={styles.certRight}>
+                                        {cert.year ? (
+                                            <View style={styles.yearBadge}>
+                                                <Text style={styles.yearBadgeText}>{cert.year}</Text>
+                                            </View>
+                                        ) : null}
+                                        <Ionicons
+                                            name="ellipsis-vertical"
+                                            size={16}
+                                            color={Colors.textTertiary}
+                                        />
+                                    </View>
+                                </View>
+                            </Card>
+                        </Pressable>
+                    </Animated.View>
+                ))
+            )}
+
+            {certs.length > 0 && (
+                <Text style={styles.longPressHint}>
+                    Long press a certification to remove it
+                </Text>
+            )}
 
             {/* Add Certification Modal */}
             <Modal
@@ -241,171 +219,81 @@ export default function CertificationsScreen({ navigation }: any) {
                         style={styles.modalKeyboardView}
                     >
                         <View style={styles.modalSheet}>
-                            {/* Modal handle */}
                             <View style={styles.modalHandle} />
 
-                            {/* Modal header */}
                             <View style={styles.modalHeader}>
                                 <Text style={styles.modalTitle}>Add Certification</Text>
-                                <TouchableOpacity
+                                <Pressable
                                     onPress={closeModal}
-                                    style={styles.modalCloseButton}
+                                    style={({ pressed }) => [styles.modalCloseButton, pressed && { opacity: 0.7 }]}
                                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                    accessibilityLabel="Close"
                                 >
                                     <Ionicons name="close" size={20} color={Colors.textSecondary} />
-                                </TouchableOpacity>
+                                </Pressable>
                             </View>
 
-                            {/* Name field */}
-                            <View style={styles.fieldGroup}>
-                                <Text style={styles.fieldLabel}>
-                                    Certification Name{' '}
-                                    <Text style={styles.required}>*</Text>
-                                </Text>
-                                <TextInput
-                                    style={[
-                                        styles.input,
-                                        nameError ? styles.inputError : null,
-                                    ]}
-                                    placeholder="e.g. NASM Personal Trainer"
-                                    placeholderTextColor={Colors.textTertiary}
-                                    value={certName}
-                                    onChangeText={(t) => {
-                                        setCertName(t);
-                                        if (nameError) setNameError('');
-                                    }}
-                                    autoFocus
-                                    returnKeyType="next"
-                                />
-                                {nameError ? (
-                                    <Text style={styles.errorText}>{nameError}</Text>
-                                ) : null}
-                            </View>
+                            <Input
+                                label="Certification Name *"
+                                placeholder="e.g. NASM Personal Trainer"
+                                value={certName}
+                                onChangeText={(t: string) => {
+                                    setCertName(t);
+                                    if (nameError) setNameError('');
+                                }}
+                                error={nameError}
+                                autoFocus
+                            />
 
-                            {/* Issuer field */}
-                            <View style={styles.fieldGroup}>
-                                <Text style={styles.fieldLabel}>Issuing Organization</Text>
-                                <TextInput
-                                    style={styles.input}
-                                    placeholder="e.g. National Academy of Sports Medicine"
-                                    placeholderTextColor={Colors.textTertiary}
-                                    value={certIssuer}
-                                    onChangeText={setCertIssuer}
-                                    returnKeyType="next"
-                                />
-                            </View>
+                            <Input
+                                label="Issuing Organization"
+                                placeholder="e.g. National Academy of Sports Medicine"
+                                value={certIssuer}
+                                onChangeText={setCertIssuer}
+                            />
 
-                            {/* Year field */}
-                            <View style={styles.fieldGroup}>
-                                <Text style={styles.fieldLabel}>Year Obtained</Text>
-                                <TextInput
-                                    style={styles.input}
-                                    placeholder="e.g. 2022"
-                                    placeholderTextColor={Colors.textTertiary}
-                                    value={certYear}
-                                    onChangeText={setCertYear}
-                                    keyboardType="number-pad"
-                                    maxLength={4}
-                                    returnKeyType="done"
-                                    onSubmitEditing={handleAddCert}
-                                />
-                            </View>
+                            <Input
+                                label="Year Obtained"
+                                placeholder="e.g. 2022"
+                                value={certYear}
+                                onChangeText={setCertYear}
+                                keyboardType="number-pad"
+                                maxLength={4}
+                            />
 
-                            {/* Save button */}
-                            <TouchableOpacity
-                                style={[styles.modalSaveButton, isSaving && styles.saveDisabled]}
+                            <Button
+                                title="Add Certification"
                                 onPress={handleAddCert}
+                                variant="primary"
+                                icon="checkmark-circle-outline"
+                                loading={isSaving}
                                 disabled={isSaving}
-                                activeOpacity={0.85}
-                            >
-                                {isSaving ? (
-                                    <ActivityIndicator size="small" color={Colors.background} />
-                                ) : (
-                                    <>
-                                        <Ionicons
-                                            name="checkmark-circle-outline"
-                                            size={20}
-                                            color={Colors.background}
-                                        />
-                                        <Text style={styles.modalSaveButtonText}>
-                                            Add Certification
-                                        </Text>
-                                    </>
-                                )}
-                            </TouchableOpacity>
+                            />
 
-                            <TouchableOpacity
-                                style={styles.modalCancelButton}
+                            <Button
+                                title="Cancel"
                                 onPress={closeModal}
-                            >
-                                <Text style={styles.modalCancelText}>Cancel</Text>
-                            </TouchableOpacity>
+                                variant="ghost"
+                                style={{ marginTop: Spacing.xs }}
+                            />
                         </View>
                     </KeyboardAvoidingView>
                 </View>
             </Modal>
-        </View>
+        </ScreenWrapper>
     );
 }
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: Colors.background,
-    },
-
-    // Header
-    header: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingHorizontal: Spacing.xxl,
-        paddingTop: Layout.headerTopPadding,
-        paddingBottom: Spacing.lg,
-        borderBottomWidth: 1,
-        borderBottomColor: Colors.border,
-    },
-    backButton: {
-        width: 44,
-        height: 44,
-        borderRadius: BorderRadius.md,
-        backgroundColor: Colors.surface,
-        justifyContent: 'center',
-        alignItems: 'center',
-        borderWidth: 1,
-        borderColor: Colors.border,
-    },
-    headerTitle: {
-        fontSize: FontSize.lg,
-        fontWeight: FontWeight.bold,
-        color: Colors.text,
-    },
-    addButton: {
-        width: 44,
-        height: 44,
-        borderRadius: BorderRadius.md,
-        backgroundColor: Colors.primaryGlow,
-        justifyContent: 'center',
-        alignItems: 'center',
-        borderWidth: 1,
-        borderColor: Colors.borderActive,
-    },
-
-    contentContainer: {
-        padding: Spacing.xxl,
-    },
-
-    // Info banner
     infoCard: {
+        marginBottom: Spacing.xl,
+        borderColor: Colors.borderActive,
+        backgroundColor: Colors.primaryMuted,
+    },
+    infoRow: {
         flexDirection: 'row',
         alignItems: 'flex-start',
         gap: Spacing.md,
-        padding: Spacing.lg,
-        backgroundColor: Colors.primaryGlow,
-        borderRadius: BorderRadius.lg,
-        borderWidth: 1,
-        borderColor: Colors.borderActive,
-        marginBottom: Spacing.xl,
     },
     infoText: {
         flex: 1,
@@ -413,8 +301,6 @@ const styles = StyleSheet.create({
         color: Colors.primary,
         lineHeight: 20,
     },
-
-    // Section heading
     sectionHeadingRow: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -430,17 +316,12 @@ const styles = StyleSheet.create({
         fontSize: FontSize.xs,
         color: Colors.textTertiary,
     },
-
-    // Cert card
     certCard: {
+        marginBottom: Spacing.sm,
+    },
+    certRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: Colors.card,
-        borderRadius: BorderRadius.lg,
-        padding: Spacing.lg,
-        marginBottom: Spacing.sm,
-        borderWidth: 1,
-        borderColor: Colors.border,
     },
     certIconWrap: {
         width: 46,
@@ -472,9 +353,9 @@ const styles = StyleSheet.create({
     },
     yearBadge: {
         backgroundColor: Colors.primaryGlow,
-        borderRadius: BorderRadius.pill,
-        paddingHorizontal: Spacing.sm,
-        paddingVertical: 3,
+        borderRadius: BorderRadius.sm,
+        paddingHorizontal: Spacing.md,
+        paddingVertical: Spacing.xs,
         borderWidth: 1,
         borderColor: Colors.borderActive,
     },
@@ -488,49 +369,6 @@ const styles = StyleSheet.create({
         fontSize: FontSize.xs,
         color: Colors.textTertiary,
         marginTop: Spacing.md,
-    },
-
-    // Empty state
-    emptyState: {
-        alignItems: 'center',
-        paddingTop: 40,
-        gap: Spacing.md,
-    },
-    emptyIconWrap: {
-        width: 80,
-        height: 80,
-        borderRadius: 40,
-        backgroundColor: Colors.primaryGlow,
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginBottom: Spacing.sm,
-    },
-    emptyTitle: {
-        fontSize: FontSize.xl,
-        fontWeight: FontWeight.bold,
-        color: Colors.text,
-    },
-    emptyText: {
-        fontSize: FontSize.md,
-        color: Colors.textSecondary,
-        textAlign: 'center',
-        lineHeight: 22,
-        paddingHorizontal: Spacing.xxl,
-    },
-    emptyAddButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: Spacing.sm,
-        marginTop: Spacing.md,
-        backgroundColor: Colors.primary,
-        paddingHorizontal: Spacing.xxl,
-        paddingVertical: Spacing.md,
-        borderRadius: BorderRadius.pill,
-    },
-    emptyAddButtonText: {
-        fontSize: FontSize.md,
-        fontWeight: FontWeight.bold,
-        color: Colors.background,
     },
 
     // Modal
@@ -577,67 +415,5 @@ const styles = StyleSheet.create({
         backgroundColor: Colors.surface,
         justifyContent: 'center',
         alignItems: 'center',
-    },
-
-    // Form fields
-    fieldGroup: {
-        marginBottom: Spacing.lg,
-    },
-    fieldLabel: {
-        fontSize: FontSize.sm,
-        fontWeight: FontWeight.semibold,
-        color: Colors.textSecondary,
-        marginBottom: Spacing.sm,
-    },
-    required: {
-        color: Colors.error,
-    },
-    input: {
-        backgroundColor: Colors.surface,
-        borderRadius: BorderRadius.md,
-        borderWidth: 1,
-        borderColor: Colors.border,
-        paddingHorizontal: Spacing.lg,
-        paddingVertical: Spacing.md,
-        fontSize: FontSize.md,
-        color: Colors.text,
-    },
-    inputError: {
-        borderColor: Colors.error,
-    },
-    errorText: {
-        fontSize: FontSize.xs,
-        color: Colors.error,
-        marginTop: 4,
-    },
-
-    // Modal buttons
-    modalSaveButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: Spacing.sm,
-        backgroundColor: Colors.primary,
-        borderRadius: BorderRadius.lg,
-        paddingVertical: Spacing.lg,
-        marginTop: Spacing.sm,
-    },
-    saveDisabled: {
-        opacity: 0.6,
-    },
-    modalSaveButtonText: {
-        fontSize: FontSize.md,
-        fontWeight: FontWeight.bold,
-        color: Colors.background,
-    },
-    modalCancelButton: {
-        alignItems: 'center',
-        paddingVertical: Spacing.lg,
-        marginTop: Spacing.xs,
-    },
-    modalCancelText: {
-        fontSize: FontSize.md,
-        color: Colors.textSecondary,
-        fontWeight: FontWeight.medium,
     },
 });

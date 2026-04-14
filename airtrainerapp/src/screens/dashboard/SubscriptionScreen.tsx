@@ -3,24 +3,20 @@ import {
     View,
     Text,
     StyleSheet,
-    ScrollView,
-    TouchableOpacity,
+    Pressable,
     Alert,
     ActivityIndicator,
-    RefreshControl,
 } from 'react-native';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as WebBrowser from 'expo-web-browser';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
-import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows, Layout} from '../../theme';
-
-// ─── API URL ─────────────────────────────────────────────────────────────────
+import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows } from '../../theme';
+import { ScreenWrapper, ScreenHeader, Card, Badge, LoadingScreen, Button, SectionHeader, ListItem } from '../../components/ui';
 
 const API_URL = 'https://api.airtrainr.com/api/v1';
-
-// ─── Types ────────────────────────────────────────────────────────────────────
 
 type SubscriptionStatus = 'trial' | 'active' | 'expired' | 'cancelled';
 
@@ -34,8 +30,6 @@ type ProfileData = {
     verification_status: string;
     reliability_score: number;
 };
-
-// ─── Constants ────────────────────────────────────────────────────────────────
 
 const PRO_FEATURES = [
     { icon: 'search-outline', label: 'Appear in athlete search results' },
@@ -55,8 +49,6 @@ const F50_BENEFITS = [
     'Early access to new features',
     'Direct line to the AirTrainr team',
 ] as const;
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function getStatusConfig(status: SubscriptionStatus) {
     switch (status) {
@@ -89,8 +81,6 @@ function getDaysRemaining(profile: ProfileData): number {
     return 0;
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
-
 export default function SubscriptionScreen({ navigation }: any) {
     const { user } = useAuth();
 
@@ -101,8 +91,6 @@ export default function SubscriptionScreen({ navigation }: any) {
     const [f50Applied, setF50Applied] = useState(false);
     const [f50Count, setF50Count] = useState<number | null>(null);
     const [f50Applying, setF50Applying] = useState(false);
-
-    // ── Data fetching ─────────────────────────────────────────────────────────
 
     const fetchProfile = useCallback(async () => {
         if (!user?.id) return;
@@ -118,7 +106,6 @@ export default function SubscriptionScreen({ navigation }: any) {
             if (error) throw error;
             const profileData = data as ProfileData;
             setProfile(profileData);
-            // is_founding_50 true but not active = pending approval
             setF50Applied(!!profileData.is_founding_50 && profileData.subscription_status !== 'active');
         } catch (err: any) {
             console.error('SubscriptionScreen fetchProfile:', err);
@@ -151,8 +138,6 @@ export default function SubscriptionScreen({ navigation }: any) {
         setRefreshing(false);
     };
 
-    // ── Subscribe handler ─────────────────────────────────────────────────────
-
     const handleSubscribe = async (plan: 'monthly' | 'annual') => {
         setSubscribing(true);
         try {
@@ -166,11 +151,9 @@ export default function SubscriptionScreen({ navigation }: any) {
                 const { url } = await response.json();
                 if (url) {
                     await WebBrowser.openBrowserAsync(url);
-                    // After returning, refresh subscription status
                     fetchProfile();
                 }
             } else {
-                // Fallback: update status directly (Stripe may not be fully configured)
                 const expiresAt =
                     plan === 'monthly'
                         ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
@@ -194,12 +177,9 @@ export default function SubscriptionScreen({ navigation }: any) {
         }
     };
 
-    // ── Founding 50 application handler ───────────────────────────────────────
-
     const handleApplyF50 = async () => {
         setF50Applying(true);
         try {
-            // Check spots remaining
             const { count } = await supabase
                 .from('trainer_profiles')
                 .select('id', { count: 'exact', head: true })
@@ -210,7 +190,6 @@ export default function SubscriptionScreen({ navigation }: any) {
                 return;
             }
 
-            // Set is_founding_50 = true (admin will approve and activate subscription)
             const { error: updateError } = await supabase
                 .from('trainer_profiles')
                 .update({ is_founding_50: true })
@@ -231,14 +210,8 @@ export default function SubscriptionScreen({ navigation }: any) {
         }
     };
 
-    // ── Render ────────────────────────────────────────────────────────────────
-
     if (isLoading) {
-        return (
-            <View style={[styles.container, styles.centered]}>
-                <ActivityIndicator size="large" color={Colors.primary} />
-            </View>
-        );
+        return <LoadingScreen message="Loading subscription..." />;
     }
 
     const status = getStatusConfig((profile?.subscription_status ?? 'trial') as SubscriptionStatus);
@@ -250,298 +223,265 @@ export default function SubscriptionScreen({ navigation }: any) {
     const spotsRemaining = f50Count !== null ? 50 - f50Count : null;
 
     return (
-        <View style={styles.container}>
-            {/* Header */}
-            <View style={styles.header}>
-                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerBtn}>
-                    <Ionicons name="arrow-back" size={22} color={Colors.text} />
-                </TouchableOpacity>
-                <Text style={styles.headerTitle}>Subscription</Text>
-                <View style={{ width: 44 }} />
-            </View>
+        <ScreenWrapper refreshing={refreshing} onRefresh={onRefresh}>
+            <ScreenHeader
+                title="Subscription"
+                onBack={() => navigation.goBack()}
+            />
 
-            <ScrollView
-                contentContainerStyle={styles.content}
-                showsVerticalScrollIndicator={false}
-                refreshControl={
-                    <RefreshControl
-                        refreshing={refreshing}
-                        onRefresh={onRefresh}
-                        tintColor={Colors.primary}
-                        colors={[Colors.primary]}
-                    />
-                }
+            {/* Founding 50 Banner (already granted) */}
+            {profile?.is_founding_50 && <Founding50Card />}
+
+            {/* Status Hero Card - Current plan badge prominent at top */}
+            <Animated.View entering={FadeInDown.duration(250)}>
+            <LinearGradient
+                colors={[Colors.gradientStart, Colors.gradientEnd]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.heroCard}
             >
-                {/* ── Founding 50 Banner (already granted) ── */}
-                {profile?.is_founding_50 && <Founding50Card />}
+                <View style={styles.heroBadge}>
+                    <Ionicons name={status.icon} size={16} color="#fff" />
+                    <Text style={styles.heroBadgeText}>{status.label}</Text>
+                </View>
 
-                {/* ── Status Hero Card ── */}
-                <LinearGradient
-                    colors={[Colors.gradientStart, Colors.gradientEnd]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={styles.heroCard}
-                >
-                    {/* Status badge */}
-                    <View style={styles.heroBadge}>
-                        <Ionicons name={status.icon} size={16} color="#fff" />
-                        <Text style={styles.heroBadgeText}>{status.label}</Text>
+                <Text style={styles.heroProductName}>AirTrainr Pro</Text>
+
+                <Text style={styles.heroPrice}>
+                    {isTrial ? 'FREE' : '$25'}
+                    {!isTrial && <Text style={styles.heroPricePeriod}> /month</Text>}
+                </Text>
+
+                {daysLeft > 0 && (
+                    <View style={styles.heroDaysRow}>
+                        <Ionicons name="hourglass-outline" size={14} color="rgba(255,255,255,0.8)" />
+                        <Text style={styles.heroDaysText}>
+                            {daysLeft} day{daysLeft !== 1 ? 's' : ''} remaining
+                        </Text>
                     </View>
-
-                    <Text style={styles.heroProductName}>AirTrainr Pro</Text>
-
-                    <Text style={styles.heroPrice}>
-                        {isTrial ? 'FREE' : '$25'}
-                        {!isTrial && <Text style={styles.heroPricePeriod}> /month</Text>}
-                    </Text>
-
-                    {daysLeft > 0 && (
-                        <View style={styles.heroDaysRow}>
-                            <Ionicons name="hourglass-outline" size={14} color="rgba(255,255,255,0.8)" />
-                            <Text style={styles.heroDaysText}>
-                                {daysLeft} day{daysLeft !== 1 ? 's' : ''} remaining
-                            </Text>
-                        </View>
-                    )}
-
-                    {profile?.subscription_expires_at && isActive && (
-                        <Text style={styles.heroExpiry}>
-                            Renews {formatDate(profile.subscription_expires_at)}
-                        </Text>
-                    )}
-                </LinearGradient>
-
-                {/* ── Subscription Details ── */}
-                <SectionTitle label="Subscription Details" />
-                <View style={styles.detailCard}>
-                    <DetailRow
-                        label="Plan"
-                        right={
-                            <View style={[styles.badge, { backgroundColor: status.bg }]}>
-                                <Text style={[styles.badgeText, { color: status.color }]}>{status.label}</Text>
-                            </View>
-                        }
-                    />
-                    <DetailRow
-                        label="Trial started"
-                        right={<Text style={styles.detailValue}>{formatDate(profile?.trial_started_at ?? null)}</Text>}
-                    />
-                    {profile?.subscription_expires_at && (
-                        <DetailRow
-                            label="Expires"
-                            right={<Text style={styles.detailValue}>{formatDate(profile.subscription_expires_at)}</Text>}
-                        />
-                    )}
-                    <DetailRow
-                        label="Verification"
-                        right={
-                            <View style={[styles.badge, { backgroundColor: profile?.is_verified ? Colors.successLight : Colors.warningLight }]}>
-                                <Ionicons
-                                    name={profile?.is_verified ? 'checkmark-circle' : 'time'}
-                                    size={12}
-                                    color={profile?.is_verified ? Colors.success : Colors.warning}
-                                />
-                                <Text style={[styles.badgeText, { color: profile?.is_verified ? Colors.success : Colors.warning }]}>
-                                    {profile?.is_verified ? 'Verified' : 'Pending'}
-                                </Text>
-                            </View>
-                        }
-                    />
-                    <DetailRow
-                        label="Reliability score"
-                        right={
-                            <Text style={[styles.detailValue, { color: Colors.success }]}>
-                                {Number(profile?.reliability_score ?? 100).toFixed(0)}%
-                            </Text>
-                        }
-                        isLast
-                    />
-                </View>
-
-                {/* ── What's Included ── */}
-                <SectionTitle label="What's Included" />
-                <View style={styles.featuresCard}>
-                    {PRO_FEATURES.map((f, i) => (
-                        <View key={i} style={[styles.featureRow, i === PRO_FEATURES.length - 1 && { borderBottomWidth: 0 }]}>
-                            <View style={styles.featureIconWrap}>
-                                <Ionicons name={f.icon} size={18} color={Colors.primary} />
-                            </View>
-                            <Text style={styles.featureText}>{f.label}</Text>
-                            <Ionicons name="checkmark" size={16} color={Colors.success} />
-                        </View>
-                    ))}
-                </View>
-
-                {/* ── Plan Selection & Subscribe CTA ── */}
-                {(isTrial || isExpiredOrCancelled) && (
-                    <>
-                        <SectionTitle label="Choose Your Plan" />
-
-                        {/* Monthly Plan Card */}
-                        <View style={styles.planCard}>
-                            <View style={styles.planCardHeader}>
-                                <View>
-                                    <Text style={styles.planCardTitle}>Monthly</Text>
-                                    <Text style={styles.planCardSubtitle}>Flexible, cancel anytime</Text>
-                                </View>
-                                <View style={styles.planPriceWrap}>
-                                    <Text style={styles.planPrice}>$25</Text>
-                                    <Text style={styles.planPricePeriod}>/mo</Text>
-                                </View>
-                            </View>
-                            <TouchableOpacity
-                                style={styles.subscribeBtnMonthly}
-                                onPress={() => handleSubscribe('monthly')}
-                                activeOpacity={0.85}
-                                disabled={subscribing}
-                            >
-                                {subscribing ? (
-                                    <ActivityIndicator size="small" color="#fff" />
-                                ) : (
-                                    <Text style={styles.subscribeBtnText}>Subscribe Monthly</Text>
-                                )}
-                            </TouchableOpacity>
-                        </View>
-
-                        {/* Annual Plan Card */}
-                        <View style={styles.annualPlanCardOuter}>
-                            <LinearGradient
-                                colors={[Colors.gradientStart, Colors.gradientEnd]}
-                                start={{ x: 0, y: 0 }}
-                                end={{ x: 1, y: 1 }}
-                                style={styles.annualPlanCard}
-                            >
-                                {/* Best Value Badge */}
-                                <View style={styles.bestValueBadge}>
-                                    <Ionicons name="flame" size={12} color="#fff" />
-                                    <Text style={styles.bestValueBadgeText}>BEST VALUE</Text>
-                                </View>
-
-                                <View style={styles.planCardHeader}>
-                                    <View>
-                                        <Text style={[styles.planCardTitle, { color: '#fff' }]}>Annual</Text>
-                                        <Text style={[styles.planCardSubtitle, { color: 'rgba(255,255,255,0.7)' }]}>
-                                            Best value - Save $50
-                                        </Text>
-                                    </View>
-                                    <View style={styles.planPriceWrap}>
-                                        <Text style={[styles.planPrice, { color: '#fff' }]}>$250</Text>
-                                        <Text style={[styles.planPricePeriod, { color: 'rgba(255,255,255,0.7)' }]}>/yr</Text>
-                                    </View>
-                                </View>
-                                <TouchableOpacity
-                                    style={styles.subscribeBtnAnnual}
-                                    onPress={() => handleSubscribe('annual')}
-                                    activeOpacity={0.85}
-                                    disabled={subscribing}
-                                >
-                                    {subscribing ? (
-                                        <ActivityIndicator size="small" color={Colors.gradientStart} />
-                                    ) : (
-                                        <Text style={styles.subscribeBtnAnnualText}>Subscribe Annually</Text>
-                                    )}
-                                </TouchableOpacity>
-                            </LinearGradient>
-                        </View>
-
-                        <Text style={styles.subscribeNote}>
-                            You'll be redirected to Stripe for secure payment processing.
-                        </Text>
-                    </>
                 )}
 
-                {/* Active — manage note */}
-                {isActive && (
-                    <View style={styles.manageNote}>
+                {profile?.subscription_expires_at && isActive && (
+                    <Text style={styles.heroExpiry}>
+                        Renews {formatDate(profile.subscription_expires_at)}
+                    </Text>
+                )}
+            </LinearGradient>
+            </Animated.View>
+
+            {/* Subscription Details */}
+            <SectionHeader title="Subscription Details" />
+            <Card noPadding style={styles.detailCard}>
+                <DetailRow
+                    label="Plan"
+                    right={<Badge label={status.label} color={status.color} bgColor={status.bg} />}
+                />
+                <DetailRow
+                    label="Trial started"
+                    right={<Text style={styles.detailValue}>{formatDate(profile?.trial_started_at ?? null)}</Text>}
+                />
+                {profile?.subscription_expires_at && (
+                    <DetailRow
+                        label="Expires"
+                        right={<Text style={styles.detailValue}>{formatDate(profile.subscription_expires_at)}</Text>}
+                    />
+                )}
+                <DetailRow
+                    label="Verification"
+                    right={
+                        <Badge
+                            label={profile?.is_verified ? 'Verified' : 'Pending'}
+                            color={profile?.is_verified ? Colors.success : Colors.warning}
+                            bgColor={profile?.is_verified ? Colors.successLight : Colors.warningLight}
+                            dot
+                        />
+                    }
+                />
+                <DetailRow
+                    label="Reliability score"
+                    right={
+                        <Text style={[styles.detailValue, { color: Colors.success }]}>
+                            {Number(profile?.reliability_score ?? 100).toFixed(0)}%
+                        </Text>
+                    }
+                    isLast
+                />
+            </Card>
+
+            {/* What's Included */}
+            <SectionHeader title="What's Included" />
+            <Card noPadding style={styles.featuresCard}>
+                {PRO_FEATURES.map((f, i) => (
+                    <View key={i} style={[styles.featureRow, i === PRO_FEATURES.length - 1 && { borderBottomWidth: 0 }]}>
+                        <View style={styles.featureIconWrap}>
+                            <Ionicons name={f.icon} size={18} color={Colors.primary} />
+                        </View>
+                        <Text style={styles.featureText}>{f.label}</Text>
+                        <Ionicons name="checkmark" size={16} color={Colors.success} />
+                    </View>
+                ))}
+            </Card>
+
+            {/* Plan Selection & Subscribe CTA */}
+            {(isTrial || isExpiredOrCancelled) && (
+                <>
+                    <SectionHeader title="Choose Your Plan" />
+
+                    <Card style={styles.planCard}>
+                        <View style={styles.planCardHeader}>
+                            <View>
+                                <Text style={styles.planCardTitle}>Monthly</Text>
+                                <Text style={styles.planCardSubtitle}>Flexible, cancel anytime</Text>
+                            </View>
+                            <View style={styles.planPriceWrap}>
+                                <Text style={styles.planPrice}>$25</Text>
+                                <Text style={styles.planPricePeriod}>/mo</Text>
+                            </View>
+                        </View>
+                        <Button
+                            title="Subscribe Monthly"
+                            onPress={() => handleSubscribe('monthly')}
+                            variant="primary"
+                            loading={subscribing}
+                            disabled={subscribing}
+                        />
+                    </Card>
+
+                    <View style={styles.annualPlanCardOuter}>
+                        <LinearGradient
+                            colors={[Colors.gradientStart, Colors.gradientEnd]}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 1 }}
+                            style={styles.annualPlanCard}
+                        >
+                            <Badge
+                                label="BEST VALUE"
+                                color="#fff"
+                                bgColor="rgba(255,255,255,0.2)"
+                                size="sm"
+                            />
+
+                            <View style={styles.planCardHeader}>
+                                <View>
+                                    <Text style={[styles.planCardTitle, { color: '#fff' }]}>Annual</Text>
+                                    <Text style={[styles.planCardSubtitle, { color: 'rgba(255,255,255,0.7)' }]}>
+                                        Best value - Save $50
+                                    </Text>
+                                </View>
+                                <View style={styles.planPriceWrap}>
+                                    <Text style={[styles.planPrice, { color: '#fff' }]}>$250</Text>
+                                    <Text style={[styles.planPricePeriod, { color: 'rgba(255,255,255,0.7)' }]}>/yr</Text>
+                                </View>
+                            </View>
+                            <Pressable
+                                style={({ pressed }) => [styles.subscribeBtnAnnual, pressed && { opacity: 0.9, transform: [{ scale: 0.98 }] }]}
+                                onPress={() => handleSubscribe('annual')}
+                                disabled={subscribing}
+                                accessibilityLabel="Subscribe Annually"
+                            >
+                                {subscribing ? (
+                                    <ActivityIndicator size="small" color={Colors.gradientStart} />
+                                ) : (
+                                    <Text style={styles.subscribeBtnAnnualText}>Subscribe Annually</Text>
+                                )}
+                            </Pressable>
+                        </LinearGradient>
+                    </View>
+
+                    <Text style={styles.subscribeNote}>
+                        You'll be redirected to Stripe for secure payment processing.
+                    </Text>
+                </>
+            )}
+
+            {/* Active -- manage note */}
+            {isActive && (
+                <Card variant="outlined" style={styles.manageNote}>
+                    <View style={styles.manageNoteRow}>
                         <Ionicons name="information-circle-outline" size={18} color={Colors.textSecondary} />
                         <Text style={styles.manageNoteText}>
                             To manage or cancel your subscription, contact{' '}
                             <Text style={{ color: Colors.primary }}>support@airtrainr.com</Text>
                         </Text>
                     </View>
-                )}
+                </Card>
+            )}
 
-                {/* ── Founding 50 Application Section ── */}
-                {((!profile?.is_founding_50 && !isActive) || f50Applied) && (
-                    <>
-                        <SectionTitle label="Founding 50 Program" />
-                        <View style={styles.f50ApplyCard}>
-                            <View style={styles.f50ApplyHeader}>
-                                <View style={styles.f50ApplyIconWrap}>
-                                    <Ionicons name="trophy" size={24} color="#FFD700" />
-                                </View>
-                                <View style={{ flex: 1 }}>
-                                    <Text style={styles.f50ApplyTitle}>Become a Founding Member</Text>
-                                    <Text style={styles.f50ApplySubtitle}>
-                                        Join the first 50 trainers and unlock lifetime benefits
-                                    </Text>
-                                </View>
+            {/* Founding 50 Application Section */}
+            {((!profile?.is_founding_50 && !isActive) || f50Applied) && (
+                <>
+                    <SectionHeader title="Founding 50 Program" />
+                    <Card style={styles.f50ApplyCard}>
+                        <View style={styles.f50ApplyHeader}>
+                            <View style={styles.f50ApplyIconWrap}>
+                                <Ionicons name="trophy" size={24} color="#FFD700" />
                             </View>
-
-                            {/* Spots Remaining Counter */}
-                            {spotsRemaining !== null && (
-                                <View style={styles.f50SpotsRow}>
-                                    <View style={styles.f50SpotsBarBg}>
-                                        <View
-                                            style={[
-                                                styles.f50SpotsBarFill,
-                                                { width: `${Math.min(((f50Count ?? 0) / 50) * 100, 100)}%` },
-                                            ]}
-                                        />
-                                    </View>
-                                    <Text style={styles.f50SpotsText}>
-                                        {f50Count}/50 spots filled
-                                        {spotsRemaining > 0
-                                            ? ` \u00B7 ${spotsRemaining} remaining`
-                                            : ' \u00B7 Program full'}
-                                    </Text>
-                                </View>
-                            )}
-
-                            {/* Benefits List */}
-                            <View style={styles.f50BenefitsList}>
-                                {F50_BENEFITS.map((benefit, i) => (
-                                    <View key={i} style={styles.f50BenefitRow}>
-                                        <Ionicons name="star" size={14} color="#FFD700" />
-                                        <Text style={styles.f50BenefitText}>{benefit}</Text>
-                                    </View>
-                                ))}
+                            <View style={{ flex: 1 }}>
+                                <Text style={styles.f50ApplyTitle}>Become a Founding Member</Text>
+                                <Text style={styles.f50ApplySubtitle}>
+                                    Join the first 50 trainers and unlock lifetime benefits
+                                </Text>
                             </View>
-
-                            {/* Apply Button or Pending Status */}
-                            {f50Applied ? (
-                                <View style={styles.f50PendingBadge}>
-                                    <Ionicons name="time-outline" size={18} color={Colors.warning} />
-                                    <Text style={styles.f50PendingText}>Application Pending Review</Text>
-                                </View>
-                            ) : (
-                                <TouchableOpacity
-                                    style={styles.f50ApplyBtn}
-                                    onPress={handleApplyF50}
-                                    activeOpacity={0.85}
-                                    disabled={f50Applying || (spotsRemaining !== null && spotsRemaining <= 0)}
-                                >
-                                    {f50Applying ? (
-                                        <ActivityIndicator size="small" color="#1a1500" />
-                                    ) : (
-                                        <>
-                                            <Ionicons name="trophy-outline" size={18} color="#1a1500" />
-                                            <Text style={styles.f50ApplyBtnText}>Apply for Founding 50</Text>
-                                        </>
-                                    )}
-                                </TouchableOpacity>
-                            )}
                         </View>
-                    </>
-                )}
 
-                <View style={{ height: 48 }} />
-            </ScrollView>
-        </View>
+                        {spotsRemaining !== null && (
+                            <View style={styles.f50SpotsRow}>
+                                <View style={styles.f50SpotsBarBg}>
+                                    <View
+                                        style={[
+                                            styles.f50SpotsBarFill,
+                                            { width: `${Math.min(((f50Count ?? 0) / 50) * 100, 100)}%` },
+                                        ]}
+                                    />
+                                </View>
+                                <Text style={styles.f50SpotsText}>
+                                    {f50Count}/50 spots filled
+                                    {spotsRemaining > 0
+                                        ? ` \u00B7 ${spotsRemaining} remaining`
+                                        : ' \u00B7 Program full'}
+                                </Text>
+                            </View>
+                        )}
+
+                        <View style={styles.f50BenefitsList}>
+                            {F50_BENEFITS.map((benefit, i) => (
+                                <View key={i} style={styles.f50BenefitRow}>
+                                    <Ionicons name="star" size={14} color="#FFD700" />
+                                    <Text style={styles.f50BenefitText}>{benefit}</Text>
+                                </View>
+                            ))}
+                        </View>
+
+                        {f50Applied ? (
+                            <View style={styles.f50PendingBadge}>
+                                <Ionicons name="time-outline" size={18} color={Colors.warning} />
+                                <Text style={styles.f50PendingText}>Application Pending Review</Text>
+                            </View>
+                        ) : (
+                            <Pressable
+                                style={({ pressed }) => [styles.f50ApplyBtn, pressed && { opacity: 0.9, transform: [{ scale: 0.98 }] }]}
+                                onPress={handleApplyF50}
+                                disabled={f50Applying || (spotsRemaining !== null && spotsRemaining <= 0)}
+                                accessibilityLabel="Apply for Founding 50"
+                            >
+                                {f50Applying ? (
+                                    <ActivityIndicator size="small" color="#1a1500" />
+                                ) : (
+                                    <>
+                                        <Ionicons name="trophy-outline" size={18} color="#1a1500" />
+                                        <Text style={styles.f50ApplyBtnText}>Apply for Founding 50</Text>
+                                    </>
+                                )}
+                            </Pressable>
+                        )}
+                    </Card>
+                </>
+            )}
+        </ScreenWrapper>
     );
 }
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
+// Sub-components
 
 function Founding50Card() {
     return (
@@ -561,17 +501,10 @@ function Founding50Card() {
                         <Text style={styles.f50Sub}>Early access member · Lifetime benefits</Text>
                     </View>
                 </View>
-                <View style={styles.f50BadgeWrap}>
-                    <Ionicons name="star" size={12} color="#FFD700" />
-                    <Text style={styles.f50BadgeText}>GOLD</Text>
-                </View>
+                <Badge label="GOLD" color="#FFD700" bgColor="rgba(255,215,0,0.15)" dot />
             </LinearGradient>
         </View>
     );
-}
-
-function SectionTitle({ label }: { label: string }) {
-    return <Text style={styles.sectionTitle}>{label}</Text>;
 }
 
 function DetailRow({
@@ -591,51 +524,7 @@ function DetailRow({
     );
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
-
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: Colors.background,
-    },
-    centered: {
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-
-    // Header
-    header: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingHorizontal: Spacing.xxl,
-        paddingTop: Layout.headerTopPadding,
-        paddingBottom: Spacing.lg,
-        borderBottomWidth: 1,
-        borderBottomColor: Colors.border,
-        backgroundColor: Colors.background,
-    },
-    headerBtn: {
-        width: 44,
-        height: 44,
-        borderRadius: BorderRadius.md,
-        backgroundColor: Colors.surface,
-        borderWidth: 1,
-        borderColor: Colors.border,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    headerTitle: {
-        fontSize: FontSize.lg,
-        fontWeight: FontWeight.bold,
-        color: Colors.text,
-    },
-
-    // Content
-    content: {
-        padding: Spacing.xxl,
-    },
-
     // Founding 50 (granted badge)
     f50Card: {
         borderRadius: BorderRadius.lg,
@@ -677,23 +566,6 @@ const styles = StyleSheet.create({
         fontSize: FontSize.xs,
         color: 'rgba(255,215,0,0.7)',
         marginTop: 2,
-    },
-    f50BadgeWrap: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 4,
-        paddingHorizontal: Spacing.md,
-        paddingVertical: 4,
-        backgroundColor: 'rgba(255,215,0,0.15)',
-        borderWidth: 1,
-        borderColor: 'rgba(255,215,0,0.4)',
-        borderRadius: BorderRadius.pill,
-    },
-    f50BadgeText: {
-        fontSize: FontSize.xs,
-        fontWeight: FontWeight.bold,
-        color: '#FFD700',
-        letterSpacing: 1,
     },
 
     // Hero Card
@@ -752,20 +624,8 @@ const styles = StyleSheet.create({
         marginTop: Spacing.sm,
     },
 
-    // Section title
-    sectionTitle: {
-        fontSize: FontSize.lg,
-        fontWeight: FontWeight.bold,
-        color: Colors.text,
-        marginBottom: Spacing.md,
-    },
-
     // Detail card
     detailCard: {
-        backgroundColor: Colors.card,
-        borderRadius: BorderRadius.lg,
-        borderWidth: 1,
-        borderColor: Colors.border,
         marginBottom: Spacing.xxl,
         overflow: 'hidden',
     },
@@ -787,25 +647,9 @@ const styles = StyleSheet.create({
         fontWeight: FontWeight.semibold,
         color: Colors.text,
     },
-    badge: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 4,
-        paddingHorizontal: Spacing.md,
-        paddingVertical: 4,
-        borderRadius: BorderRadius.pill,
-    },
-    badgeText: {
-        fontSize: FontSize.xs,
-        fontWeight: FontWeight.bold,
-    },
 
     // Features
     featuresCard: {
-        backgroundColor: Colors.card,
-        borderRadius: BorderRadius.lg,
-        borderWidth: 1,
-        borderColor: Colors.border,
         marginBottom: Spacing.xxl,
         overflow: 'hidden',
     },
@@ -835,11 +679,6 @@ const styles = StyleSheet.create({
 
     // Plan cards
     planCard: {
-        backgroundColor: Colors.card,
-        borderRadius: BorderRadius.lg,
-        borderWidth: 1,
-        borderColor: Colors.border,
-        padding: Spacing.xl,
         marginBottom: Spacing.md,
         ...Shadows.medium,
     },
@@ -873,18 +712,6 @@ const styles = StyleSheet.create({
         fontSize: FontSize.sm,
         color: Colors.textSecondary,
     },
-    subscribeBtnMonthly: {
-        backgroundColor: Colors.primary,
-        borderRadius: BorderRadius.md,
-        paddingVertical: Spacing.md,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    subscribeBtnText: {
-        color: '#fff',
-        fontSize: FontSize.md,
-        fontWeight: FontWeight.bold,
-    },
 
     // Annual plan card
     annualPlanCardOuter: {
@@ -896,23 +723,7 @@ const styles = StyleSheet.create({
     annualPlanCard: {
         padding: Spacing.xl,
         borderRadius: BorderRadius.lg,
-    },
-    bestValueBadge: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 4,
-        alignSelf: 'flex-start',
-        backgroundColor: 'rgba(255,255,255,0.2)',
-        paddingHorizontal: Spacing.md,
-        paddingVertical: 4,
-        borderRadius: BorderRadius.pill,
-        marginBottom: Spacing.md,
-    },
-    bestValueBadgeText: {
-        fontSize: FontSize.xs,
-        fontWeight: FontWeight.heavy,
-        color: '#fff',
-        letterSpacing: 1,
+        gap: Spacing.md,
     },
     subscribeBtnAnnual: {
         backgroundColor: '#fff',
@@ -936,15 +747,12 @@ const styles = StyleSheet.create({
 
     // Manage note
     manageNote: {
+        marginBottom: Spacing.xxl,
+    },
+    manageNoteRow: {
         flexDirection: 'row',
         gap: Spacing.sm,
         alignItems: 'flex-start',
-        padding: Spacing.lg,
-        backgroundColor: Colors.surface,
-        borderRadius: BorderRadius.md,
-        borderWidth: 1,
-        borderColor: Colors.border,
-        marginBottom: Spacing.xxl,
     },
     manageNoteText: {
         flex: 1,
@@ -955,10 +763,10 @@ const styles = StyleSheet.create({
 
     // Founding 50 Application
     f50ApplyCard: {
+        borderColor: 'rgba(255,215,0,0.3)',
+        borderWidth: 1.5,
         backgroundColor: Colors.card,
         borderRadius: BorderRadius.lg,
-        borderWidth: 1.5,
-        borderColor: 'rgba(255,215,0,0.3)',
         padding: Spacing.xl,
         marginBottom: Spacing.xxl,
         ...Shadows.medium,
@@ -995,14 +803,14 @@ const styles = StyleSheet.create({
     f50SpotsBarBg: {
         height: 8,
         backgroundColor: Colors.surface,
-        borderRadius: 4,
+        borderRadius: Spacing.xs,
         overflow: 'hidden',
         marginBottom: Spacing.xs,
     },
     f50SpotsBarFill: {
         height: '100%',
         backgroundColor: '#FFD700',
-        borderRadius: 4,
+        borderRadius: Spacing.xs,
     },
     f50SpotsText: {
         fontSize: FontSize.xs,

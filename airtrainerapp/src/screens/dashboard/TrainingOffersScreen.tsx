@@ -4,6 +4,7 @@ import {
     Text,
     StyleSheet,
     ScrollView,
+    Pressable,
     TouchableOpacity,
     TouchableHighlight,
     TextInput,
@@ -14,13 +15,26 @@ import {
     KeyboardAvoidingView,
     Platform,
 } from 'react-native';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
-import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows, Layout} from '../../theme';
+import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows } from '../../theme';
+import ScreenWrapper from '../../components/ui/ScreenWrapper';
+import ScreenHeader from '../../components/ui/ScreenHeader';
+import Card from '../../components/ui/Card';
+import Button from '../../components/ui/Button';
+import Badge from '../../components/ui/Badge';
+import Avatar from '../../components/ui/Avatar';
+import EmptyState from '../../components/ui/EmptyState';
+import LoadingScreen from '../../components/ui/LoadingScreen';
+import SectionHeader from '../../components/ui/SectionHeader';
+import TabFilter from '../../components/ui/TabFilter';
+import Input from '../../components/ui/Input';
+import Divider from '../../components/ui/Divider';
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// ---- Types ----
 
 type TrainingOffer = {
     id: string;
@@ -80,7 +94,7 @@ const EMPTY_FORM: FormState = {
 
 const SESSION_LENGTHS = [30, 45, 60, 90];
 
-// ─── Component ───────────────────────────────────────────────────────────────
+// ---- Component ----
 
 export default function TrainingOffersScreen({ navigation }: any) {
     const { user } = useAuth();
@@ -88,7 +102,7 @@ export default function TrainingOffersScreen({ navigation }: any) {
 
     const [activeTab, setActiveTab] = useState<TabKey>('packages');
 
-    // ── My Packages state ─────────────────────────────────────────────────────
+    // My Packages state
     const [offers, setOffers] = useState<TrainingOffer[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -97,7 +111,7 @@ export default function TrainingOffersScreen({ navigation }: any) {
     const [form, setForm] = useState<FormState>(EMPTY_FORM);
     const [formErrors, setFormErrors] = useState<Partial<FormState>>({});
 
-    // ── Send Offer state ──────────────────────────────────────────────────────
+    // Send Offer state
     const [athleteQuery, setAthleteQuery] = useState('');
     const [athleteResults, setAthleteResults] = useState<Athlete[]>([]);
     const [isSearching, setIsSearching] = useState(false);
@@ -110,11 +124,11 @@ export default function TrainingOffersScreen({ navigation }: any) {
     const [proposedTime, setProposedTime] = useState('');
     const [isSendingOffer, setIsSendingOffer] = useState(false);
 
-    // ── Sent Offers state ─────────────────────────────────────────────────────
+    // Sent Offers state
     const [sentOffers, setSentOffers] = useState<SentOffer[]>([]);
     const [isSentLoading, setIsSentLoading] = useState(false);
 
-    // ── Subscription check ──────────────────────────────────────────────────
+    // Subscription check
     const [subscriptionStatus, setSubscriptionStatus] = useState<string | null>(null);
 
     const fetchSubscriptionStatus = useCallback(async () => {
@@ -133,7 +147,7 @@ export default function TrainingOffersScreen({ navigation }: any) {
 
     const isSubscriptionActive = subscriptionStatus === 'active' || subscriptionStatus === 'trial';
 
-    // ── Data fetching ─────────────────────────────────────────────────────────
+    // Data fetching
 
     const fetchOffers = useCallback(async () => {
         if (!trainerProfile?.id) return;
@@ -147,7 +161,6 @@ export default function TrainingOffersScreen({ navigation }: any) {
             if (error) throw error;
             const offerList = (data || []) as TrainingOffer[];
 
-            // Auto-deactivate any offers that have reached their cap
             const capsReached = offerList.filter(
                 (o) => o.is_active && o.max_athletes != null && (o.athlete_count ?? 0) >= o.max_athletes
             );
@@ -209,7 +222,7 @@ export default function TrainingOffersScreen({ navigation }: any) {
         setRefreshing(false);
     };
 
-    // ── Athlete search ────────────────────────────────────────────────────────
+    // Athlete search
 
     const searchAthletes = useCallback(async (query: string) => {
         setAthleteQuery(query);
@@ -235,7 +248,7 @@ export default function TrainingOffersScreen({ navigation }: any) {
         }
     }, []);
 
-    // ── Form validation ───────────────────────────────────────────────────────
+    // Form validation
 
     const validate = (): boolean => {
         const errors: Partial<FormState> = {};
@@ -248,7 +261,7 @@ export default function TrainingOffersScreen({ navigation }: any) {
         return Object.keys(errors).length === 0;
     };
 
-    // ── Create offer ──────────────────────────────────────────────────────────
+    // Create offer
 
     const handleSave = async () => {
         if (!validate()) return;
@@ -282,7 +295,7 @@ export default function TrainingOffersScreen({ navigation }: any) {
         }
     };
 
-    // ── Send targeted offer ───────────────────────────────────────────────────
+    // Send targeted offer
 
     const handleSendOffer = async () => {
         if (!selectedAthlete) {
@@ -320,7 +333,6 @@ export default function TrainingOffersScreen({ navigation }: any) {
             });
             if (error) throw error;
 
-            // Notify athlete
             await supabase.from('notifications').insert({
                 user_id: selectedAthlete.id,
                 type: 'TRAINING_OFFER',
@@ -332,7 +344,6 @@ export default function TrainingOffersScreen({ navigation }: any) {
 
             Alert.alert('Offer Sent', `Your offer has been sent to ${selectedAthlete.first_name}`);
 
-            // Reset form
             setSelectedAthlete(null);
             setAthleteQuery('');
             setAthleteResults([]);
@@ -343,7 +354,6 @@ export default function TrainingOffersScreen({ navigation }: any) {
             setProposedDate('');
             setProposedTime('');
 
-            // Refresh sent offers
             await fetchSentOffers();
         } catch (err: any) {
             Alert.alert('Error', err.message || 'Could not send offer.');
@@ -352,7 +362,7 @@ export default function TrainingOffersScreen({ navigation }: any) {
         }
     };
 
-    // ── Delete offer ──────────────────────────────────────────────────────────
+    // Delete offer
 
     const handleLongPress = (offer: TrainingOffer) => {
         Alert.alert(
@@ -386,27 +396,20 @@ export default function TrainingOffersScreen({ navigation }: any) {
         setShowModal(true);
     };
 
-    // ── Render ────────────────────────────────────────────────────────────────
+    // ---- Render ----
 
     if (isLoading) {
-        return (
-            <View style={[styles.container, styles.centered]}>
-                <ActivityIndicator size="large" color={Colors.primary} />
-            </View>
-        );
+        return <LoadingScreen message="Loading training offers..." />;
     }
 
     // Locked state when subscription is not active
     if (subscriptionStatus !== null && !isSubscriptionActive) {
         return (
-            <View style={styles.container}>
-                <View style={styles.header}>
-                    <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerBtn}>
-                        <Ionicons name="arrow-back" size={22} color={Colors.text} />
-                    </TouchableOpacity>
-                    <Text style={styles.headerTitle}>Training Offers</Text>
-                    <View style={{ width: 44 }} />
-                </View>
+            <ScreenWrapper scrollable={false}>
+                <ScreenHeader
+                    title="Training Offers"
+                    onBack={() => navigation.goBack()}
+                />
                 <View style={styles.lockedContainer}>
                     <View style={styles.lockedIconWrap}>
                         <Ionicons name="lock-closed" size={32} color={Colors.warning} />
@@ -418,66 +421,41 @@ export default function TrainingOffersScreen({ navigation }: any) {
                     <Text style={styles.lockedSubtext}>
                         Renew your subscription to send training offers and grow your client base.
                     </Text>
-                    <TouchableOpacity
-                        style={styles.lockedButton}
+                    <Button
+                        title="Upgrade Subscription"
                         onPress={() => navigation.navigate('Subscription')}
-                        activeOpacity={0.85}
-                    >
-                        <Ionicons name="trophy-outline" size={18} color="#000" />
-                        <Text style={styles.lockedButtonText}>Upgrade Subscription</Text>
-                    </TouchableOpacity>
+                        icon="trophy-outline"
+                        fullWidth={false}
+                        style={styles.lockedButton}
+                    />
                 </View>
-            </View>
+            </ScreenWrapper>
         );
     }
 
+    const TABS = [
+        { key: 'packages', label: 'My Packages' },
+        { key: 'send', label: 'Send Offer' },
+    ];
+
     return (
         <View style={styles.container}>
-            {/* Header */}
-            <View style={styles.header}>
-                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerBtn}>
-                    <Ionicons name="arrow-back" size={22} color={Colors.text} />
-                </TouchableOpacity>
-                <Text style={styles.headerTitle}>Training Offers</Text>
-                <View style={{ width: 44 }} />
-            </View>
-
-            {/* Tabs */}
-            <View style={styles.tabRow}>
-                <TouchableOpacity
-                    style={[styles.tab, activeTab === 'packages' && styles.tabActive]}
-                    onPress={() => setActiveTab('packages')}
-                    activeOpacity={0.7}
-                >
-                    <Ionicons
-                        name="pricetag-outline"
-                        size={16}
-                        color={activeTab === 'packages' ? '#fff' : Colors.textSecondary}
-                    />
-                    <Text style={[styles.tabText, activeTab === 'packages' && styles.tabTextActive]}>
-                        My Packages
-                    </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                    style={[styles.tab, activeTab === 'send' && styles.tabActive]}
-                    onPress={() => setActiveTab('send')}
-                    activeOpacity={0.7}
-                >
-                    <Ionicons
-                        name="send-outline"
-                        size={16}
-                        color={activeTab === 'send' ? '#fff' : Colors.textSecondary}
-                    />
-                    <Text style={[styles.tabText, activeTab === 'send' && styles.tabTextActive]}>
-                        Send Offer
-                    </Text>
-                </TouchableOpacity>
+            {/* Header area */}
+            <View style={styles.headerArea}>
+                <ScreenHeader
+                    title="Training Offers"
+                    onBack={() => navigation.goBack()}
+                />
+                <TabFilter
+                    tabs={TABS}
+                    activeTab={activeTab}
+                    onTabChange={(key) => setActiveTab(key as TabKey)}
+                />
             </View>
 
             {/* Tab Content */}
             {activeTab === 'packages' ? (
                 <>
-                    {/* My Packages List */}
                     <ScrollView
                         contentContainerStyle={styles.list}
                         showsVerticalScrollIndicator={false}
@@ -486,20 +464,25 @@ export default function TrainingOffersScreen({ navigation }: any) {
                         }
                     >
                         {/* Hint banner */}
-                        <View style={styles.hintRow}>
-                            <Ionicons name="information-circle-outline" size={18} color={Colors.primary} />
-                            <Text style={styles.hintText}>Long-press any card to delete it.</Text>
-                        </View>
+                        <Card style={styles.hintCard}>
+                            <View style={styles.hintRow}>
+                                <Ionicons name="information-circle-outline" size={18} color={Colors.primary} />
+                                <Text style={styles.hintText}>Long-press any card to delete it.</Text>
+                            </View>
+                        </Card>
 
                         {offers.length === 0 ? (
-                            <EmptyState />
+                            <EmptyState
+                                icon="pricetag-outline"
+                                title="No offers yet"
+                                description={'Create your first training offer.\nTap the + button to get started.'}
+                            />
                         ) : (
                             offers.map((offer) => (
                                 <OfferCard key={offer.id} offer={offer} onLongPress={() => handleLongPress(offer)} />
                             ))
                         )}
 
-                        {/* FAB spacer */}
                         <View style={{ height: 100 }} />
                     </ScrollView>
 
@@ -511,7 +494,7 @@ export default function TrainingOffersScreen({ navigation }: any) {
                             end={{ x: 1, y: 1 }}
                             style={styles.fabGradient}
                         >
-                            <Ionicons name="add" size={30} color="#fff" />
+                            <Ionicons name="add" size={30} color={Colors.text} />
                         </LinearGradient>
                     </TouchableOpacity>
                 </>
@@ -526,7 +509,7 @@ export default function TrainingOffersScreen({ navigation }: any) {
                     }
                 >
                     {/* Athlete Search */}
-                    <Text style={styles.sectionTitle}>Find Athlete</Text>
+                    <SectionHeader title="Find Athlete" />
                     <View style={styles.searchInputWrap}>
                         <Ionicons name="search-outline" size={18} color={Colors.textTertiary} style={{ marginRight: Spacing.sm }} />
                         <TextInput
@@ -561,11 +544,10 @@ export default function TrainingOffersScreen({ navigation }: any) {
                     {/* Selected Athlete Badge */}
                     {selectedAthlete && (
                         <View style={styles.selectedBadge}>
-                            <View style={styles.avatarSmall}>
-                                <Text style={styles.avatarSmallText}>
-                                    {selectedAthlete.first_name[0]}{selectedAthlete.last_name[0]}
-                                </Text>
-                            </View>
+                            <Avatar
+                                name={`${selectedAthlete.first_name} ${selectedAthlete.last_name}`}
+                                size={24}
+                            />
                             <Text style={styles.selectedBadgeText}>
                                 {selectedAthlete.first_name} {selectedAthlete.last_name}
                             </Text>
@@ -581,40 +563,31 @@ export default function TrainingOffersScreen({ navigation }: any) {
                         </View>
                     )}
 
-                    {/* Offer Form - shown after selecting athlete */}
+                    {/* Offer Form */}
                     {selectedAthlete && (
                         <View style={styles.offerForm}>
-                            <Text style={styles.sectionTitle}>Offer Details</Text>
+                            <SectionHeader title="Offer Details" />
 
-                            {/* Message */}
-                            <FieldLabel label="Message" required />
-                            <TextInput
-                                style={[styles.input, styles.inputMultiline]}
+                            <Input
+                                label="Message *"
                                 value={offerMessage}
                                 onChangeText={setOfferMessage}
                                 placeholder="Describe your training offer..."
-                                placeholderTextColor={Colors.textTertiary}
                                 multiline
                                 numberOfLines={4}
-                                textAlignVertical="top"
                             />
 
-                            {/* Price */}
-                            <FieldLabel label="Price (USD)" required />
-                            <View style={styles.inputPrefix}>
-                                <Text style={styles.prefixSymbol}>$</Text>
-                                <TextInput
-                                    style={styles.inputInner}
-                                    value={offerPrice}
-                                    onChangeText={setOfferPrice}
-                                    keyboardType="decimal-pad"
-                                    placeholder="50"
-                                    placeholderTextColor={Colors.textTertiary}
-                                />
-                            </View>
+                            <Input
+                                label="Price (USD) *"
+                                icon="cash-outline"
+                                value={offerPrice}
+                                onChangeText={setOfferPrice}
+                                keyboardType="decimal-pad"
+                                placeholder="50"
+                            />
 
                             {/* Session Length */}
-                            <FieldLabel label="Session Length" />
+                            <Text style={styles.fieldLabel}>Session Length</Text>
                             <View style={styles.chipRow}>
                                 {SESSION_LENGTHS.map((len) => (
                                     <TouchableOpacity
@@ -630,90 +603,70 @@ export default function TrainingOffersScreen({ navigation }: any) {
                                 ))}
                             </View>
 
-                            {/* Sport */}
-                            <FieldLabel label="Sport" />
-                            <TextInput
-                                style={styles.input}
+                            <Input
+                                label="Sport"
+                                icon="football-outline"
                                 value={selectedSport}
                                 onChangeText={setSelectedSport}
                                 placeholder="e.g. Hockey, Basketball, Soccer"
-                                placeholderTextColor={Colors.textTertiary}
                                 autoCapitalize="words"
                             />
 
-                            {/* Proposed Date and Time */}
                             <View style={styles.row}>
                                 <View style={{ flex: 1 }}>
-                                    <FieldLabel label="Proposed Date" />
-                                    <TextInput
-                                        style={styles.input}
+                                    <Input
+                                        label="Proposed Date"
+                                        icon="calendar-outline"
                                         value={proposedDate}
                                         onChangeText={setProposedDate}
                                         placeholder="YYYY-MM-DD"
-                                        placeholderTextColor={Colors.textTertiary}
                                     />
                                 </View>
                                 <View style={{ width: Spacing.md }} />
                                 <View style={{ flex: 1 }}>
-                                    <FieldLabel label="Proposed Time" />
-                                    <TextInput
-                                        style={styles.input}
+                                    <Input
+                                        label="Proposed Time"
+                                        icon="time-outline"
                                         value={proposedTime}
                                         onChangeText={setProposedTime}
                                         placeholder="HH:MM"
-                                        placeholderTextColor={Colors.textTertiary}
                                     />
                                 </View>
                             </View>
 
-                            {/* Send Button */}
-                            <TouchableOpacity
-                                style={[styles.saveBtn, isSendingOffer && { opacity: 0.6 }]}
+                            <Button
+                                title="Send Offer"
                                 onPress={handleSendOffer}
+                                icon="send"
+                                loading={isSendingOffer}
                                 disabled={isSendingOffer}
-                                activeOpacity={0.8}
-                            >
-                                <LinearGradient
-                                    colors={[Colors.primary, Colors.accent]}
-                                    start={{ x: 0, y: 0 }}
-                                    end={{ x: 1, y: 0 }}
-                                    style={styles.saveBtnGradient}
-                                >
-                                    {isSendingOffer ? (
-                                        <ActivityIndicator color="#fff" size="small" />
-                                    ) : (
-                                        <>
-                                            <Ionicons name="send" size={18} color="#fff" />
-                                            <Text style={styles.saveBtnText}>Send Offer</Text>
-                                        </>
-                                    )}
-                                </LinearGradient>
-                            </TouchableOpacity>
+                                size="lg"
+                            />
                         </View>
                     )}
 
                     {/* Sent Offers Section */}
-                    <View style={styles.sentOffersSection}>
-                        <Text style={styles.sectionTitle}>Sent Offers</Text>
-                        {isSentLoading ? (
-                            <ActivityIndicator size="small" color={Colors.primary} style={{ marginTop: Spacing.xl }} />
-                        ) : sentOffers.length === 0 ? (
-                            <View style={styles.sentEmptyWrap}>
-                                <Ionicons name="paper-plane-outline" size={28} color={Colors.textTertiary} />
-                                <Text style={styles.sentEmptyText}>No offers sent yet</Text>
-                            </View>
-                        ) : (
-                            sentOffers.map((offer) => (
-                                <SentOfferCard key={offer.id} offer={offer} />
-                            ))
-                        )}
-                    </View>
+                    <Divider />
+                    <SectionHeader title="Sent Offers" />
+                    {isSentLoading ? (
+                        <ActivityIndicator size="small" color={Colors.primary} style={{ marginTop: Spacing.xl }} />
+                    ) : sentOffers.length === 0 ? (
+                        <EmptyState
+                            icon="paper-plane-outline"
+                            title="No offers sent yet"
+                            description="Send your first offer to an athlete above."
+                        />
+                    ) : (
+                        sentOffers.map((offer) => (
+                            <SentOfferCard key={offer.id} offer={offer} />
+                        ))
+                    )}
 
                     <View style={{ height: 40 }} />
                 </ScrollView>
             )}
 
-            {/* Create Modal (for My Packages tab) */}
+            {/* Create Modal */}
             <CreateOfferModal
                 visible={showModal}
                 form={form}
@@ -727,21 +680,7 @@ export default function TrainingOffersScreen({ navigation }: any) {
     );
 }
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
-
-function EmptyState() {
-    return (
-        <View style={styles.emptyWrap}>
-            <View style={styles.emptyIconWrap}>
-                <Ionicons name="pricetag-outline" size={40} color={Colors.primary} />
-            </View>
-            <Text style={styles.emptyTitle}>No offers yet</Text>
-            <Text style={styles.emptySubtitle}>
-                Create your first training offer.{'\n'}Tap the + button to get started.
-            </Text>
-        </View>
-    );
-}
+// ---- Sub-components ----
 
 function AthleteCard({
     athlete,
@@ -752,28 +691,23 @@ function AthleteCard({
     isSelected: boolean;
     onSelect: () => void;
 }) {
-    const initials = `${athlete.first_name?.[0] || ''}${athlete.last_name?.[0] || ''}`.toUpperCase();
+    const name = `${athlete.first_name} ${athlete.last_name}`;
     return (
-        <TouchableOpacity
-            style={[styles.athleteCard, isSelected && styles.athleteCardSelected]}
+        <Card
             onPress={onSelect}
-            activeOpacity={0.7}
+            style={isSelected ? styles.athleteCardSelected : undefined}
         >
-            <View style={styles.athleteAvatar}>
-                <Text style={styles.athleteAvatarText}>{initials}</Text>
+            <View style={styles.athleteCardContent}>
+                <Avatar name={name} uri={athlete.avatar_url} size={40} />
+                <View style={{ flex: 1 }}>
+                    <Text style={styles.athleteName}>{name}</Text>
+                    <Text style={styles.athleteEmail} numberOfLines={1}>{athlete.email}</Text>
+                </View>
+                {isSelected && (
+                    <Ionicons name="checkmark-circle" size={22} color={Colors.primary} />
+                )}
             </View>
-            <View style={{ flex: 1 }}>
-                <Text style={styles.athleteName}>
-                    {athlete.first_name} {athlete.last_name}
-                </Text>
-                <Text style={styles.athleteEmail} numberOfLines={1}>
-                    {athlete.email}
-                </Text>
-            </View>
-            {isSelected && (
-                <Ionicons name="checkmark-circle" size={22} color={Colors.primary} />
-            )}
-        </TouchableOpacity>
+        </Card>
     );
 }
 
@@ -787,7 +721,7 @@ function SentOfferCard({ offer }: { offer: SentOffer }) {
     const dateStr = new Date(offer.created_at).toLocaleDateString();
 
     return (
-        <View style={styles.sentCard}>
+        <Card style={styles.sentCard}>
             <View style={styles.sentCardTop}>
                 <View style={{ flex: 1 }}>
                     <Text style={styles.sentAthleteName}>{athleteName}</Text>
@@ -798,20 +732,24 @@ function SentOfferCard({ offer }: { offer: SentOffer }) {
                         </View>
                     )}
                 </View>
-                <View style={styles.pricePill}>
-                    <Text style={styles.priceText}>${Number(offer.price).toFixed(0)}</Text>
-                </View>
+                <Badge
+                    label={`$${Number(offer.price).toFixed(0)}`}
+                    color={Colors.primary}
+                    bgColor={Colors.primaryGlow}
+                    size="md"
+                />
             </View>
             <View style={styles.sentCardBottom}>
-                <View style={[styles.statusBadge, { backgroundColor: statusConfig.bg }]}>
-                    <View style={[styles.statusDot, { backgroundColor: statusConfig.color }]} />
-                    <Text style={[styles.statusText, { color: statusConfig.color }]}>
-                        {statusConfig.label}
-                    </Text>
-                </View>
+                <Badge
+                    label={statusConfig.label}
+                    color={statusConfig.color}
+                    bgColor={statusConfig.bg}
+                    dot
+                    size="sm"
+                />
                 <Text style={styles.sentDateText}>{dateStr}</Text>
             </View>
-        </View>
+        </Card>
     );
 }
 
@@ -821,52 +759,57 @@ function OfferCard({ offer, onLongPress }: { offer: TrainingOffer; onLongPress: 
         <TouchableHighlight
             onLongPress={onLongPress}
             underlayColor={Colors.cardHover}
-            style={styles.card}
+            style={styles.offerTouchable}
             delayLongPress={400}
         >
-            <View>
-                {/* Top row */}
-                <View style={styles.cardTop}>
-                    <View style={[styles.sportDot, { backgroundColor: sportColor }]} />
-                    <Text style={styles.cardTitle} numberOfLines={1}>{offer.title}</Text>
-                    <View style={styles.pricePill}>
-                        <Text style={styles.priceText}>${Number(offer.price).toFixed(0)}</Text>
+            <Card noPadding style={styles.offerCardInner}>
+                <View style={styles.offerCardPadding}>
+                    {/* Top row */}
+                    <View style={styles.cardTop}>
+                        <View style={[styles.sportDot, { backgroundColor: sportColor }]} />
+                        <Text style={styles.cardTitle} numberOfLines={1}>{offer.title}</Text>
+                        <Badge
+                            label={`$${Number(offer.price).toFixed(0)}`}
+                            color={Colors.primary}
+                            bgColor={Colors.primaryGlow}
+                            size="md"
+                        />
                     </View>
-                </View>
 
-                {/* Description */}
-                {!!offer.description && (
-                    <Text style={styles.cardDesc} numberOfLines={2}>{offer.description}</Text>
-                )}
-
-                {/* Meta row */}
-                <View style={styles.cardMeta}>
-                    {!!offer.sport && (
-                        <View style={styles.metaChip}>
-                            <Ionicons name="football-outline" size={12} color={Colors.textSecondary} />
-                            <Text style={styles.metaChipText}>{offer.sport}</Text>
-                        </View>
+                    {/* Description */}
+                    {!!offer.description && (
+                        <Text style={styles.cardDesc} numberOfLines={2}>{offer.description}</Text>
                     )}
-                    <View style={styles.metaChip}>
-                        <Ionicons name="time-outline" size={12} color={Colors.textSecondary} />
-                        <Text style={styles.metaChipText}>{offer.duration_minutes} min</Text>
-                    </View>
-                    {offer.max_athletes != null && (
+
+                    {/* Meta row */}
+                    <View style={styles.cardMeta}>
+                        {!!offer.sport && (
+                            <View style={styles.metaChip}>
+                                <Ionicons name="football-outline" size={12} color={Colors.textSecondary} />
+                                <Text style={styles.metaChipText}>{offer.sport}</Text>
+                            </View>
+                        )}
                         <View style={styles.metaChip}>
-                            <Ionicons name="people-outline" size={12} color={Colors.textSecondary} />
-                            <Text style={styles.metaChipText}>
-                                {offer.athlete_count ?? 0}/{offer.max_athletes}
+                            <Ionicons name="time-outline" size={12} color={Colors.textSecondary} />
+                            <Text style={styles.metaChipText}>{offer.duration_minutes} min</Text>
+                        </View>
+                        {offer.max_athletes != null && (
+                            <View style={styles.metaChip}>
+                                <Ionicons name="people-outline" size={12} color={Colors.textSecondary} />
+                                <Text style={styles.metaChipText}>
+                                    {offer.athlete_count ?? 0}/{offer.max_athletes}
+                                </Text>
+                            </View>
+                        )}
+                        <View style={[styles.metaChip, { marginLeft: 'auto' }]}>
+                            <View style={[styles.activeDot, { backgroundColor: offer.is_active ? Colors.success : Colors.textTertiary }]} />
+                            <Text style={[styles.metaChipText, { color: offer.is_active ? Colors.success : Colors.textTertiary }]}>
+                                {offer.is_active ? 'Active' : offer.max_athletes != null && (offer.athlete_count ?? 0) >= offer.max_athletes ? 'Full' : 'Inactive'}
                             </Text>
                         </View>
-                    )}
-                    <View style={[styles.metaChip, { marginLeft: 'auto' }]}>
-                        <View style={[styles.activeDot, { backgroundColor: offer.is_active ? Colors.success : Colors.textTertiary }]} />
-                        <Text style={[styles.metaChipText, { color: offer.is_active ? Colors.success : Colors.textTertiary }]}>
-                            {offer.is_active ? 'Active' : offer.max_athletes != null && (offer.athlete_count ?? 0) >= offer.max_athletes ? 'Full' : 'Inactive'}
-                        </Text>
                     </View>
                 </View>
-            </View>
+            </Card>
         </TouchableHighlight>
     );
 }
@@ -896,10 +839,8 @@ function CreateOfferModal({
                     style={styles.modalKAV}
                 >
                     <View style={styles.modalSheet}>
-                        {/* Handle */}
                         <View style={styles.modalHandle} />
 
-                        {/* Modal header */}
                         <View style={styles.modalHeader}>
                             <Text style={styles.modalTitle}>New Training Offer</Text>
                             <TouchableOpacity onPress={onClose} style={styles.modalClose}>
@@ -908,105 +849,75 @@ function CreateOfferModal({
                         </View>
 
                         <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-                            {/* Title */}
-                            <FieldLabel label="Title" required error={errors.title} />
-                            <TextInput
-                                style={[styles.input, errors.title ? styles.inputError : null]}
+                            <Input
+                                label="Title *"
                                 value={form.title}
-                                onChangeText={(v) => onChange('title', v)}
+                                onChangeText={(v: string) => onChange('title', v)}
                                 placeholder="e.g. 1-on-1 Power Skating Session"
-                                placeholderTextColor={Colors.textTertiary}
-                                returnKeyType="next"
+                                error={errors.title}
                             />
 
-                            {/* Description */}
-                            <FieldLabel label="Description" />
-                            <TextInput
-                                style={[styles.input, styles.inputMultiline]}
+                            <Input
+                                label="Description"
                                 value={form.description}
-                                onChangeText={(v) => onChange('description', v)}
-                                placeholder="Describe what athletes will get from this session..."
-                                placeholderTextColor={Colors.textTertiary}
+                                onChangeText={(v: string) => onChange('description', v)}
+                                placeholder="Describe what athletes will get..."
                                 multiline
                                 numberOfLines={4}
-                                textAlignVertical="top"
                             />
 
-                            {/* Price + Duration row */}
                             <View style={styles.row}>
                                 <View style={{ flex: 1 }}>
-                                    <FieldLabel label="Price (USD)" required error={errors.price} />
-                                    <View style={styles.inputPrefix}>
-                                        <Text style={styles.prefixSymbol}>$</Text>
-                                        <TextInput
-                                            style={[styles.inputInner, errors.price ? styles.inputError : null]}
-                                            value={form.price}
-                                            onChangeText={(v) => onChange('price', v)}
-                                            keyboardType="decimal-pad"
-                                            placeholder="50"
-                                            placeholderTextColor={Colors.textTertiary}
-                                        />
-                                    </View>
+                                    <Input
+                                        label="Price (USD) *"
+                                        icon="cash-outline"
+                                        value={form.price}
+                                        onChangeText={(v: string) => onChange('price', v)}
+                                        keyboardType="decimal-pad"
+                                        placeholder="50"
+                                        error={errors.price}
+                                    />
                                 </View>
                                 <View style={{ width: Spacing.md }} />
                                 <View style={{ flex: 1 }}>
-                                    <FieldLabel label="Duration (min)" required error={errors.duration_minutes} />
-                                    <TextInput
-                                        style={[styles.input, errors.duration_minutes ? styles.inputError : null]}
+                                    <Input
+                                        label="Duration (min) *"
+                                        icon="time-outline"
                                         value={form.duration_minutes}
-                                        onChangeText={(v) => onChange('duration_minutes', v)}
+                                        onChangeText={(v: string) => onChange('duration_minutes', v)}
                                         keyboardType="number-pad"
                                         placeholder="60"
-                                        placeholderTextColor={Colors.textTertiary}
+                                        error={errors.duration_minutes}
                                     />
                                 </View>
                             </View>
 
-                            {/* Sport */}
-                            <FieldLabel label="Sport" />
-                            <TextInput
-                                style={styles.input}
+                            <Input
+                                label="Sport"
+                                icon="football-outline"
                                 value={form.sport}
-                                onChangeText={(v) => onChange('sport', v)}
+                                onChangeText={(v: string) => onChange('sport', v)}
                                 placeholder="e.g. Hockey, Basketball, Soccer"
-                                placeholderTextColor={Colors.textTertiary}
                                 autoCapitalize="words"
                             />
 
-                            {/* Max Athletes Cap */}
-                            <FieldLabel label="Max Athletes (optional)" />
-                            <TextInput
-                                style={styles.input}
+                            <Input
+                                label="Max Athletes (optional)"
+                                icon="people-outline"
                                 value={form.max_athletes}
-                                onChangeText={(v) => onChange('max_athletes', v)}
+                                onChangeText={(v: string) => onChange('max_athletes', v)}
                                 keyboardType="number-pad"
                                 placeholder="Leave blank for unlimited"
-                                placeholderTextColor={Colors.textTertiary}
                             />
 
-                            {/* Save button */}
-                            <TouchableOpacity
-                                style={[styles.saveBtn, isSaving && { opacity: 0.6 }]}
+                            <Button
+                                title="Save Offer"
                                 onPress={onSave}
+                                icon="checkmark-circle"
+                                loading={isSaving}
                                 disabled={isSaving}
-                                activeOpacity={0.8}
-                            >
-                                <LinearGradient
-                                    colors={[Colors.primary, Colors.accent]}
-                                    start={{ x: 0, y: 0 }}
-                                    end={{ x: 1, y: 0 }}
-                                    style={styles.saveBtnGradient}
-                                >
-                                    {isSaving ? (
-                                        <ActivityIndicator color="#fff" size="small" />
-                                    ) : (
-                                        <>
-                                            <Ionicons name="checkmark-circle" size={20} color="#fff" />
-                                            <Text style={styles.saveBtnText}>Save Offer</Text>
-                                        </>
-                                    )}
-                                </LinearGradient>
-                            </TouchableOpacity>
+                                size="lg"
+                            />
 
                             <View style={{ height: 32 }} />
                         </ScrollView>
@@ -1017,19 +928,7 @@ function CreateOfferModal({
     );
 }
 
-function FieldLabel({ label, required, error }: { label: string; required?: boolean; error?: string }) {
-    return (
-        <View style={{ marginBottom: 4 }}>
-            <Text style={styles.fieldLabel}>
-                {label}
-                {required && <Text style={{ color: Colors.error }}> *</Text>}
-            </Text>
-            {!!error && <Text style={styles.fieldError}>{error}</Text>}
-        </View>
-    );
-}
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ---- Helpers ----
 
 function getSportColor(sport: string | null): string {
     if (!sport) return Colors.primary;
@@ -1059,12 +958,16 @@ function getStatusConfig(status: string): { label: string; color: string; bg: st
     }
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
+// ---- Styles ----
 
 const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: Colors.background,
+    },
+    headerArea: {
+        paddingHorizontal: Spacing.xl,
+        paddingTop: Spacing.huge,
     },
 
     // Locked state
@@ -1080,7 +983,7 @@ const styles = StyleSheet.create({
         borderRadius: BorderRadius.lg,
         backgroundColor: Colors.warningLight,
         borderWidth: 1,
-        borderColor: 'rgba(255,171,0,0.2)',
+        borderColor: Colors.warningMuted,
         justifyContent: 'center',
         alignItems: 'center',
         marginBottom: Spacing.xl,
@@ -1105,125 +1008,44 @@ const styles = StyleSheet.create({
         paddingHorizontal: Spacing.xxl,
     },
     lockedButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: Spacing.sm,
-        backgroundColor: Colors.warning,
         paddingHorizontal: Spacing.xxl,
-        paddingVertical: Spacing.md,
-        borderRadius: BorderRadius.md,
-    },
-    lockedButtonText: {
-        fontSize: FontSize.md,
-        fontWeight: FontWeight.bold,
-        color: '#000',
-    },
-
-    centered: {
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-
-    // Header
-    header: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingHorizontal: Spacing.xxl,
-        paddingTop: Layout.headerTopPadding,
-        paddingBottom: Spacing.lg,
-        borderBottomWidth: 1,
-        borderBottomColor: Colors.border,
-        backgroundColor: Colors.background,
-    },
-    headerBtn: {
-        width: 44,
-        height: 44,
-        borderRadius: BorderRadius.md,
-        backgroundColor: Colors.surface,
-        borderWidth: 1,
-        borderColor: Colors.border,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    headerTitle: {
-        fontSize: FontSize.lg,
-        fontWeight: FontWeight.bold,
-        color: Colors.text,
-    },
-
-    // Tabs
-    tabRow: {
-        flexDirection: 'row',
-        paddingHorizontal: Spacing.xxl,
-        paddingVertical: Spacing.md,
-        gap: Spacing.sm,
-        backgroundColor: Colors.background,
-        borderBottomWidth: 1,
-        borderBottomColor: Colors.border,
-    },
-    tab: {
-        flex: 1,
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: Spacing.sm,
-        paddingVertical: Spacing.md,
-        borderRadius: BorderRadius.md,
-        backgroundColor: Colors.glass,
-        borderWidth: 1,
-        borderColor: Colors.glassBorder,
-    },
-    tabActive: {
-        backgroundColor: Colors.primary,
-        borderColor: Colors.primary,
-    },
-    tabText: {
-        fontSize: FontSize.sm,
-        fontWeight: FontWeight.semibold,
-        color: Colors.textSecondary,
-    },
-    tabTextActive: {
-        color: '#fff',
     },
 
     // List
     list: {
-        padding: Spacing.xxl,
+        padding: Spacing.xl,
         paddingBottom: Spacing.huge,
+    },
+
+    // Hint
+    hintCard: {
+        backgroundColor: Colors.primaryGlow,
+        borderColor: Colors.borderActive,
+        marginBottom: Spacing.xl,
     },
     hintRow: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: Spacing.sm,
-        marginBottom: Spacing.xl,
-        paddingHorizontal: Spacing.md,
-        paddingVertical: Spacing.sm,
-        backgroundColor: Colors.primaryGlow,
-        borderRadius: BorderRadius.md,
-        borderWidth: 1,
-        borderColor: Colors.borderActive,
     },
     hintText: {
         fontSize: FontSize.sm,
         color: Colors.primary,
     },
 
-    // Section title
-    sectionTitle: {
-        fontSize: FontSize.lg,
-        fontWeight: FontWeight.bold,
-        color: Colors.text,
-        marginBottom: Spacing.lg,
-        marginTop: Spacing.sm,
+    // Field label (for chip section)
+    fieldLabel: {
+        fontSize: FontSize.sm,
+        fontWeight: FontWeight.medium,
+        color: Colors.textSecondary,
+        marginBottom: Spacing.sm,
     },
 
     // Athlete search
     searchInputWrap: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: Colors.surface,
+        backgroundColor: Colors.card,
         borderWidth: 1,
         borderColor: Colors.border,
         borderRadius: BorderRadius.md,
@@ -1242,35 +1064,15 @@ const styles = StyleSheet.create({
     },
 
     // Athlete card
-    athleteCard: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: Spacing.md,
-        backgroundColor: Colors.card,
-        borderRadius: BorderRadius.md,
-        padding: Spacing.md,
-        borderWidth: 1,
-        borderColor: Colors.border,
-    },
     athleteCardSelected: {
-        borderColor: Colors.primaryGlow,
+        borderColor: Colors.borderActive,
         borderWidth: 2,
         backgroundColor: Colors.cardHover,
     },
-    athleteAvatar: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        backgroundColor: Colors.primaryGlow,
-        borderWidth: 1,
-        borderColor: Colors.borderActive,
-        justifyContent: 'center',
+    athleteCardContent: {
+        flexDirection: 'row',
         alignItems: 'center',
-    },
-    athleteAvatarText: {
-        fontSize: FontSize.sm,
-        fontWeight: FontWeight.bold,
-        color: Colors.primary,
+        gap: Spacing.md,
     },
     athleteName: {
         fontSize: FontSize.md,
@@ -1297,19 +1099,6 @@ const styles = StyleSheet.create({
         marginBottom: Spacing.xl,
         alignSelf: 'flex-start',
     },
-    avatarSmall: {
-        width: 24,
-        height: 24,
-        borderRadius: 12,
-        backgroundColor: Colors.primary,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    avatarSmallText: {
-        fontSize: 10,
-        fontWeight: FontWeight.bold,
-        color: '#fff',
-    },
     selectedBadgeText: {
         fontSize: FontSize.sm,
         fontWeight: FontWeight.semibold,
@@ -1335,12 +1124,12 @@ const styles = StyleSheet.create({
         paddingHorizontal: Spacing.lg,
         paddingVertical: Spacing.sm,
         borderRadius: BorderRadius.pill,
-        backgroundColor: Colors.surface,
+        backgroundColor: Colors.card,
         borderWidth: 1,
         borderColor: Colors.border,
     },
     chipActive: {
-        backgroundColor: Colors.primaryGlow,
+        backgroundColor: Colors.primaryMuted,
         borderColor: Colors.borderActive,
     },
     chipText: {
@@ -1354,28 +1143,8 @@ const styles = StyleSheet.create({
     },
 
     // Sent offers
-    sentOffersSection: {
-        marginTop: Spacing.xl,
-        paddingTop: Spacing.xl,
-        borderTopWidth: 1,
-        borderTopColor: Colors.border,
-    },
-    sentEmptyWrap: {
-        alignItems: 'center',
-        paddingVertical: Spacing.xxxl,
-        gap: Spacing.sm,
-    },
-    sentEmptyText: {
-        fontSize: FontSize.sm,
-        color: Colors.textTertiary,
-    },
     sentCard: {
-        backgroundColor: Colors.card,
-        borderRadius: BorderRadius.lg,
-        padding: Spacing.lg,
         marginBottom: Spacing.md,
-        borderWidth: 1,
-        borderColor: Colors.border,
         ...Shadows.small,
     },
     sentCardTop: {
@@ -1407,65 +1176,29 @@ const styles = StyleSheet.create({
         borderTopWidth: 1,
         borderTopColor: Colors.border,
     },
-    statusBadge: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: Spacing.xs,
-        paddingHorizontal: Spacing.md,
-        paddingVertical: 4,
-        borderRadius: BorderRadius.pill,
-    },
-    statusDot: {
-        width: 6,
-        height: 6,
-        borderRadius: 3,
-    },
-    statusText: {
-        fontSize: FontSize.xs,
-        fontWeight: FontWeight.semibold,
-    },
     sentDateText: {
         fontSize: FontSize.xs,
         color: Colors.textTertiary,
     },
 
-    // Empty
-    emptyWrap: {
-        alignItems: 'center',
-        paddingVertical: 70,
-        gap: Spacing.lg,
-    },
-    emptyIconWrap: {
-        width: 80,
-        height: 80,
-        borderRadius: 40,
-        backgroundColor: Colors.primaryGlow,
-        borderWidth: 1,
-        borderColor: Colors.borderActive,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    emptyTitle: {
-        fontSize: FontSize.xl,
-        fontWeight: FontWeight.bold,
-        color: Colors.text,
-    },
-    emptySubtitle: {
-        fontSize: FontSize.md,
-        color: Colors.textSecondary,
-        textAlign: 'center',
-        lineHeight: 22,
+    // Sport dot
+    sportDot: {
+        width: 10,
+        height: 10,
+        borderRadius: 5,
     },
 
     // Offer card
-    card: {
-        backgroundColor: Colors.card,
+    offerTouchable: {
         borderRadius: BorderRadius.lg,
-        padding: Spacing.lg,
         marginBottom: Spacing.md,
-        borderWidth: 1,
-        borderColor: Colors.border,
         ...Shadows.small,
+    },
+    offerCardInner: {
+        marginBottom: 0,
+    },
+    offerCardPadding: {
+        padding: Spacing.lg,
     },
     cardTop: {
         flexDirection: 'row',
@@ -1473,29 +1206,11 @@ const styles = StyleSheet.create({
         gap: Spacing.sm,
         marginBottom: Spacing.sm,
     },
-    sportDot: {
-        width: 10,
-        height: 10,
-        borderRadius: 5,
-    },
     cardTitle: {
         flex: 1,
         fontSize: FontSize.md,
         fontWeight: FontWeight.bold,
         color: Colors.text,
-    },
-    pricePill: {
-        backgroundColor: Colors.primaryGlow,
-        borderWidth: 1,
-        borderColor: Colors.borderActive,
-        borderRadius: BorderRadius.pill,
-        paddingHorizontal: Spacing.md,
-        paddingVertical: 3,
-    },
-    priceText: {
-        fontSize: FontSize.sm,
-        fontWeight: FontWeight.bold,
-        color: Colors.primary,
     },
     cardDesc: {
         fontSize: FontSize.sm,
@@ -1517,7 +1232,7 @@ const styles = StyleSheet.create({
         gap: 4,
         paddingHorizontal: Spacing.sm,
         paddingVertical: 3,
-        backgroundColor: Colors.surface,
+        backgroundColor: Colors.glass,
         borderRadius: BorderRadius.pill,
     },
     metaChipText: {
@@ -1589,7 +1304,7 @@ const styles = StyleSheet.create({
         width: 36,
         height: 36,
         borderRadius: BorderRadius.sm,
-        backgroundColor: Colors.surface,
+        backgroundColor: Colors.card,
         borderWidth: 1,
         borderColor: Colors.border,
         justifyContent: 'center',
@@ -1597,82 +1312,8 @@ const styles = StyleSheet.create({
     },
 
     // Form
-    fieldLabel: {
-        fontSize: FontSize.sm,
-        fontWeight: FontWeight.medium,
-        color: Colors.textSecondary,
-        marginBottom: 4,
-    },
-    fieldError: {
-        fontSize: FontSize.xs,
-        color: Colors.error,
-        marginTop: 2,
-    },
-    input: {
-        backgroundColor: Colors.surface,
-        borderWidth: 1,
-        borderColor: Colors.border,
-        borderRadius: BorderRadius.md,
-        paddingHorizontal: Spacing.lg,
-        paddingVertical: Spacing.md,
-        color: Colors.text,
-        fontSize: FontSize.md,
-        marginBottom: Spacing.lg,
-    },
-    inputError: {
-        borderColor: Colors.error,
-    },
-    inputMultiline: {
-        minHeight: 90,
-        paddingTop: Spacing.md,
-        textAlignVertical: 'top',
-    },
-    inputPrefix: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: Colors.surface,
-        borderWidth: 1,
-        borderColor: Colors.border,
-        borderRadius: BorderRadius.md,
-        paddingLeft: Spacing.lg,
-        marginBottom: Spacing.lg,
-        overflow: 'hidden',
-    },
-    prefixSymbol: {
-        fontSize: FontSize.md,
-        color: Colors.textSecondary,
-        fontWeight: FontWeight.semibold,
-        marginRight: 4,
-    },
-    inputInner: {
-        flex: 1,
-        paddingVertical: Spacing.md,
-        paddingRight: Spacing.lg,
-        color: Colors.text,
-        fontSize: FontSize.md,
-    },
     row: {
         flexDirection: 'row',
         alignItems: 'flex-start',
-    },
-
-    // Save button
-    saveBtn: {
-        borderRadius: BorderRadius.md,
-        overflow: 'hidden',
-        marginTop: Spacing.sm,
-        ...Shadows.glow,
-    },
-    saveBtnGradient: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: Spacing.sm,
-        paddingVertical: Spacing.lg,
-    },
-    saveBtnText: {
-        color: '#fff',
-        fontSize: FontSize.md,
-        fontWeight: FontWeight.bold,
     },
 });

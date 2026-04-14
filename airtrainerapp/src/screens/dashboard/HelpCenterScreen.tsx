@@ -1,7 +1,14 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, Pressable, LayoutAnimation, Platform, UIManager } from 'react-native';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Layout} from '../../theme';
+import { Colors, Spacing, BorderRadius, FontSize, FontWeight } from '../../theme';
+import { ScreenWrapper, ScreenHeader, Card, Button, SectionHeader } from '../../components/ui';
+
+// Enable LayoutAnimation on Android
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+    UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 const FAQ_ITEMS = [
     {
@@ -18,7 +25,7 @@ const FAQ_ITEMS = [
     },
     {
         q: 'How do I become verified?',
-        a: 'Go to Profile → Verification and complete all required steps including ID submission. Our team reviews your application within 24–48 hours and notifies you of the result.',
+        a: 'Go to Profile -> Verification and complete all required steps including ID submission. Our team reviews your application within 24-48 hours and notifies you of the result.',
     },
     {
         q: 'What is Founding 50?',
@@ -26,7 +33,7 @@ const FAQ_ITEMS = [
     },
     {
         q: 'How to set availability?',
-        a: 'Navigate to Profile → Availability, then select your available days and time slots. Athletes can only request bookings during the windows you have marked as available.',
+        a: 'Navigate to Profile -> Availability, then select your available days and time slots. Athletes can only request bookings during the windows you have marked as available.',
     },
     {
         q: 'How are ratings calculated?',
@@ -42,64 +49,78 @@ export default function HelpCenterScreen({ navigation }: any) {
     const [expanded, setExpanded] = useState<number | null>(null);
 
     const toggle = (index: number) => {
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
         setExpanded(prev => (prev === index ? null : index));
     };
 
     return (
-        <View style={styles.container}>
-            {/* Header */}
-            <View style={styles.header}>
-                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-                    <Ionicons name="arrow-back" size={24} color={Colors.text} />
-                </TouchableOpacity>
-                <Text style={styles.headerTitle}>Help Center</Text>
-                <View style={{ width: 44 }} />
-            </View>
+        <ScreenWrapper>
+            <ScreenHeader title="Help Center" onBack={() => navigation.goBack()} />
 
-            <ScrollView contentContainerStyle={styles.contentContainer} showsVerticalScrollIndicator={false}>
-                {/* Hero card */}
-                <View style={styles.heroCard}>
+            {/* Hero */}
+            <Animated.View entering={FadeInDown.duration(250)}>
+                <Card style={styles.heroCard}>
                     <View style={styles.heroIconWrapper}>
                         <Ionicons name="help-buoy-outline" size={36} color={Colors.primary} />
                     </View>
                     <Text style={styles.heroTitle}>How can we help?</Text>
                     <Text style={styles.heroSubtitle}>Tap a question below to see the answer</Text>
-                </View>
+                </Card>
+            </Animated.View>
 
-                <Text style={styles.sectionLabel}>Frequently Asked Questions</Text>
+            <Animated.View entering={FadeInDown.duration(250).delay(30)}>
+                <SectionHeader title="Frequently Asked Questions" />
+            </Animated.View>
 
-                {/* FAQ accordion */}
-                {FAQ_ITEMS.map((item, index) => {
-                    const isOpen = expanded === index;
-                    return (
-                        <TouchableOpacity
-                            key={index}
-                            style={[styles.faqCard, isOpen && styles.faqCardOpen]}
+            {/* FAQ accordion cards with smooth expand */}
+            {FAQ_ITEMS.map((item, index) => {
+                const isOpen = expanded === index;
+                return (
+                    <Animated.View
+                        key={index}
+                        entering={FadeInDown.duration(200).delay(30 + index * 30)}
+                    >
+                        <Pressable
                             onPress={() => toggle(index)}
-                            activeOpacity={0.75}
+                            accessibilityLabel={item.q}
+                            accessibilityRole="button"
+                            style={({ pressed }) => [pressed && { opacity: 0.9, transform: [{ scale: 0.98 }] }]}
                         >
-                            <View style={styles.faqRow}>
-                                <Text style={styles.faqQuestion}>{item.q}</Text>
-                                <View style={[styles.chevronWrapper, isOpen && styles.chevronWrapperOpen]}>
-                                    <Ionicons
-                                        name="chevron-down"
-                                        size={16}
-                                        color={isOpen ? Colors.primary : Colors.textTertiary}
-                                    />
+                            <Card
+                                style={isOpen ? { ...styles.faqCard, borderColor: Colors.borderActive } : styles.faqCard}
+                            >
+                                <View style={styles.faqRow}>
+                                    <View style={[styles.faqNumberBadge, isOpen && styles.faqNumberBadgeOpen]}>
+                                        <Text style={[styles.faqNumber, isOpen && styles.faqNumberOpen]}>
+                                            {index + 1}
+                                        </Text>
+                                    </View>
+                                    <Text style={[styles.faqQuestion, isOpen && styles.faqQuestionOpen]}>
+                                        {item.q}
+                                    </Text>
+                                    <View style={[styles.chevronWrapper, isOpen && styles.chevronWrapperOpen]}>
+                                        <Ionicons
+                                            name="chevron-down"
+                                            size={16}
+                                            color={isOpen ? Colors.primary : Colors.textTertiary}
+                                        />
+                                    </View>
                                 </View>
-                            </View>
-                            {isOpen && (
-                                <View style={styles.faqAnswerWrapper}>
-                                    <View style={styles.faqDivider} />
-                                    <Text style={styles.faqAnswer}>{item.a}</Text>
-                                </View>
-                            )}
-                        </TouchableOpacity>
-                    );
-                })}
+                                {isOpen && (
+                                    <View style={styles.faqAnswerWrapper}>
+                                        <View style={styles.faqDivider} />
+                                        <Text style={styles.faqAnswer}>{item.a}</Text>
+                                    </View>
+                                )}
+                            </Card>
+                        </Pressable>
+                    </Animated.View>
+                );
+            })}
 
-                {/* Still need help */}
-                <View style={styles.ctaCard}>
+            {/* Still need help */}
+            <Animated.View entering={FadeInDown.duration(250).delay(30 + FAQ_ITEMS.length * 80)}>
+                <Card style={styles.ctaCard}>
                     <View style={styles.ctaIconWrapper}>
                         <Ionicons name="chatbubble-ellipses-outline" size={22} color={Colors.primary} />
                     </View>
@@ -107,59 +128,24 @@ export default function HelpCenterScreen({ navigation }: any) {
                         <Text style={styles.ctaTitle}>Still need help?</Text>
                         <Text style={styles.ctaSubtitle}>Our support team is ready to assist you</Text>
                     </View>
-                    <TouchableOpacity style={styles.ctaButton} onPress={() => navigation.navigate('Support')}>
-                        <Text style={styles.ctaButtonText}>Contact</Text>
-                    </TouchableOpacity>
-                </View>
-
-                <View style={{ height: 48 }} />
-            </ScrollView>
-        </View>
+                    <Button
+                        title="Contact"
+                        onPress={() => navigation.navigate('Support')}
+                        size="sm"
+                        fullWidth={false}
+                    />
+                </Card>
+            </Animated.View>
+        </ScreenWrapper>
     );
 }
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: Colors.background,
-    },
-    header: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingHorizontal: Spacing.xxl,
-        paddingTop: Layout.headerTopPadding,
-        paddingBottom: Spacing.lg,
-        borderBottomWidth: 1,
-        borderBottomColor: Colors.border,
-    },
-    backButton: {
-        width: 44,
-        height: 44,
-        borderRadius: BorderRadius.md,
-        backgroundColor: Colors.surface,
-        justifyContent: 'center',
-        alignItems: 'center',
-        borderWidth: 1,
-        borderColor: Colors.border,
-    },
-    headerTitle: {
-        fontSize: FontSize.lg,
-        fontWeight: FontWeight.bold,
-        color: Colors.text,
-    },
-    contentContainer: {
-        padding: Spacing.xxl,
-    },
     heroCard: {
-        alignItems: 'center',
+        alignItems: 'center' as const,
         paddingVertical: Spacing.xxxl,
         paddingHorizontal: Spacing.xxl,
-        backgroundColor: Colors.card,
-        borderRadius: BorderRadius.xl,
-        borderWidth: 1,
-        borderColor: Colors.border,
-        marginBottom: Spacing.xxxl,
+        marginBottom: Spacing.xxl,
         gap: Spacing.sm,
     },
     heroIconWrapper: {
@@ -181,29 +167,32 @@ const styles = StyleSheet.create({
         color: Colors.textSecondary,
         textAlign: 'center',
     },
-    sectionLabel: {
-        fontSize: FontSize.sm,
-        fontWeight: FontWeight.semibold,
-        color: Colors.textTertiary,
-        textTransform: 'uppercase',
-        letterSpacing: 0.8,
-        marginBottom: Spacing.md,
-    },
     faqCard: {
-        backgroundColor: Colors.card,
-        borderRadius: BorderRadius.md,
-        padding: Spacing.lg,
         marginBottom: Spacing.sm,
-        borderWidth: 1,
-        borderColor: Colors.border,
-    },
-    faqCardOpen: {
-        borderColor: Colors.borderActive,
     },
     faqRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'space-between',
+    },
+    faqNumberBadge: {
+        width: 28,
+        height: 28,
+        borderRadius: 14,
+        backgroundColor: Colors.surface,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: Spacing.md,
+    },
+    faqNumberBadgeOpen: {
+        backgroundColor: Colors.primaryGlow,
+    },
+    faqNumber: {
+        fontSize: FontSize.xs,
+        fontWeight: FontWeight.bold,
+        color: Colors.textTertiary,
+    },
+    faqNumberOpen: {
+        color: Colors.primary,
     },
     faqQuestion: {
         flex: 1,
@@ -213,9 +202,12 @@ const styles = StyleSheet.create({
         marginRight: Spacing.md,
         lineHeight: 22,
     },
+    faqQuestionOpen: {
+        color: Colors.primary,
+    },
     chevronWrapper: {
-        width: 28,
-        height: 28,
+        width: 32,
+        height: 32,
         borderRadius: BorderRadius.sm,
         backgroundColor: Colors.surface,
         justifyContent: 'center',
@@ -234,26 +226,24 @@ const styles = StyleSheet.create({
         marginBottom: Spacing.md,
     },
     faqAnswer: {
-        fontSize: FontSize.md,
+        fontSize: FontSize.sm,
         color: Colors.textSecondary,
         lineHeight: 22,
+        paddingLeft: 40,
     },
     ctaCard: {
         flexDirection: 'row',
         alignItems: 'center',
-        padding: Spacing.lg,
-        backgroundColor: Colors.primaryGlow,
-        borderRadius: BorderRadius.lg,
-        borderWidth: 1,
-        borderColor: Colors.borderActive,
         marginTop: Spacing.xl,
+        backgroundColor: Colors.primaryGlow,
+        borderColor: Colors.borderActive,
         gap: Spacing.md,
     },
     ctaIconWrapper: {
         width: 44,
         height: 44,
         borderRadius: BorderRadius.md,
-        backgroundColor: 'rgba(69, 208, 255, 0.2)',
+        backgroundColor: Colors.primaryMuted,
         justifyContent: 'center',
         alignItems: 'center',
     },
@@ -269,16 +259,5 @@ const styles = StyleSheet.create({
         fontSize: FontSize.xs,
         color: Colors.textSecondary,
         marginTop: 2,
-    },
-    ctaButton: {
-        paddingHorizontal: Spacing.lg,
-        paddingVertical: Spacing.sm,
-        backgroundColor: Colors.primary,
-        borderRadius: BorderRadius.md,
-    },
-    ctaButtonText: {
-        fontSize: FontSize.sm,
-        fontWeight: FontWeight.bold,
-        color: '#fff',
     },
 });

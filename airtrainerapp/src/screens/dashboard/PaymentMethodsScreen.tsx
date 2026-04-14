@@ -3,23 +3,19 @@ import {
     View,
     Text,
     StyleSheet,
-    TouchableOpacity,
-    ScrollView,
+    Pressable,
     Alert,
     ActivityIndicator,
-    RefreshControl,
 } from 'react-native';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
-import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows, Layout} from '../../theme';
-
-// ─── API URL ─────────────────────────────────────────────────────────────────
+import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows } from '../../theme';
+import { ScreenWrapper, ScreenHeader, Card, Badge, EmptyState, LoadingScreen, Button, SectionHeader } from '../../components/ui';
 
 const API_URL = 'https://api.airtrainr.com/api/v1';
-
-// ─── Types ───────────────────────────────────────────────────────────────────
 
 type Transaction = {
     id: string;
@@ -33,8 +29,6 @@ type Transaction = {
     trainer_id: string | null;
 };
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
 function formatCurrency(amount: number): string {
     return `$${Number(amount).toFixed(2)}`;
 }
@@ -46,15 +40,11 @@ function formatDate(iso: string): string {
 
 function getStatusColor(status: string): string {
     switch (status) {
-        case 'completed':
-            return Colors.success;
-        case 'pending':
-            return Colors.warning;
+        case 'completed': return Colors.success;
+        case 'pending': return Colors.warning;
         case 'cancelled':
-        case 'disputed':
-            return Colors.error;
-        default:
-            return Colors.textSecondary;
+        case 'disputed': return Colors.error;
+        default: return Colors.textSecondary;
     }
 }
 
@@ -62,58 +52,37 @@ function getStatusLabel(status: string): string {
     return status.charAt(0).toUpperCase() + status.slice(1);
 }
 
-// ─── Sub-components ──────────────────────────────────────────────────────────
-
-function SportPill({ sport }: { sport: string | null }) {
-    if (!sport) return null;
-    return (
-        <View style={styles.sportPill}>
-            <Text style={styles.sportPillText}>{sport}</Text>
-        </View>
-    );
-}
-
 function TransactionItem({ tx }: { tx: Transaction }) {
     const displayAmount = tx.total_paid ?? tx.amount;
-    const isPositive = true; // for trainer, received; for athlete, paid
 
     return (
         <View style={styles.txItem}>
             <View style={styles.txIconWrap}>
-                <Ionicons
-                    name="swap-horizontal-outline"
-                    size={18}
-                    color={Colors.primary}
-                />
+                <Ionicons name="swap-horizontal-outline" size={18} color={Colors.primary} />
             </View>
             <View style={styles.txInfo}>
                 <View style={styles.txTopRow}>
-                    <Text style={styles.txAmount}>
-                        {isPositive ? '+' : '-'}{formatCurrency(displayAmount)}
-                    </Text>
-                    <View
-                        style={[
-                            styles.txStatusBadge,
-                            { backgroundColor: getStatusColor(tx.status) + '22' },
-                        ]}
-                    >
-                        <Text
-                            style={[styles.txStatusText, { color: getStatusColor(tx.status) }]}
-                        >
-                            {getStatusLabel(tx.status)}
-                        </Text>
-                    </View>
+                    <Text style={styles.txAmount}>+{formatCurrency(displayAmount)}</Text>
+                    <Badge
+                        label={getStatusLabel(tx.status)}
+                        color={getStatusColor(tx.status)}
+                    />
                 </View>
                 <View style={styles.txBottomRow}>
                     <Text style={styles.txDate}>{formatDate(tx.created_at)}</Text>
-                    <SportPill sport={tx.sport} />
+                    {tx.sport && (
+                        <Badge
+                            label={tx.sport}
+                            color={Colors.textSecondary}
+                            bgColor={Colors.surface}
+                            size="sm"
+                        />
+                    )}
                 </View>
             </View>
         </View>
     );
 }
-
-// ─── Main Component ──────────────────────────────────────────────────────────
 
 export default function PaymentMethodsScreen({ navigation }: any) {
     const { user } = useAuth();
@@ -128,41 +97,27 @@ export default function PaymentMethodsScreen({ navigation }: any) {
     const fetchTransactions = useCallback(async () => {
         if (!user) return;
         try {
-            if (isTrainer && trainerProfile?.id) {
-                // Trainer: query directly by trainer_id
+            const idColumn = isTrainer ? 'trainer_id' : 'athlete_id';
+            const { data: bookings } = await supabase
+                .from('bookings')
+                .select('id')
+                .eq(idColumn, user.id);
+
+            if (bookings && bookings.length > 0) {
+                const bookingIds = bookings.map((b: any) => b.id);
                 const { data, error } = await supabase
                     .from('payment_transactions')
                     .select('*')
-                    .eq('trainer_id', trainerProfile.id)
+                    .in('booking_id', bookingIds)
                     .order('created_at', { ascending: false })
                     .limit(20);
                 if (error) throw error;
                 setTransactions((data || []) as Transaction[]);
             } else {
-                // Athlete: payment_transactions doesn't have athlete_id,
-                // so query through bookings first
-                const { data: bookings } = await supabase
-                    .from('bookings')
-                    .select('id')
-                    .eq('athlete_id', user.id);
-
-                if (bookings && bookings.length > 0) {
-                    const bookingIds = bookings.map((b: any) => b.id);
-                    const { data, error } = await supabase
-                        .from('payment_transactions')
-                        .select('*')
-                        .in('booking_id', bookingIds)
-                        .order('created_at', { ascending: false })
-                        .limit(20);
-                    if (error) throw error;
-                    setTransactions((data || []) as Transaction[]);
-                } else {
-                    setTransactions([]);
-                }
+                setTransactions([]);
             }
         } catch (err) {
             console.error('Error fetching transactions:', err);
-            // Fall through with empty array — table may not exist yet
         } finally {
             setIsLoading(false);
         }
@@ -178,12 +133,9 @@ export default function PaymentMethodsScreen({ navigation }: any) {
         setRefreshing(false);
     };
 
-    // ── Stripe Connect handler ───────────────────────────────────────────────
-
     const handleConnectStripe = async () => {
         setConnecting(true);
         try {
-            // Get the current session for auth token
             const { data: sessionData } = await supabase.auth.getSession();
             const accessToken = sessionData?.session?.access_token;
 
@@ -198,11 +150,9 @@ export default function PaymentMethodsScreen({ navigation }: any) {
                 const { url } = await response.json();
                 if (url) {
                     await WebBrowser.openBrowserAsync(url);
-                    // Refresh status after returning from Stripe
                     fetchTransactions();
                 }
             } else {
-                // Fallback: direct user to web
                 Alert.alert(
                     'Stripe Connect',
                     'To connect your Stripe account, please visit airtrainr.com on your computer and go to Payment Methods in your profile settings.'
@@ -227,46 +177,29 @@ export default function PaymentMethodsScreen({ navigation }: any) {
     };
 
     if (isLoading) {
-        return (
-            <View style={[styles.container, styles.center]}>
-                <ActivityIndicator size="large" color={Colors.primary} />
-            </View>
-        );
+        return <LoadingScreen message="Loading payments..." />;
     }
 
     const stripeConnected = !!(trainerProfile?.stripe_account_id);
 
     return (
-        <View style={styles.container}>
-            {/* Header */}
-            <View style={styles.header}>
-                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-                    <Ionicons name="arrow-back" size={22} color={Colors.text} />
-                </TouchableOpacity>
-                <Text style={styles.headerTitle}>Payments</Text>
-                <View style={{ width: 44 }} />
-            </View>
+        <ScreenWrapper
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+        >
+            <ScreenHeader
+                title="Payments"
+                onBack={() => navigation.goBack()}
+            />
 
-            <ScrollView
-                contentContainerStyle={styles.contentContainer}
-                showsVerticalScrollIndicator={false}
-                refreshControl={
-                    <RefreshControl
-                        refreshing={refreshing}
-                        onRefresh={onRefresh}
-                        tintColor={Colors.primary}
-                        colors={[Colors.primary]}
-                    />
-                }
-            >
-                {/* TRAINER: Payout Account Card */}
-                {isTrainer ? (
-                    <View style={styles.section}>
-                        <Text style={styles.sectionLabel}>PAYOUT ACCOUNT</Text>
+            {/* TRAINER: Payout Account - Stripe connect status as hero card */}
+            {isTrainer ? (
+                <Animated.View entering={FadeInDown.duration(250)} style={styles.section}>
+                    <SectionHeader title="Payout Account" />
 
-                        {stripeConnected ? (
-                            /* Connected State */
-                            <View style={styles.stripeConnectedCard}>
+                    {stripeConnected ? (
+                        <Card style={styles.stripeConnectedCard}>
+                            <View style={styles.stripeConnectedRow}>
                                 <View style={styles.stripeConnectedLeft}>
                                     <View style={styles.stripeConnectedIconWrap}>
                                         <Ionicons name="checkmark-circle" size={24} color={Colors.success} />
@@ -278,45 +211,41 @@ export default function PaymentMethodsScreen({ navigation }: any) {
                                         </Text>
                                     </View>
                                 </View>
-                                <View style={styles.stripeConnectedBadge}>
-                                    <Ionicons name="checkmark" size={14} color={Colors.success} />
-                                    <Text style={styles.stripeConnectedBadgeText}>Active</Text>
+                                <Badge
+                                    label="Active"
+                                    color={Colors.success}
+                                    bgColor={Colors.successLight}
+                                    dot
+                                />
+                            </View>
+                        </Card>
+                    ) : (
+                        <Card style={styles.stripeWarningCard}>
+                            <View style={styles.stripeWarningIconRow}>
+                                <View style={styles.stripeWarningIconWrap}>
+                                    <Ionicons name="alert-circle-outline" size={28} color={Colors.warning} />
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={styles.stripeWarningTitle}>Connect to Receive Payouts</Text>
+                                    <Text style={styles.stripeWarningSubtitle}>
+                                        Link your Stripe account to start receiving payments from completed sessions.
+                                    </Text>
                                 </View>
                             </View>
-                        ) : (
-                            /* Not Connected State */
-                            <View style={styles.stripeWarningCard}>
-                                <View style={styles.stripeWarningIconRow}>
-                                    <View style={styles.stripeWarningIconWrap}>
-                                        <Ionicons name="alert-circle-outline" size={28} color={Colors.warning} />
-                                    </View>
-                                    <View style={{ flex: 1 }}>
-                                        <Text style={styles.stripeWarningTitle}>Connect to Receive Payouts</Text>
-                                        <Text style={styles.stripeWarningSubtitle}>
-                                            Link your Stripe account to start receiving payments from completed sessions.
-                                        </Text>
-                                    </View>
-                                </View>
-                                <TouchableOpacity
-                                    style={styles.stripeConnectBtn}
-                                    onPress={handleConnectStripe}
-                                    activeOpacity={0.85}
-                                    disabled={connecting}
-                                >
-                                    {connecting ? (
-                                        <ActivityIndicator size="small" color="#fff" />
-                                    ) : (
-                                        <>
-                                            <Ionicons name="link-outline" size={18} color="#fff" />
-                                            <Text style={styles.stripeConnectBtnText}>Connect Stripe Account</Text>
-                                        </>
-                                    )}
-                                </TouchableOpacity>
-                            </View>
-                        )}
+                            <Button
+                                title="Connect Stripe Account"
+                                onPress={handleConnectStripe}
+                                variant="primary"
+                                icon="link-outline"
+                                loading={connecting}
+                                disabled={connecting}
+                            />
+                        </Card>
+                    )}
 
-                        {/* Payout info strip */}
-                        <View style={styles.payoutInfoStrip}>
+                    {/* Payout info strip */}
+                    <Card style={styles.payoutInfoStrip}>
+                        <View style={styles.payoutInfoRow}>
                             <View style={styles.payoutInfoItem}>
                                 <Ionicons name="time-outline" size={16} color={Colors.textSecondary} />
                                 <Text style={styles.payoutInfoText}>Payouts every 7 days</Text>
@@ -326,152 +255,100 @@ export default function PaymentMethodsScreen({ navigation }: any) {
                                 <Text style={styles.payoutInfoText}>Secured by Stripe</Text>
                             </View>
                         </View>
-                    </View>
-                ) : (
-                    /* ATHLETE: Payment Method Card */
-                    <View style={styles.section}>
-                        <Text style={styles.sectionLabel}>PAYMENT METHOD</Text>
-                        <View style={styles.comingSoonCard}>
+                    </Card>
+                </Animated.View>
+            ) : (
+                <Animated.View entering={FadeInDown.duration(250)} style={styles.section}>
+                    <SectionHeader title="Payment Method" />
+                    <Card>
+                        <View style={styles.comingSoonRow}>
                             <Ionicons name="card-outline" size={28} color={Colors.primary} />
                             <Text style={styles.comingSoonText}>
                                 Payment methods will be available soon. We're integrating Stripe for secure payments.
                             </Text>
                         </View>
+                    </Card>
 
-                        <TouchableOpacity
-                            style={styles.addMethodButton}
-                            onPress={handleAddPaymentMethod}
-                        >
-                            <Ionicons name="add-circle-outline" size={18} color={Colors.primary} />
-                            <Text style={styles.addMethodText}>Add Payment Method</Text>
-                        </TouchableOpacity>
-                    </View>
-                )}
+                    <Pressable
+                        style={({ pressed }) => [styles.addMethodButton, pressed && { opacity: 0.9, transform: [{ scale: 0.98 }] }]}
+                        onPress={handleAddPaymentMethod}
+                        accessibilityLabel="Add Payment Method"
+                    >
+                        <Ionicons name="add-circle-outline" size={18} color={Colors.primary} />
+                        <Text style={styles.addMethodText}>Add Payment Method</Text>
+                    </Pressable>
+                </Animated.View>
+            )}
 
-                {/* Recent Transactions */}
-                <View style={styles.section}>
-                    <Text style={styles.sectionLabel}>RECENT TRANSACTIONS</Text>
+            {/* Recent Transactions */}
+            <View style={styles.section}>
+                <SectionHeader title="Recent Transactions" />
 
-                    {transactions.length === 0 ? (
-                        <View style={styles.emptyTransactions}>
-                            <View style={styles.emptyIconWrap}>
-                                <Ionicons name="receipt-outline" size={32} color={Colors.primary} />
-                            </View>
-                            <Text style={styles.emptyTitle}>No transactions yet</Text>
-                            <Text style={styles.emptyText}>
-                                {isTrainer
+                {transactions.length === 0 ? (
+                    <Card>
+                        <EmptyState
+                            icon="receipt-outline"
+                            title="No transactions yet"
+                            description={
+                                isTrainer
                                     ? 'Completed sessions will appear here once athletes pay.'
-                                    : 'Your session payments will appear here.'}
-                            </Text>
-                        </View>
-                    ) : (
-                        <View style={styles.txList}>
-                            {transactions.map((tx) => (
-                                <TransactionItem key={tx.id} tx={tx} />
-                            ))}
-                        </View>
-                    )}
-                </View>
-
-                {/* Trainer: Connect Stripe CTA if not connected */}
-                {isTrainer && !stripeConnected && (
-                    <View style={styles.stripeCta}>
-                        <View style={styles.stripeCtaIcon}>
-                            <Ionicons name="card-outline" size={24} color={Colors.primary} />
-                        </View>
-                        <Text style={styles.stripeCtaTitle}>Get Paid Faster</Text>
-                        <Text style={styles.stripeCtaText}>
-                            Connect your Stripe account to automatically receive payouts after each completed session. No delays, no hassle.
-                        </Text>
-                        <TouchableOpacity
-                            style={styles.stripeCtaButton}
-                            onPress={handleConnectStripe}
-                            disabled={connecting}
-                        >
-                            {connecting ? (
-                                <ActivityIndicator size="small" color={Colors.background} />
-                            ) : (
-                                <>
-                                    <Ionicons name="link-outline" size={18} color={Colors.background} />
-                                    <Text style={styles.stripeCtaButtonText}>Connect Stripe Account</Text>
-                                </>
-                            )}
-                        </TouchableOpacity>
-                    </View>
+                                    : 'Your session payments will appear here.'
+                            }
+                        />
+                    </Card>
+                ) : (
+                    <Card noPadding>
+                        {transactions.map((tx, index) => (
+                            <View key={tx.id}>
+                                <TransactionItem tx={tx} />
+                                {index < transactions.length - 1 && (
+                                    <View style={styles.txDivider} />
+                                )}
+                            </View>
+                        ))}
+                    </Card>
                 )}
-            </ScrollView>
-        </View>
+            </View>
+
+            {/* Trainer: Connect Stripe CTA if not connected */}
+            {isTrainer && !stripeConnected && (
+                <Card variant="elevated" style={styles.stripeCta}>
+                    <View style={styles.stripeCtaIcon}>
+                        <Ionicons name="card-outline" size={24} color={Colors.primary} />
+                    </View>
+                    <Text style={styles.stripeCtaTitle}>Get Paid Faster</Text>
+                    <Text style={styles.stripeCtaText}>
+                        Connect your Stripe account to automatically receive payouts after each completed session. No delays, no hassle.
+                    </Text>
+                    <Button
+                        title="Connect Stripe Account"
+                        onPress={handleConnectStripe}
+                        variant="primary"
+                        icon="link-outline"
+                        loading={connecting}
+                        disabled={connecting}
+                        fullWidth={false}
+                    />
+                </Card>
+            )}
+        </ScreenWrapper>
     );
 }
 
-// ─── Styles ──────────────────────────────────────────────────────────────────
-
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: Colors.background,
-    },
-    center: {
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-
-    // Header
-    header: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingHorizontal: Spacing.xxl,
-        paddingTop: Layout.headerTopPadding,
-        paddingBottom: Spacing.lg,
-        borderBottomWidth: 1,
-        borderBottomColor: Colors.border,
-    },
-    backButton: {
-        width: 44,
-        height: 44,
-        borderRadius: BorderRadius.md,
-        backgroundColor: Colors.surface,
-        justifyContent: 'center',
-        alignItems: 'center',
-        borderWidth: 1,
-        borderColor: Colors.border,
-    },
-    headerTitle: {
-        fontSize: FontSize.lg,
-        fontWeight: FontWeight.bold,
-        color: Colors.text,
-    },
-
-    // Content
-    contentContainer: {
-        padding: Spacing.xxl,
-        gap: Spacing.xl,
-        flexGrow: 1,
-    },
-
-    // Section
     section: {
         gap: Spacing.md,
-    },
-    sectionLabel: {
-        fontSize: FontSize.xs,
-        fontWeight: FontWeight.semibold,
-        color: Colors.textTertiary,
-        letterSpacing: 1.2,
+        marginBottom: Spacing.xl,
     },
 
-    // Stripe Connected Card
+    // Stripe Connected
     stripeConnectedCard: {
+        borderColor: Colors.success + '44',
+    },
+    stripeConnectedRow: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        backgroundColor: Colors.card,
-        borderRadius: BorderRadius.lg,
-        padding: Spacing.lg,
-        borderWidth: 1,
-        borderColor: Colors.success + '44',
-        ...Shadows.small,
     },
     stripeConnectedLeft: {
         flexDirection: 'row',
@@ -483,36 +360,28 @@ const styles = StyleSheet.create({
         width: 44,
         height: 44,
         borderRadius: BorderRadius.md,
-        backgroundColor: 'rgba(0,200,83,0.12)',
+        backgroundColor: Colors.successLight,
         justifyContent: 'center',
         alignItems: 'center',
     },
-    stripeConnectedBadge: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 4,
-        backgroundColor: 'rgba(0,200,83,0.12)',
-        paddingHorizontal: Spacing.md,
-        paddingVertical: 4,
-        borderRadius: BorderRadius.pill,
-        borderWidth: 1,
-        borderColor: Colors.success + '44',
+    paymentCardInfo: {
+        flex: 1,
+        gap: 3,
     },
-    stripeConnectedBadgeText: {
-        fontSize: FontSize.xs,
-        fontWeight: FontWeight.bold,
-        color: Colors.success,
+    paymentCardTitle: {
+        fontSize: FontSize.md,
+        fontWeight: FontWeight.semibold,
+        color: Colors.text,
+    },
+    paymentCardSubtitle: {
+        fontSize: FontSize.sm,
+        color: Colors.textSecondary,
     },
 
-    // Stripe Warning Card (not connected)
+    // Stripe Warning
     stripeWarningCard: {
-        backgroundColor: Colors.card,
-        borderRadius: BorderRadius.lg,
-        padding: Spacing.lg,
-        borderWidth: 1,
         borderColor: Colors.warning + '44',
         gap: Spacing.lg,
-        ...Shadows.small,
     },
     stripeWarningIconRow: {
         flexDirection: 'row',
@@ -538,45 +407,14 @@ const styles = StyleSheet.create({
         marginTop: 2,
         lineHeight: 20,
     },
-    stripeConnectBtn: {
-        backgroundColor: Colors.primary,
-        borderRadius: BorderRadius.md,
-        paddingVertical: Spacing.md,
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: Spacing.sm,
-    },
-    stripeConnectBtnText: {
-        fontSize: FontSize.md,
-        fontWeight: FontWeight.bold,
-        color: '#fff',
-    },
-
-    // Payment card info (shared)
-    paymentCardInfo: {
-        flex: 1,
-        gap: 3,
-    },
-    paymentCardTitle: {
-        fontSize: FontSize.md,
-        fontWeight: FontWeight.semibold,
-        color: Colors.text,
-    },
-    paymentCardSubtitle: {
-        fontSize: FontSize.sm,
-        color: Colors.textSecondary,
-    },
 
     // Payout info strip
     payoutInfoStrip: {
+        paddingVertical: Spacing.md,
+    },
+    payoutInfoRow: {
         flexDirection: 'row',
         justifyContent: 'space-around',
-        backgroundColor: Colors.card,
-        borderRadius: BorderRadius.md,
-        paddingVertical: Spacing.md,
-        borderWidth: 1,
-        borderColor: Colors.border,
     },
     payoutInfoItem: {
         flexDirection: 'row',
@@ -588,17 +426,11 @@ const styles = StyleSheet.create({
         color: Colors.textSecondary,
     },
 
-    // Coming soon card
-    comingSoonCard: {
+    // Coming soon
+    comingSoonRow: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: Spacing.md,
-        backgroundColor: Colors.card,
-        borderRadius: BorderRadius.lg,
-        padding: Spacing.lg,
-        borderWidth: 1,
-        borderColor: Colors.border,
-        ...Shadows.small,
     },
     comingSoonText: {
         flex: 1,
@@ -607,7 +439,7 @@ const styles = StyleSheet.create({
         lineHeight: 20,
     },
 
-    // Add method button
+    // Add method
     addMethodButton: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -627,21 +459,11 @@ const styles = StyleSheet.create({
     },
 
     // Transactions
-    txList: {
-        backgroundColor: Colors.card,
-        borderRadius: BorderRadius.lg,
-        borderWidth: 1,
-        borderColor: Colors.border,
-        overflow: 'hidden',
-        ...Shadows.small,
-    },
     txItem: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: Spacing.md,
         padding: Spacing.lg,
-        borderBottomWidth: 1,
-        borderBottomColor: Colors.border,
     },
     txIconWrap: {
         width: 40,
@@ -653,7 +475,7 @@ const styles = StyleSheet.create({
     },
     txInfo: {
         flex: 1,
-        gap: 5,
+        gap: Spacing.xs,
     },
     txTopRow: {
         flexDirection: 'row',
@@ -665,15 +487,6 @@ const styles = StyleSheet.create({
         fontWeight: FontWeight.bold,
         color: Colors.text,
     },
-    txStatusBadge: {
-        paddingHorizontal: Spacing.sm,
-        paddingVertical: 2,
-        borderRadius: BorderRadius.pill,
-    },
-    txStatusText: {
-        fontSize: FontSize.xs,
-        fontWeight: FontWeight.semibold,
-    },
     txBottomRow: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -683,61 +496,18 @@ const styles = StyleSheet.create({
         fontSize: FontSize.sm,
         color: Colors.textSecondary,
     },
-    sportPill: {
-        backgroundColor: Colors.surface,
-        paddingHorizontal: Spacing.sm,
-        paddingVertical: 2,
-        borderRadius: BorderRadius.pill,
-        borderWidth: 1,
-        borderColor: Colors.border,
-    },
-    sportPillText: {
-        fontSize: FontSize.xs,
-        color: Colors.textSecondary,
-        fontWeight: FontWeight.medium,
-    },
-
-    // Empty transactions
-    emptyTransactions: {
-        alignItems: 'center',
-        padding: Spacing.xxxl,
-        gap: Spacing.md,
-        backgroundColor: Colors.card,
-        borderRadius: BorderRadius.lg,
-        borderWidth: 1,
-        borderColor: Colors.border,
-    },
-    emptyIconWrap: {
-        width: 64,
-        height: 64,
-        borderRadius: BorderRadius.xl,
-        backgroundColor: Colors.primaryGlow,
-        justifyContent: 'center',
-        alignItems: 'center',
-        borderWidth: 1,
-        borderColor: Colors.borderActive,
-    },
-    emptyTitle: {
-        fontSize: FontSize.lg,
-        fontWeight: FontWeight.bold,
-        color: Colors.text,
-    },
-    emptyText: {
-        fontSize: FontSize.sm,
-        color: Colors.textSecondary,
-        textAlign: 'center',
-        lineHeight: 20,
+    txDivider: {
+        height: 1,
+        backgroundColor: Colors.border,
+        marginHorizontal: Spacing.lg,
     },
 
     // Stripe CTA
     stripeCta: {
-        backgroundColor: Colors.card,
-        borderRadius: BorderRadius.xl,
-        padding: Spacing.xl,
-        borderWidth: 1,
-        borderColor: Colors.borderActive,
         alignItems: 'center',
         gap: Spacing.md,
+        marginBottom: Spacing.xxl,
+        borderColor: Colors.borderActive,
         ...Shadows.glow,
     },
     stripeCtaIcon: {
@@ -760,20 +530,5 @@ const styles = StyleSheet.create({
         color: Colors.textSecondary,
         textAlign: 'center',
         lineHeight: 20,
-    },
-    stripeCtaButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: Spacing.sm,
-        backgroundColor: Colors.primary,
-        paddingHorizontal: Spacing.xl,
-        paddingVertical: Spacing.md,
-        borderRadius: BorderRadius.md,
-        marginTop: Spacing.sm,
-    },
-    stripeCtaButtonText: {
-        fontSize: FontSize.md,
-        fontWeight: FontWeight.semibold,
-        color: Colors.background,
     },
 });

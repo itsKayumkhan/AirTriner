@@ -1,14 +1,16 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Linking } from 'react-native';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Layout} from '../../theme';
+import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows } from '../../theme';
+import { ScreenWrapper, ScreenHeader, Card, Button, SectionHeader } from '../../components/ui';
 
 type ContactItem = {
     label: string;
     value: string;
     icon: keyof typeof Ionicons.glyphMap;
     iconColor: string;
-    iconBg: string;
+    bgColor: string;
     onPress: () => void;
 };
 
@@ -18,7 +20,7 @@ const CONTACTS: ContactItem[] = [
         value: 'support@airtrainr.com',
         icon: 'mail',
         iconColor: Colors.primary,
-        iconBg: Colors.primaryGlow,
+        bgColor: Colors.primaryGlow,
         onPress: () => Linking.openURL('mailto:support@airtrainr.com'),
     },
     {
@@ -26,7 +28,7 @@ const CONTACTS: ContactItem[] = [
         value: 'Chat with us',
         icon: 'logo-whatsapp',
         iconColor: '#25D366',
-        iconBg: 'rgba(37, 211, 102, 0.12)',
+        bgColor: 'rgba(37, 211, 102, 0.12)',
         onPress: () => Linking.openURL('https://wa.me/1234567890'),
     },
     {
@@ -34,7 +36,7 @@ const CONTACTS: ContactItem[] = [
         value: '@AirTrainr',
         icon: 'logo-twitter',
         iconColor: Colors.primary,
-        iconBg: Colors.primaryGlow,
+        bgColor: Colors.primaryGlow,
         onPress: () => Linking.openURL('https://twitter.com/airtrainr'),
     },
     {
@@ -42,7 +44,7 @@ const CONTACTS: ContactItem[] = [
         value: '@AirTrainr',
         icon: 'logo-instagram',
         iconColor: '#E1306C',
-        iconBg: 'rgba(225, 48, 108, 0.12)',
+        bgColor: 'rgba(225, 48, 108, 0.12)',
         onPress: () => Linking.openURL('https://instagram.com/airtrainr'),
     },
     {
@@ -50,121 +52,101 @@ const CONTACTS: ContactItem[] = [
         value: 'AirTrainr',
         icon: 'logo-facebook',
         iconColor: '#1877F2',
-        iconBg: 'rgba(24, 119, 242, 0.12)',
+        bgColor: 'rgba(24, 119, 242, 0.12)',
         onPress: () => Linking.openURL('https://facebook.com/airtrainr'),
     },
 ];
 
 export default function SupportScreen({ navigation }: any) {
     return (
-        <View style={styles.container}>
-            {/* Header */}
-            <View style={styles.header}>
-                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-                    <Ionicons name="arrow-back" size={24} color={Colors.text} />
-                </TouchableOpacity>
-                <Text style={styles.headerTitle}>Contact Support</Text>
-                <View style={{ width: 44 }} />
-            </View>
+        <ScreenWrapper>
+            <ScreenHeader
+                title="Contact Support"
+                onBack={() => navigation.goBack()}
+            />
 
-            <ScrollView contentContainerStyle={styles.contentContainer} showsVerticalScrollIndicator={false}>
-                {/* Hero */}
-                <View style={styles.heroCard}>
+            {/* Hero */}
+            <Animated.View entering={FadeInDown.duration(250)}>
+                <Card style={styles.heroCard}>
                     <View style={styles.heroIconWrapper}>
                         <Ionicons name="help-circle" size={36} color={Colors.primary} />
                     </View>
                     <Text style={styles.heroTitle}>We're here to help</Text>
-                    <Text style={styles.heroSubtitle}>Choose a channel below and we'll get back to you as soon as possible</Text>
-                </View>
+                    <Text style={styles.heroSubtitle}>
+                        Choose a channel below and we'll get back to you as soon as possible
+                    </Text>
+                </Card>
+            </Animated.View>
 
-                <Text style={styles.sectionLabel}>Reach Us On</Text>
+            <Animated.View entering={FadeInDown.duration(250).delay(30)}>
+                <SectionHeader title="Reach Us On" />
+            </Animated.View>
 
-                {/* Contact cards */}
+            {/* Contact options as large tappable cards with icons */}
+            <View style={styles.contactGrid}>
                 {CONTACTS.map((item, index) => (
-                    <TouchableOpacity
+                    <Animated.View
                         key={index}
-                        style={styles.contactCard}
-                        onPress={item.onPress}
-                        activeOpacity={0.75}
+                        entering={FadeInDown.duration(200).delay(30 + index * 30)}
                     >
-                        <View style={[styles.contactIconCircle, { backgroundColor: item.iconBg }]}>
-                            <Ionicons name={item.icon} size={22} color={item.iconColor} />
-                        </View>
-                        <View style={styles.contactTextBlock}>
-                            <Text style={styles.contactLabel}>{item.label}</Text>
-                            <Text style={styles.contactValue}>{item.value}</Text>
-                        </View>
-                        <View style={styles.contactChevron}>
-                            <Ionicons name="chevron-forward" size={18} color={Colors.textTertiary} />
-                        </View>
-                    </TouchableOpacity>
+                        <Pressable
+                            onPress={item.onPress}
+                            accessibilityLabel={`Contact via ${item.label}: ${item.value}`}
+                            style={({ pressed }) => [pressed && { opacity: 0.9, transform: [{ scale: 0.98 }] }]}
+                        >
+                            <Card style={styles.contactCard}>
+                                <View style={[styles.contactIconWrap, { backgroundColor: item.bgColor }]}>
+                                    <Ionicons name={item.icon} size={24} color={item.iconColor} />
+                                </View>
+                                <View style={styles.contactTextWrap}>
+                                    <Text style={styles.contactLabel}>{item.label}</Text>
+                                    <Text style={styles.contactValue}>{item.value}</Text>
+                                </View>
+                                <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />
+                            </Card>
+                        </Pressable>
+                    </Animated.View>
                 ))}
+            </View>
 
-                {/* Response note */}
-                <View style={styles.noteCard}>
-                    <Ionicons name="time-outline" size={16} color={Colors.primary} />
-                    <Text style={styles.noteText}>We respond within 2–4 business hours</Text>
-                </View>
-
-                {/* FAQ shortcut */}
-                <View style={styles.faqBanner}>
-                    <View style={styles.faqBannerText}>
-                        <Text style={styles.faqBannerTitle}>Looking for quick answers?</Text>
-                        <Text style={styles.faqBannerSubtitle}>Browse our Help Center for common questions</Text>
+            {/* Response note */}
+            <Animated.View entering={FadeInDown.duration(250).delay(30 + CONTACTS.length * 100)}>
+                <Card variant="outlined" style={styles.noteCard}>
+                    <View style={styles.noteRow}>
+                        <Ionicons name="time-outline" size={16} color={Colors.primary} />
+                        <Text style={styles.noteText}>We respond within 2-4 business hours</Text>
                     </View>
-                    <TouchableOpacity style={styles.faqButton} onPress={() => navigation.navigate('HelpCenter')}>
-                        <Text style={styles.faqButtonText}>FAQs</Text>
-                    </TouchableOpacity>
-                </View>
+                </Card>
+            </Animated.View>
 
-                <View style={{ height: 48 }} />
-            </ScrollView>
-        </View>
+            {/* FAQ shortcut */}
+            <Animated.View entering={FadeInDown.duration(250).delay(300 + CONTACTS.length * 100)}>
+                <Card style={styles.faqBanner}>
+                    <View style={styles.faqBannerContent}>
+                        <View style={styles.faqBannerText}>
+                            <Text style={styles.faqBannerTitle}>Looking for quick answers?</Text>
+                            <Text style={styles.faqBannerSubtitle}>Browse our Help Center for common questions</Text>
+                        </View>
+                        <Button
+                            title="FAQs"
+                            onPress={() => navigation.navigate('HelpCenter')}
+                            variant="primary"
+                            size="sm"
+                            fullWidth={false}
+                        />
+                    </View>
+                </Card>
+            </Animated.View>
+        </ScreenWrapper>
     );
 }
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: Colors.background,
-    },
-    header: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingHorizontal: Spacing.xxl,
-        paddingTop: Layout.headerTopPadding,
-        paddingBottom: Spacing.lg,
-        borderBottomWidth: 1,
-        borderBottomColor: Colors.border,
-    },
-    backButton: {
-        width: 44,
-        height: 44,
-        borderRadius: BorderRadius.md,
-        backgroundColor: Colors.surface,
-        justifyContent: 'center',
-        alignItems: 'center',
-        borderWidth: 1,
-        borderColor: Colors.border,
-    },
-    headerTitle: {
-        fontSize: FontSize.lg,
-        fontWeight: FontWeight.bold,
-        color: Colors.text,
-    },
-    contentContainer: {
-        padding: Spacing.xxl,
-    },
     heroCard: {
         alignItems: 'center',
         paddingVertical: Spacing.xxxl,
         paddingHorizontal: Spacing.xxl,
-        backgroundColor: Colors.card,
-        borderRadius: BorderRadius.xl,
-        borderWidth: 1,
-        borderColor: Colors.border,
-        marginBottom: Spacing.xxxl,
+        marginBottom: Spacing.xxl,
         gap: Spacing.sm,
     },
     heroIconWrapper: {
@@ -187,38 +169,32 @@ const styles = StyleSheet.create({
         textAlign: 'center',
         lineHeight: 20,
     },
-    sectionLabel: {
-        fontSize: FontSize.sm,
-        fontWeight: FontWeight.semibold,
-        color: Colors.textTertiary,
-        textTransform: 'uppercase',
-        letterSpacing: 0.8,
-        marginBottom: Spacing.md,
+
+    // Large tappable contact cards
+    contactGrid: {
+        gap: Spacing.md,
+        marginBottom: Spacing.lg,
     },
     contactCard: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: Colors.card,
-        borderRadius: BorderRadius.md,
-        padding: Spacing.lg,
-        marginBottom: Spacing.sm,
-        borderWidth: 1,
-        borderColor: Colors.border,
-        gap: Spacing.md,
+        gap: Spacing.lg,
+        minHeight: 68,
+        ...Shadows.small,
     },
-    contactIconCircle: {
+    contactIconWrap: {
         width: 48,
         height: 48,
-        borderRadius: 24,
+        borderRadius: BorderRadius.md,
         justifyContent: 'center',
         alignItems: 'center',
     },
-    contactTextBlock: {
+    contactTextWrap: {
         flex: 1,
     },
     contactLabel: {
         fontSize: FontSize.md,
-        fontWeight: FontWeight.semibold,
+        fontWeight: FontWeight.bold,
         color: Colors.text,
     },
     contactValue: {
@@ -226,27 +202,17 @@ const styles = StyleSheet.create({
         color: Colors.textSecondary,
         marginTop: 2,
     },
-    contactChevron: {
-        width: 28,
-        height: 28,
-        borderRadius: BorderRadius.sm,
-        backgroundColor: Colors.surface,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
+
     noteCard: {
+        marginBottom: Spacing.xl,
+        borderColor: Colors.borderActive,
+        backgroundColor: Colors.primaryMuted,
+    },
+    noteRow: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
         gap: Spacing.xs,
-        marginTop: Spacing.lg,
-        marginBottom: Spacing.xl,
-        paddingVertical: Spacing.md,
-        paddingHorizontal: Spacing.lg,
-        backgroundColor: Colors.primaryGlow,
-        borderRadius: BorderRadius.md,
-        borderWidth: 1,
-        borderColor: Colors.borderActive,
     },
     noteText: {
         fontSize: FontSize.sm,
@@ -254,13 +220,11 @@ const styles = StyleSheet.create({
         fontWeight: FontWeight.medium,
     },
     faqBanner: {
+        marginBottom: Spacing.xxl,
+    },
+    faqBannerContent: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: Colors.card,
-        borderRadius: BorderRadius.lg,
-        padding: Spacing.lg,
-        borderWidth: 1,
-        borderColor: Colors.border,
         gap: Spacing.md,
     },
     faqBannerText: {
@@ -275,16 +239,5 @@ const styles = StyleSheet.create({
         fontSize: FontSize.xs,
         color: Colors.textSecondary,
         marginTop: 2,
-    },
-    faqButton: {
-        paddingHorizontal: Spacing.lg,
-        paddingVertical: Spacing.sm,
-        backgroundColor: Colors.primary,
-        borderRadius: BorderRadius.md,
-    },
-    faqButtonText: {
-        fontSize: FontSize.sm,
-        fontWeight: FontWeight.bold,
-        color: '#fff',
     },
 });

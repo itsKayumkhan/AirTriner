@@ -1,16 +1,24 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
     View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator,
-    Modal, TextInput, Image, Platform,
+    Modal, TextInput, Platform, Pressable,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import Animated, {
+    FadeInDown, FadeInUp, useSharedValue, useAnimatedStyle, withSpring,
+} from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { MapView, Marker as MapsMarker, Circle as MapsCircle, PROVIDER_GOOGLE, MAPS_AVAILABLE } from '../../lib/maps';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase, ReviewRow, UserRow } from '../../lib/supabase';
 import { createNotification, scheduleSessionReminder } from '../../lib/notifications';
-import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows, Layout} from '../../theme';
+import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows, Layout } from '../../theme';
+import {
+    ScreenWrapper, ScreenHeader, Card, Avatar, Badge, Button,
+    SectionHeader, StatCard, EmptyState, Divider,
+} from '../../components/ui';
 import Founding50Badge from '../../components/Founding50Badge';
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 const getDefaultDate = () => {
     const d = new Date(Date.now() + 86400000 * 3);
@@ -21,6 +29,7 @@ const getDefaultDate = () => {
 };
 
 const DURATION_OPTIONS = [30, 45, 60, 90];
+const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 type SubAccount = {
     id: string;
@@ -35,8 +44,8 @@ type AvailabilitySlot = {
     id: string;
     trainer_id: string;
     day_of_week: number;
-    start_time: string; // "HH:MM"
-    end_time: string;   // "HH:MM"
+    start_time: string;
+    end_time: string;
     is_blocked: boolean;
 };
 
@@ -45,17 +54,11 @@ type ExistingBooking = {
     duration_minutes: number;
 };
 
-/**
- * Parse "HH:MM" or "HH:MM:SS" into total minutes since midnight.
- */
 const timeToMinutes = (t: string): number => {
     const [h, m] = t.split(':').map(Number);
     return h * 60 + (m || 0);
 };
 
-/**
- * Format hour (0-23) into "h:mm AM/PM".
- */
 const formatHour = (hour: number, minute: number = 0): string => {
     const period = hour >= 12 ? 'PM' : 'AM';
     const h = hour % 12 || 12;
@@ -63,11 +66,29 @@ const formatHour = (hour: number, minute: number = 0): string => {
     return `${h}:${mm} ${period}`;
 };
 
+/** Pressable card wrapper with scale feedback */
+function PressableCard({ children, style, delay = 0 }: { children: React.ReactNode; style?: any; delay?: number }) {
+    const scale = useSharedValue(1);
+    const animStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+
+    return (
+        <AnimatedPressable
+            entering={FadeInDown.delay(delay).duration(250)}
+            style={[animStyle, style]}
+            onPressIn={() => { scale.value = withSpring(0.97); }}
+            onPressOut={() => { scale.value = withSpring(1); }}
+        >
+            {children}
+        </AnimatedPressable>
+    );
+}
+
 export default function TrainerDetailScreen({ route, navigation }: any) {
     const { user } = useAuth();
     const { trainerId, trainer } = route.params;
     const [reviews, setReviews] = useState<(ReviewRow & { reviewer: UserRow })[]>([]);
     const [isBooking, setIsBooking] = useState(false);
+    const [bioExpanded, setBioExpanded] = useState(false);
 
     // Booking modal state
     const [showBookingModal, setShowBookingModal] = useState(false);
@@ -85,6 +106,9 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
     const [loadingSlots, setLoadingSlots] = useState(false);
     const [noAvailability, setNoAvailability] = useState(false);
 
+    // Availability calendar data
+    const [availableDays, setAvailableDays] = useState<Set<number>>(new Set());
+
     // Sub-account state
     const [subAccounts, setSubAccounts] = useState<SubAccount[]>([]);
     const [selectedSubAccount, setSelectedSubAccount] = useState<SubAccount | null>(null);
@@ -93,8 +117,12 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
     // Platform fee
     const [platformFeePercent, setPlatformFeePercent] = useState(3);
 
+    // Session duration for pricing display
+    const [pricingDuration, setPricingDuration] = useState(60);
+
     useEffect(() => {
         fetchReviews();
+        fetchAvailableDays();
     }, []);
 
     const fetchReviews = async () => {
@@ -106,6 +134,22 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
             .order('created_at', { ascending: false })
             .limit(10);
         setReviews((data || []) as any);
+    };
+
+    const fetchAvailableDays = async () => {
+        try {
+            const { data } = await supabase
+                .from('availability_slots')
+                .select('day_of_week')
+                .eq('trainer_id', trainerId)
+                .eq('is_blocked', false);
+            if (data) {
+                const days = new Set(data.map((s: any) => s.day_of_week as number));
+                setAvailableDays(days);
+            }
+        } catch {
+            // ignore
+        }
     };
 
     const fetchPlatformFee = async () => {
@@ -150,7 +194,6 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
         try {
             const dayOfWeek = new Date(date + 'T12:00:00').getDay();
 
-            // Fetch availability slots and existing bookings in parallel
             const [slotsRes, bookingsRes] = await Promise.all([
                 supabase
                     .from('availability_slots')
@@ -177,7 +220,6 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
                 return;
             }
 
-            // Generate hourly time slots from availability windows
             const allTimeSlots: string[] = [];
             const conflicting = new Set<string>();
 
@@ -185,7 +227,6 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
                 const startMin = timeToMinutes(slot.start_time);
                 const endMin = timeToMinutes(slot.end_time);
 
-                // Generate slots on the hour within the window
                 for (let min = startMin; min < endMin; min += 60) {
                     const hour = Math.floor(min / 60);
                     const minute = min % 60;
@@ -196,10 +237,8 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
                 }
             }
 
-            // Sort time slots
             allTimeSlots.sort();
 
-            // Check for conflicts with existing bookings
             for (const timeStr of allTimeSlots) {
                 const slotStartMin = timeToMinutes(timeStr);
 
@@ -226,7 +265,6 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
         }
     }, [trainerId]);
 
-    // Re-fetch availability when date changes
     useEffect(() => {
         if (showBookingModal && selectedDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
             fetchAvailability(selectedDate);
@@ -238,7 +276,6 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
             Alert.alert('Login Required', 'Please log in to book a session');
             return;
         }
-        // Reset to defaults each time modal opens
         const defaultDate = getDefaultDate();
         setSelectedDate(defaultDate);
         setSelectedSport(trainer.sports?.length === 1 ? trainer.sports[0] : '');
@@ -249,7 +286,6 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
         setBookingNotes('');
         setShowBookingModal(true);
 
-        // Fetch ancillary data
         fetchPlatformFee();
         fetchSubAccounts();
     };
@@ -320,7 +356,6 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
                     data: { bookingId: booking.id },
                 });
 
-                // Schedule a local reminder 24 hours before the session
                 const trainerDisplayName = trainer?.users
                     ? `${trainer.users.first_name} ${trainer.users.last_name}`
                     : `${trainer?.first_name || ''} ${trainer?.last_name || ''}`.trim() || 'your trainer';
@@ -346,7 +381,7 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
         Alert.alert('Messaging', 'Send a message to this trainer by booking a session first.');
     };
 
-    const initials = (trainer.users?.first_name?.[0] || '') + (trainer.users?.last_name?.[0] || '');
+    const trainerFullName = `${trainer.users?.first_name || ''} ${trainer.users?.last_name || ''}`.trim();
     const avatarUrl = trainer.users?.avatar_url || trainer.avatar_url || null;
 
     const avgRating = reviews.length > 0
@@ -364,137 +399,212 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
     const isProCoach = totalSessions > 0 && !isPerformanceVerified;
     const isNew = totalSessions === 0;
 
+    const bioText = trainer.bio || '';
+    const isBioLong = bioText.length > 180;
+    const displayBio = isBioLong && !bioExpanded ? bioText.slice(0, 180) + '...' : bioText;
+
+    const reviewCount = trainer.total_reviews || reviews.length;
+
     return (
-        <View style={styles.container}>
-            <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-                {/* Back Button */}
-                <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-                    <Ionicons name="arrow-back" size={24} color={Colors.text} />
-                </TouchableOpacity>
+        <ScreenWrapper scrollable refreshing={false}>
+            {/* Header with Back Button */}
+            <ScreenHeader
+                title=""
+                onBack={() => navigation.goBack()}
+            />
 
-                {/* Profile Header */}
-                <View style={styles.profileHeader}>
-                    {avatarUrl ? (
-                        <Image source={{ uri: avatarUrl }} style={styles.avatarImage} />
-                    ) : (
-                        <LinearGradient
-                            colors={[Colors.primary, Colors.gradientEnd]}
-                            start={{ x: 0, y: 0 }}
-                            end={{ x: 1, y: 1 }}
-                            style={styles.avatarGradient}
-                        >
-                            <View style={styles.avatar}>
-                                <Text style={styles.avatarText}>{initials}</Text>
-                            </View>
-                        </LinearGradient>
-                    )}
-                    <View style={styles.nameRow}>
-                        <Text style={styles.trainerName}>
-                            {trainer.users?.first_name} {trainer.users?.last_name}
-                        </Text>
-                        {trainer.is_verified && (
-                            <Ionicons name="checkmark-circle" size={22} color={Colors.primary} />
-                        )}
-                    </View>
-                    {trainer.is_founding_50 && (
-                        <View style={{ marginBottom: 8 }}>
-                            <Founding50Badge size="medium" />
-                        </View>
-                    )}
-                    <Text style={styles.headline}>{trainer.headline || 'Professional Sports Trainer'}</Text>
-
-                    {/* Location */}
-                    {(trainer.city || trainer.state) && (
-                        <View style={styles.locationRow}>
-                            <Ionicons name="location" size={14} color={Colors.textSecondary} />
-                            <Text style={styles.locationRowText}>
-                                {trainer.city || ''}{trainer.state ? `, ${trainer.state}` : ''}
-                            </Text>
-                        </View>
-                    )}
-
-                    {/* Badges */}
-                    <View style={styles.badgeRow}>
-                        {trainer.is_verified && (
-                            <View style={[styles.badge, { backgroundColor: '#45D0FF' }]}>
-                                <Ionicons name="shield-checkmark" size={14} color="#0A0D14" />
-                                <Text style={[styles.badgeText, { color: '#0A0D14' }]}>Verified</Text>
-                            </View>
-                        )}
-                        {isPerformanceVerified && (
-                            <View style={[styles.badge, styles.badgePillGreen]}>
-                                <Ionicons name="shield-checkmark" size={14} color="#10B981" />
-                                <Text style={[styles.badgeText, { color: '#10B981' }]}>Performance Verified</Text>
-                            </View>
-                        )}
-                        {isProCoach && (
-                            <View style={[styles.badge, styles.badgePillBlue]}>
-                                <Ionicons name="ribbon" size={14} color="#45D0FF" />
-                                <Text style={[styles.badgeText, { color: '#45D0FF' }]}>Pro Coach</Text>
-                            </View>
-                        )}
-                        {isNew && (
-                            <View style={[styles.badge, styles.badgePillGray]}>
-                                <Ionicons name="sparkles" size={14} color="#9CA3AF" />
-                                <Text style={[styles.badgeText, { color: '#9CA3AF' }]}>New</Text>
-                            </View>
-                        )}
-                        <View style={[styles.badge, { backgroundColor: Colors.infoLight }]}>
-                            <Ionicons name="trophy" size={14} color={Colors.info} />
-                            <Text style={[styles.badgeText, { color: Colors.info }]}>{trainer.years_experience || 0}yr</Text>
-                        </View>
-                        <View style={[styles.badge, { backgroundColor: Colors.warningLight }]}>
-                            <Ionicons name="star" size={14} color={Colors.warning} />
-                            <Text style={[styles.badgeText, { color: Colors.warning }]}>{avgRating}</Text>
-                        </View>
-                    </View>
+            {/* ─── 1. HERO SECTION ─── */}
+            <Animated.View entering={FadeInDown.duration(250)} style={styles.heroSection}>
+                {/* Glow ring */}
+                <View style={styles.avatarGlow}>
+                    <Avatar
+                        uri={avatarUrl}
+                        name={trainerFullName}
+                        size={110}
+                        borderColor={Colors.primary}
+                    />
                 </View>
 
-                {/* Stats Grid */}
-                <View style={styles.statsGrid}>
-                    <View style={styles.statCard}>
-                        <Text style={styles.statValue}>${Number(trainer.hourly_rate || 50).toFixed(0)}</Text>
-                        <Text style={styles.statLabel}>per hour</Text>
-                    </View>
-                    <View style={styles.statCard}>
-                        <Text style={styles.statValue}>{trainer.total_reviews || reviews.length}</Text>
-                        <Text style={styles.statLabel}>reviews</Text>
-                    </View>
-                    <View style={styles.statCard}>
-                        <Text style={styles.statValue}>{trainer.years_experience || 0}</Text>
-                        <Text style={styles.statLabel}>years exp.</Text>
-                    </View>
-                    <View style={styles.statCard}>
-                        <Text style={styles.statValue}>{trainer.total_sessions || 0}</Text>
-                        <Text style={styles.statLabel}>sessions</Text>
-                    </View>
-                </View>
+                <Text style={styles.trainerName} accessibilityRole="header">
+                    {trainerFullName}
+                    {trainer.is_verified && '  '}
+                    {trainer.is_verified && (
+                        <Ionicons name="checkmark-circle" size={22} color={Colors.primary} />
+                    )}
+                </Text>
 
-                {/* Bio */}
-                {trainer.bio && (
-                    <View style={styles.section}>
-                        <Text style={styles.sectionTitle}>About</Text>
-                        <Text style={styles.bioText}>{trainer.bio}</Text>
+                {trainer.is_founding_50 && (
+                    <View style={styles.foundingBadgeWrap}>
+                        <Founding50Badge size="medium" />
                     </View>
                 )}
 
-                {/* Sports */}
-                <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Sports</Text>
-                    <View style={styles.sportsContainer}>
-                        {(trainer.sports || []).map((sport: string) => (
-                            <View key={sport} style={styles.sportChip}>
-                                <Text style={styles.sportChipText}>{sport.replace(/_/g, ' ')}</Text>
-                            </View>
-                        ))}
+                {(trainer.city || trainer.state) && (
+                    <View style={styles.locationRow}>
+                        <Ionicons name="location" size={15} color={Colors.textSecondary} />
+                        <Text style={styles.locationText}>
+                            {trainer.city || ''}{trainer.state ? `, ${trainer.state}` : ''}
+                        </Text>
                     </View>
+                )}
+
+                {/* Star rating */}
+                <View style={styles.ratingRow}>
+                    <Ionicons name="star" size={16} color={Colors.warning} />
+                    <Text style={styles.ratingValue}>{avgRating}</Text>
+                    <Text style={styles.ratingCount}>({reviewCount} review{reviewCount !== 1 ? 's' : ''})</Text>
                 </View>
 
-                {/* Certifications */}
-                {certifications.length > 0 && (
-                    <View style={styles.section}>
+                {/* Badge row */}
+                <View style={styles.badgeRow}>
+                    {trainer.is_verified && (
+                        <Badge label="Verified" color={Colors.textInverse} bgColor={Colors.success} size="md" />
+                    )}
+                    {sports.map((sport: string) => (
+                        <Badge
+                            key={sport}
+                            label={sport.replace(/_/g, ' ')}
+                            color={Colors.primary}
+                            bgColor={Colors.primaryGlow}
+                            size="md"
+                        />
+                    ))}
+                    {isPerformanceVerified && (
+                        <Badge label="Performance Verified" color={Colors.success} bgColor={Colors.successLight} size="md" />
+                    )}
+                    {isProCoach && (
+                        <Badge label="Pro Coach" color={Colors.primary} bgColor={Colors.primaryGlow} size="md" />
+                    )}
+                    {isNew && (
+                        <Badge label="New" color={Colors.textSecondary} bgColor={Colors.glass} size="md" />
+                    )}
+                    <Badge
+                        label={`${trainer.years_experience || 0}yr exp`}
+                        color={Colors.info}
+                        bgColor={Colors.infoLight}
+                        size="md"
+                    />
+                </View>
+            </Animated.View>
+
+            {/* ─── 2. STATS ROW ─── */}
+            <Animated.View entering={FadeInDown.delay(30).duration(250)} style={styles.statsRow}>
+                <View style={styles.statMini}>
+                    <Text style={styles.statMiniValue}>{String(totalSessions)}</Text>
+                    <Text style={styles.statMiniLabel}>Sessions</Text>
+                </View>
+                <View style={styles.statDivider} />
+                <View style={styles.statMini}>
+                    <Text style={styles.statMiniValue}>{avgRating}</Text>
+                    <Text style={styles.statMiniLabel}>Rating</Text>
+                </View>
+                <View style={styles.statDivider} />
+                <View style={styles.statMini}>
+                    <Text style={styles.statMiniValue}>{trainer.years_experience || 0}</Text>
+                    <Text style={styles.statMiniLabel}>Years</Text>
+                </View>
+                <View style={styles.statDivider} />
+                <View style={styles.statMini}>
+                    <Text style={[styles.statMiniValue, { color: Colors.primary }]}>${Number(trainer.hourly_rate || 50).toFixed(0)}</Text>
+                    <Text style={styles.statMiniLabel}>Per hr</Text>
+                </View>
+            </Animated.View>
+
+            {/* ─── 3. BIO SECTION ─── */}
+            {bioText.length > 0 && (
+                <PressableCard delay={200} style={styles.sectionWrap}>
+                    <Card>
+                        <Text style={styles.sectionTitle}>About</Text>
+                        <Text style={styles.bioText}>{displayBio}</Text>
+                        {isBioLong && (
+                            <TouchableOpacity onPress={() => setBioExpanded(!bioExpanded)} activeOpacity={0.7}>
+                                <Text style={styles.readMore}>{bioExpanded ? 'Show less' : 'Read more'}</Text>
+                            </TouchableOpacity>
+                        )}
+                    </Card>
+                </PressableCard>
+            )}
+
+            {/* ─── 4. PRICING CARD ─── */}
+            <PressableCard delay={300} style={styles.sectionWrap}>
+                <Card>
+                    <View style={styles.pricingHeader}>
+                        <Text style={styles.pricingBigPrice}>${Number(trainer.hourly_rate || 50).toFixed(0)}</Text>
+                        <Text style={styles.pricingPerHr}>/hr</Text>
+                    </View>
+
+                    {/* Session duration pills */}
+                    <Text style={styles.pricingSubLabel}>Session length</Text>
+                    <View style={styles.pricingPillRow}>
+                        {[30, 60, 90].map((dur) => {
+                            const isActive = pricingDuration === dur;
+                            const calcPrice = (hourlyRate * dur / 60).toFixed(0);
+                            return (
+                                <TouchableOpacity
+                                    key={dur}
+                                    style={[styles.pricingPill, isActive && styles.pricingPillActive]}
+                                    onPress={() => setPricingDuration(dur)}
+                                    activeOpacity={0.7}
+                                >
+                                    <Text style={[styles.pricingPillDur, isActive && styles.pricingPillTextActive]}>
+                                        {dur} min
+                                    </Text>
+                                    <Text style={[styles.pricingPillPrice, isActive && styles.pricingPillTextActive]}>
+                                        ${calcPrice}
+                                    </Text>
+                                </TouchableOpacity>
+                            );
+                        })}
+                    </View>
+
+                    <Divider />
+
+                    <View style={styles.pricingMetaRow}>
+                        <View style={styles.pricingMetaItem}>
+                            <Text style={styles.pricingMetaLabel}>Reliability</Text>
+                            <Text style={styles.pricingMetaValue}>{Number(trainer.reliability_score || 100).toFixed(0)}%</Text>
+                        </View>
+                        <View style={styles.pricingMetaItem}>
+                            <Text style={styles.pricingMetaLabel}>Completion</Text>
+                            <Text style={styles.pricingMetaValue}>{Number(trainer.completion_rate || 100).toFixed(0)}%</Text>
+                        </View>
+                        <View style={styles.pricingMetaItem}>
+                            <Text style={styles.pricingMetaLabel}>Platform Fee</Text>
+                            <Text style={[styles.pricingMetaValue, { color: Colors.textSecondary }]}>{platformFeePercent}%</Text>
+                        </View>
+                    </View>
+                </Card>
+            </PressableCard>
+
+            {/* ─── 5. AVAILABILITY SECTION ─── */}
+            <PressableCard delay={400} style={styles.sectionWrap}>
+                <Card>
+                    <Text style={styles.sectionTitle}>Availability</Text>
+                    <View style={styles.weekStrip}>
+                        {DAY_LABELS.map((label, idx) => {
+                            const isAvail = availableDays.has(idx);
+                            return (
+                                <View key={idx} style={styles.weekDayCol}>
+                                    <Text style={[styles.weekDayLabel, isAvail && styles.weekDayLabelActive]}>
+                                        {label}
+                                    </Text>
+                                    <View style={[styles.weekDayDot, isAvail && styles.weekDayDotActive]} />
+                                </View>
+                            );
+                        })}
+                    </View>
+                    {availableDays.size === 0 && (
+                        <Text style={styles.noAvailText}>No availability set by trainer</Text>
+                    )}
+                </Card>
+            </PressableCard>
+
+            {/* Certifications */}
+            {certifications.length > 0 && (
+                <PressableCard delay={450} style={styles.sectionWrap}>
+                    <Card>
                         <Text style={styles.sectionTitle}>Certifications</Text>
-                        <View style={styles.certificationsContainer}>
+                        <View style={styles.chipRow}>
                             {certifications.map((cert, index) => (
                                 <View key={index} style={styles.certChip}>
                                     <Ionicons name="ribbon-outline" size={14} color={Colors.primary} />
@@ -502,163 +612,186 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
                                 </View>
                             ))}
                         </View>
-                    </View>
-                )}
+                    </Card>
+                </PressableCard>
+            )}
 
-                {/* Location */}
-                <View style={styles.section}>
+            {/* Location */}
+            <PressableCard delay={500} style={styles.sectionWrap}>
+                <Card>
                     <Text style={styles.sectionTitle}>Location</Text>
-                    <View style={styles.locationCard}>
+                    <View style={styles.locationCardRow}>
                         <Ionicons name="location" size={20} color={Colors.primary} />
-                        <Text style={styles.locationText}>
+                        <Text style={styles.locationCardText}>
                             {trainer.city || 'Not specified'}{trainer.state ? `, ${trainer.state}` : ''}{trainer.country ? `, ${trainer.country}` : ''}
                         </Text>
                     </View>
                     {trainer.travel_radius_miles > 0 && (
-                        <View style={[styles.locationCard, { marginTop: 8 }]}>
-                            <Ionicons name="navigate" size={18} color={Colors.textSecondary} />
-                            <Text style={[styles.locationText, { color: Colors.textSecondary }]}>
-                                Travels up to {trainer.travel_radius_miles} miles
-                            </Text>
-                        </View>
+                        <>
+                            <Divider />
+                            <View style={styles.locationCardRow}>
+                                <Ionicons name="navigate" size={18} color={Colors.textSecondary} />
+                                <Text style={styles.locationCardSubtext}>
+                                    Travels up to {trainer.travel_radius_miles} miles
+                                </Text>
+                            </View>
+                        </>
                     )}
+                </Card>
 
-                    {/* Mini Map (native only) */}
-                    {trainer.latitude && trainer.longitude && MAPS_AVAILABLE && (
-                        <View style={styles.miniMapContainer}>
-                            <MapView
-                                style={styles.miniMap}
-                                provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
-                                initialRegion={{
+                {/* Mini Map (native only) */}
+                {trainer.latitude && trainer.longitude && MAPS_AVAILABLE && (
+                    <View style={styles.miniMapContainer}>
+                        <MapView
+                            style={styles.miniMap}
+                            provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
+                            initialRegion={{
+                                latitude: Number(trainer.latitude),
+                                longitude: Number(trainer.longitude),
+                                latitudeDelta: 0.05,
+                                longitudeDelta: 0.05,
+                            }}
+                            scrollEnabled={false}
+                            zoomEnabled={false}
+                            rotateEnabled={false}
+                            pitchEnabled={false}
+                            customMapStyle={[
+                                { elementType: 'geometry', stylers: [{ color: Colors.background }] },
+                                { elementType: 'labels.text.stroke', stylers: [{ color: Colors.background }] },
+                                { elementType: 'labels.text.fill', stylers: [{ color: Colors.textTertiary }] },
+                                { featureType: 'road', elementType: 'geometry', stylers: [{ color: Colors.card }] },
+                                { featureType: 'water', elementType: 'geometry', stylers: [{ color: Colors.backgroundSecondary }] },
+                                { featureType: 'poi', elementType: 'geometry', stylers: [{ color: Colors.backgroundTertiary }] },
+                            ]}
+                        >
+                            <MapsMarker
+                                coordinate={{
                                     latitude: Number(trainer.latitude),
                                     longitude: Number(trainer.longitude),
-                                    latitudeDelta: 0.05,
-                                    longitudeDelta: 0.05,
                                 }}
-                                scrollEnabled={false}
-                                zoomEnabled={false}
-                                rotateEnabled={false}
-                                pitchEnabled={false}
-                                customMapStyle={[
-                                    { elementType: 'geometry', stylers: [{ color: '#0A0D14' }] },
-                                    { elementType: 'labels.text.stroke', stylers: [{ color: '#0A0D14' }] },
-                                    { elementType: 'labels.text.fill', stylers: [{ color: '#6b6b7b' }] },
-                                    { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#161B22' }] },
-                                    { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0d1018' }] },
-                                    { featureType: 'poi', elementType: 'geometry', stylers: [{ color: '#111520' }] },
-                                ]}
                             >
-                                <MapsMarker
-                                    coordinate={{
+                                <View style={styles.miniMapPin}>
+                                    <Ionicons name="person" size={14} color={Colors.textInverse} />
+                                </View>
+                            </MapsMarker>
+                            {trainer.travel_radius_miles > 0 && (
+                                <MapsCircle
+                                    center={{
                                         latitude: Number(trainer.latitude),
                                         longitude: Number(trainer.longitude),
                                     }}
-                                >
-                                    <View style={styles.miniMapPin}>
-                                        <Ionicons name="person" size={14} color="#0A0D14" />
-                                    </View>
-                                </MapsMarker>
-                                {trainer.travel_radius_miles > 0 && (
-                                    <MapsCircle
-                                        center={{
-                                            latitude: Number(trainer.latitude),
-                                            longitude: Number(trainer.longitude),
-                                        }}
-                                        radius={trainer.travel_radius_miles * 1609.34}
-                                        fillColor="rgba(69,208,255,0.08)"
-                                        strokeColor="rgba(69,208,255,0.3)"
-                                        strokeWidth={1}
-                                    />
-                                )}
-                            </MapView>
-                        </View>
-                    )}
-                </View>
-
-                {/* Pricing Info */}
-                <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Pricing</Text>
-                    <View style={styles.pricingCard}>
-                        <View style={styles.pricingRow}>
-                            <Text style={styles.pricingLabel}>Hourly Rate</Text>
-                            <Text style={styles.pricingValue}>${Number(trainer.hourly_rate || 50).toFixed(0)}/hr</Text>
-                        </View>
-                        <View style={styles.pricingDivider} />
-                        <View style={styles.pricingRow}>
-                            <Text style={styles.pricingLabel}>Reliability</Text>
-                            <Text style={styles.pricingValue}>{Number(trainer.reliability_score || 100).toFixed(0)}%</Text>
-                        </View>
-                        <View style={styles.pricingDivider} />
-                        <View style={styles.pricingRow}>
-                            <Text style={styles.pricingLabel}>Completion Rate</Text>
-                            <Text style={styles.pricingValue}>{Number(trainer.completion_rate || 100).toFixed(0)}%</Text>
-                        </View>
-                        <View style={styles.pricingDivider} />
-                        <View style={styles.pricingRow}>
-                            <Text style={styles.pricingLabel}>Platform Fee</Text>
-                            <Text style={[styles.pricingValue, { color: Colors.textSecondary }]}>{platformFeePercent}% at checkout</Text>
-                        </View>
+                                    radius={trainer.travel_radius_miles * 1609.34}
+                                    fillColor={Colors.primaryMuted}
+                                    strokeColor={Colors.borderActive}
+                                    strokeWidth={1}
+                                />
+                            )}
+                        </MapView>
                     </View>
-                </View>
+                )}
+            </PressableCard>
 
-                {/* Reviews */}
-                <View style={styles.section}>
-                    <View style={styles.sectionHeader}>
+            {/* ─── 6. REVIEWS SECTION ─── */}
+            <PressableCard delay={600} style={styles.sectionWrap}>
+                <Card>
+                    {/* Header with rating summary */}
+                    <View style={styles.reviewsHeader}>
                         <Text style={styles.sectionTitle}>Reviews</Text>
-                        <Text style={styles.sectionCount}>{trainer.total_reviews || reviews.length}</Text>
+                        <View style={styles.reviewsSummary}>
+                            <Ionicons name="star" size={14} color={Colors.warning} />
+                            <Text style={styles.reviewsSummaryText}>{avgRating}</Text>
+                            <Text style={styles.reviewsSummaryCount}>({reviewCount})</Text>
+                        </View>
                     </View>
+
                     {reviews.length > 0 ? (
-                        reviews.map((review) => (
-                            <View key={review.id} style={styles.reviewCard}>
-                                <View style={styles.reviewHeader}>
-                                    <View style={styles.reviewerAvatar}>
-                                        <Text style={styles.reviewerAvatarText}>
-                                            {(review.reviewer?.first_name?.[0] || '') + (review.reviewer?.last_name?.[0] || '')}
-                                        </Text>
-                                    </View>
-                                    <View style={styles.reviewerInfo}>
-                                        <Text style={styles.reviewerName}>
-                                            {review.reviewer?.first_name} {review.reviewer?.last_name}
-                                        </Text>
-                                        <View style={styles.starsRow}>
-                                            {[1, 2, 3, 4, 5].map((s) => (
-                                                <Ionicons key={s} name="star" size={14} color={s <= review.rating ? '#45D0FF' : Colors.textTertiary} />
-                                            ))}
+                        <>
+                            {reviews.slice(0, 3).map((review) => (
+                                <View key={review.id} style={styles.reviewItem}>
+                                    <View style={styles.reviewHeader}>
+                                        <Avatar
+                                            uri={review.reviewer?.avatar_url}
+                                            name={`${review.reviewer?.first_name || ''} ${review.reviewer?.last_name || ''}`}
+                                            size={36}
+                                        />
+                                        <View style={styles.reviewerInfo}>
+                                            <Text style={styles.reviewerName}>
+                                                {review.reviewer?.first_name} {review.reviewer?.last_name}
+                                            </Text>
+                                            <View style={styles.starsRow}>
+                                                {[1, 2, 3, 4, 5].map((s) => (
+                                                    <Ionicons
+                                                        key={s}
+                                                        name="star"
+                                                        size={12}
+                                                        color={s <= review.rating ? Colors.warning : Colors.textTertiary}
+                                                    />
+                                                ))}
+                                            </View>
                                         </View>
+                                        <Text style={styles.reviewDate}>
+                                            {new Date(review.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                        </Text>
                                     </View>
-                                    <Text style={styles.reviewDate}>
-                                        {new Date(review.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                                    </Text>
+                                    {review.review_text && (
+                                        <Text style={styles.reviewText}>{review.review_text}</Text>
+                                    )}
                                 </View>
-                                {review.review_text && <Text style={styles.reviewText}>{review.review_text}</Text>}
-                            </View>
-                        ))
+                            ))}
+                            {reviews.length > 3 && (
+                                <TouchableOpacity
+                                    onPress={() => navigation.navigate('Reviews', { trainerId })}
+                                    activeOpacity={0.7}
+                                    style={styles.seeAllBtn}
+                                >
+                                    <Text style={styles.seeAllText}>See all reviews</Text>
+                                    <Ionicons name="chevron-forward" size={16} color={Colors.primary} />
+                                </TouchableOpacity>
+                            )}
+                        </>
                     ) : (
-                        <Text style={styles.noReviews}>No reviews yet</Text>
+                        <EmptyState
+                            icon="chatbubble-outline"
+                            title="No reviews yet"
+                            description="Be the first to review this trainer"
+                        />
                     )}
-                </View>
+                </Card>
+            </PressableCard>
 
-                {/* Spacer for bottom button */}
-                <View style={{ height: 100 }} />
-            </ScrollView>
+            {/* Spacer for bottom button */}
+            <View style={{ height: 110 }} />
 
-            {/* Book Button */}
+            {/* ─── 7. BOOK NOW BUTTON (sticky) ─── */}
             {user?.role === 'athlete' && (
-                <View style={styles.bottomBar}>
-                    <TouchableOpacity onPress={handleMessage} style={styles.messageBtn}>
-                        <Ionicons name="chatbubble-outline" size={22} color="#45D0FF" />
+                <Animated.View entering={FadeInUp.delay(60).duration(250)} style={styles.bottomBar}>
+                    <TouchableOpacity
+                        onPress={handleMessage}
+                        style={styles.messageBtn}
+                        accessibilityLabel="Send message"
+                        activeOpacity={0.7}
+                    >
+                        <Ionicons name="chatbubble-outline" size={22} color={Colors.primary} />
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={handleBookingPress} disabled={isBooking} activeOpacity={0.8} style={[styles.bookButton, { flex: 1 }]}>
+                    <TouchableOpacity
+                        onPress={handleBookingPress}
+                        style={styles.bookButton}
+                        activeOpacity={0.85}
+                        disabled={isBooking}
+                        accessibilityLabel="Book session"
+                    >
                         {isBooking ? (
-                            <ActivityIndicator color="#0A0D14" size="small" />
+                            <ActivityIndicator size="small" color={Colors.textInverse} />
                         ) : (
                             <>
-                                <Ionicons name="calendar" size={20} color="#0A0D14" />
-                                <Text style={styles.bookButtonText}>Book Session</Text>
+                                <Ionicons name="calendar" size={18} color={Colors.textInverse} />
+                                <Text style={styles.bookButtonText}>
+                                    Book Session — ${Number(trainer.hourly_rate || 50).toFixed(0)}
+                                </Text>
                             </>
                         )}
                     </TouchableOpacity>
-                </View>
+                </Animated.View>
             )}
 
             {/* Booking Modal */}
@@ -678,11 +811,12 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
                             <TextInput
                                 style={styles.modalInput}
                                 placeholder="YYYY-MM-DD"
-                                placeholderTextColor="rgba(255,255,255,0.3)"
+                                placeholderTextColor={Colors.textMuted}
                                 value={selectedDate}
                                 onChangeText={setSelectedDate}
                                 keyboardType="numbers-and-punctuation"
                                 maxLength={10}
+                                accessibilityLabel="Session date"
                             />
 
                             {/* Time Slot Selection */}
@@ -718,6 +852,7 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
                                                 }}
                                                 disabled={isUnavailable}
                                                 activeOpacity={isUnavailable ? 1 : 0.7}
+                                                accessibilityLabel={`${formatHour(hour, minute)}${isUnavailable ? ', unavailable' : ''}`}
                                             >
                                                 <Text
                                                     style={[
@@ -748,6 +883,7 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
                                         ]}
                                         onPress={() => setSelectedDuration(dur)}
                                         activeOpacity={0.7}
+                                        accessibilityLabel={`${dur} minutes`}
                                     >
                                         <Text
                                             style={[
@@ -774,6 +910,7 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
                                                     selectedSport === sport && styles.sportOptionSelected,
                                                 ]}
                                                 onPress={() => setSelectedSport(sport)}
+                                                accessibilityLabel={sport}
                                             >
                                                 <Text
                                                     style={[
@@ -802,12 +939,13 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
                             <TextInput
                                 style={[styles.modalInput, { minHeight: 80, textAlignVertical: 'top' }]}
                                 placeholder="Any details for the trainer (goals, injuries, etc.)"
-                                placeholderTextColor="rgba(255,255,255,0.3)"
+                                placeholderTextColor={Colors.textMuted}
                                 value={bookingNotes}
                                 onChangeText={setBookingNotes}
                                 multiline
                                 numberOfLines={3}
                                 maxLength={500}
+                                accessibilityLabel="Booking notes"
                             />
 
                             {/* Sub-Account Selector */}
@@ -816,6 +954,7 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
                                 style={styles.subAccountSelector}
                                 onPress={() => setShowSubAccountPicker(!showSubAccountPicker)}
                                 activeOpacity={0.7}
+                                accessibilityLabel="Select who the booking is for"
                             >
                                 <View style={styles.subAccountSelectorLeft}>
                                     <View style={styles.subAccountAvatar}>
@@ -840,7 +979,6 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
 
                             {showSubAccountPicker && (
                                 <View style={styles.subAccountDropdown}>
-                                    {/* Myself option */}
                                     <TouchableOpacity
                                         style={[
                                             styles.subAccountOption,
@@ -902,7 +1040,7 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
 
                             {/* Price Breakdown */}
                             <Text style={styles.modalLabel}>Price Breakdown</Text>
-                            <View style={styles.priceBreakdownCard}>
+                            <Card style={styles.priceBreakdownCard}>
                                 <View style={styles.priceRow}>
                                     <Text style={styles.priceRowLabel}>
                                         Session ({selectedDuration} min)
@@ -919,77 +1057,304 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
                                         ${platformFee.toFixed(2)}
                                     </Text>
                                 </View>
-                                <View style={styles.priceDivider} />
+                                <Divider />
                                 <View style={styles.priceRow}>
                                     <Text style={styles.priceTotalLabel}>Total</Text>
                                     <Text style={styles.priceTotalValue}>
                                         ${totalPrice.toFixed(2)}
                                     </Text>
                                 </View>
-                            </View>
+                            </Card>
 
                             {/* Actions */}
-                            <TouchableOpacity style={styles.confirmButton} onPress={handleConfirmBooking} activeOpacity={0.85}>
-                                <Text style={styles.confirmButtonText}>Confirm Booking</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity style={styles.cancelButton} onPress={() => setShowBookingModal(false)} activeOpacity={0.7}>
-                                <Text style={styles.cancelButtonText}>Cancel</Text>
-                            </TouchableOpacity>
+                            <View style={styles.modalActions}>
+                                <Button
+                                    title="Confirm Booking"
+                                    onPress={handleConfirmBooking}
+                                    variant="primary"
+                                    size="lg"
+                                />
+                                <Button
+                                    title="Cancel"
+                                    onPress={() => setShowBookingModal(false)}
+                                    variant="outline"
+                                    size="md"
+                                />
+                            </View>
 
-                            {/* Bottom padding for scroll */}
-                            <View style={{ height: 20 }} />
+                            <View style={{ height: Spacing.xl }} />
                         </ScrollView>
                     </View>
                 </View>
             </Modal>
-        </View>
+        </ScreenWrapper>
     );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#0A0D14' },
-    scrollContent: { paddingHorizontal: Layout.screenPadding, paddingTop: Layout.headerTopPadding },
-    backButton: { width: 40, height: 40, borderRadius: 12, backgroundColor: Colors.surface, justifyContent: 'center', alignItems: 'center', marginBottom: Spacing.xl },
-    profileHeader: { alignItems: 'center', marginBottom: Spacing.xxxl },
-    avatarGradient: { width: 100, height: 100, borderRadius: 32, justifyContent: 'center', alignItems: 'center', marginBottom: Spacing.lg, ...Shadows.glow },
-    avatar: { width: 92, height: 92, borderRadius: 28, backgroundColor: '#0A0D14', justifyContent: 'center', alignItems: 'center' },
-    avatarImage: { width: 100, height: 100, borderRadius: 32, marginBottom: Spacing.lg, borderWidth: 3, borderColor: Colors.primary },
-    avatarText: { fontSize: FontSize.xxxl, fontWeight: FontWeight.bold, color: '#45D0FF' },
-    nameRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: 4 },
-    trainerName: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: '#FFFFFF' },
-    headline: { fontSize: FontSize.md, color: Colors.textSecondary, textAlign: 'center', marginBottom: Spacing.sm },
-    locationRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: Spacing.lg },
-    locationRowText: { fontSize: FontSize.sm, color: Colors.textSecondary },
-    badgeRow: { flexDirection: 'row', gap: Spacing.sm, flexWrap: 'wrap', marginTop: Spacing.sm, justifyContent: 'center' },
-    badge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: Spacing.md, paddingVertical: 4, borderRadius: BorderRadius.pill },
-    badgeText: { fontSize: FontSize.xs, fontWeight: FontWeight.semibold },
-    badgePillGreen: { backgroundColor: 'rgba(16, 185, 129, 0.15)' },
-    badgePillBlue: { backgroundColor: 'rgba(69, 208, 255, 0.15)' },
-    badgePillGray: { backgroundColor: 'rgba(156, 163, 175, 0.15)' },
-    statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.md, marginBottom: Spacing.xxxl },
-    statCard: { flex: 1, minWidth: 70, backgroundColor: '#161B22', borderRadius: BorderRadius.lg, padding: Spacing.lg, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
-    statValue: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: '#45D0FF' },
-    statLabel: { fontSize: FontSize.xs, color: Colors.textTertiary, marginTop: 2 },
-    section: { marginBottom: Spacing.xxl },
-    sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: Spacing.md },
-    sectionTitle: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: '#FFFFFF', marginBottom: Spacing.md },
-    sectionCount: { fontSize: FontSize.sm, color: Colors.textTertiary, marginBottom: Spacing.md },
-    bioText: { fontSize: FontSize.md, color: Colors.textSecondary, lineHeight: 24 },
-    sportsContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
-    sportChip: { paddingHorizontal: Spacing.lg, paddingVertical: Spacing.sm, borderRadius: BorderRadius.pill, backgroundColor: Colors.primaryGlow },
-    sportChipText: { fontSize: FontSize.sm, fontWeight: FontWeight.medium, color: '#45D0FF', textTransform: 'capitalize' },
-    certificationsContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
-    certChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: Spacing.lg, paddingVertical: Spacing.sm, borderRadius: BorderRadius.md, backgroundColor: '#161B22', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
-    certChipText: { fontSize: FontSize.sm, fontWeight: FontWeight.medium, color: Colors.text },
-    locationCard: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, padding: Spacing.lg, backgroundColor: '#161B22', borderRadius: BorderRadius.md, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
-    locationText: { fontSize: FontSize.md, color: '#FFFFFF' },
+    // ─── Hero Section ───
+    heroSection: {
+        alignItems: 'center',
+        marginBottom: Spacing.xxl,
+    },
+    avatarGlow: {
+        padding: 4,
+        borderRadius: 62,
+        borderWidth: 2,
+        borderColor: Colors.primaryGlow,
+        ...Shadows.glow,
+        marginBottom: Spacing.lg,
+    },
+    trainerName: {
+        fontSize: 26,
+        fontWeight: FontWeight.bold,
+        color: Colors.text,
+        textAlign: 'center',
+        marginBottom: Spacing.xs,
+    },
+    foundingBadgeWrap: {
+        marginBottom: Spacing.sm,
+    },
+    locationRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.xs,
+        marginBottom: Spacing.sm,
+    },
+    locationText: {
+        fontSize: FontSize.sm,
+        color: Colors.textSecondary,
+    },
+    ratingRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.xs,
+        marginBottom: Spacing.lg,
+    },
+    ratingValue: {
+        fontSize: FontSize.md,
+        fontWeight: FontWeight.bold,
+        color: Colors.warning,
+    },
+    ratingCount: {
+        fontSize: FontSize.sm,
+        color: Colors.textMuted,
+    },
+    badgeRow: {
+        flexDirection: 'row',
+        gap: Spacing.sm,
+        flexWrap: 'wrap',
+        justifyContent: 'center',
+    },
+
+    // ─── Stats Row ───
+    statsRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: Colors.card,
+        borderRadius: BorderRadius.lg,
+        paddingVertical: Spacing.lg,
+        paddingHorizontal: Spacing.md,
+        marginBottom: Spacing.xxl,
+        borderWidth: 1,
+        borderColor: Colors.border,
+    },
+    statMini: {
+        flex: 1,
+        alignItems: 'center',
+    },
+    statMiniValue: {
+        fontSize: FontSize.xl,
+        fontWeight: FontWeight.bold,
+        color: Colors.text,
+        marginBottom: 2,
+    },
+    statMiniLabel: {
+        fontSize: FontSize.xs,
+        color: Colors.textMuted,
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
+    },
+    statDivider: {
+        width: 1,
+        height: 28,
+        backgroundColor: Colors.border,
+    },
+
+    // ─── Sections ───
+    sectionWrap: {
+        marginBottom: Layout.sectionGap,
+    },
+    sectionTitle: {
+        fontSize: FontSize.lg,
+        fontWeight: FontWeight.bold,
+        color: Colors.text,
+        marginBottom: Spacing.md,
+    },
+    bioText: {
+        fontSize: FontSize.md,
+        color: Colors.textSecondary,
+        lineHeight: 24,
+    },
+    readMore: {
+        fontSize: FontSize.sm,
+        fontWeight: FontWeight.semibold,
+        color: Colors.primary,
+        marginTop: Spacing.sm,
+    },
+    chipRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: Spacing.sm,
+    },
+    certChip: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.sm,
+        backgroundColor: Colors.glass,
+        borderRadius: BorderRadius.pill,
+        paddingVertical: Spacing.sm,
+        paddingHorizontal: Spacing.md,
+    },
+    certChipText: {
+        fontSize: FontSize.sm,
+        fontWeight: FontWeight.medium,
+        color: Colors.text,
+    },
+
+    // ─── Pricing Card ───
+    pricingHeader: {
+        flexDirection: 'row',
+        alignItems: 'baseline',
+        marginBottom: Spacing.md,
+    },
+    pricingBigPrice: {
+        fontSize: FontSize.hero,
+        fontWeight: FontWeight.heavy,
+        color: Colors.text,
+    },
+    pricingPerHr: {
+        fontSize: FontSize.md,
+        color: Colors.textMuted,
+        marginLeft: 2,
+    },
+    pricingSubLabel: {
+        fontSize: FontSize.xs,
+        color: Colors.textMuted,
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
+        marginBottom: Spacing.sm,
+    },
+    pricingPillRow: {
+        flexDirection: 'row',
+        gap: Spacing.sm,
+        marginBottom: Spacing.lg,
+    },
+    pricingPill: {
+        flex: 1,
+        alignItems: 'center',
+        paddingVertical: Spacing.md,
+        borderRadius: BorderRadius.md,
+        borderWidth: 1.5,
+        borderColor: Colors.borderLight,
+        backgroundColor: 'transparent',
+    },
+    pricingPillActive: {
+        borderColor: Colors.primary,
+        backgroundColor: Colors.primaryMuted,
+    },
+    pricingPillDur: {
+        fontSize: FontSize.sm,
+        fontWeight: FontWeight.semibold,
+        color: Colors.textSecondary,
+    },
+    pricingPillPrice: {
+        fontSize: FontSize.xs,
+        color: Colors.textMuted,
+        marginTop: 2,
+    },
+    pricingPillTextActive: {
+        color: Colors.primary,
+    },
+    pricingMetaRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        marginTop: Spacing.md,
+    },
+    pricingMetaItem: {
+        alignItems: 'center',
+    },
+    pricingMetaLabel: {
+        fontSize: FontSize.xs,
+        color: Colors.textMuted,
+        marginBottom: 2,
+    },
+    pricingMetaValue: {
+        fontSize: FontSize.sm,
+        fontWeight: FontWeight.semibold,
+        color: Colors.text,
+    },
+
+    // ─── Availability ───
+    weekStrip: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        paddingVertical: Spacing.sm,
+    },
+    weekDayCol: {
+        alignItems: 'center',
+        flex: 1,
+    },
+    weekDayLabel: {
+        fontSize: FontSize.xs,
+        fontWeight: FontWeight.medium,
+        color: Colors.textMuted,
+        marginBottom: Spacing.sm,
+    },
+    weekDayLabelActive: {
+        color: Colors.text,
+        fontWeight: FontWeight.bold,
+    },
+    weekDayDot: {
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+        backgroundColor: Colors.glass,
+    },
+    weekDayDotActive: {
+        backgroundColor: Colors.primary,
+        ...Shadows.glow,
+    },
+    noAvailText: {
+        fontSize: FontSize.sm,
+        color: Colors.textTertiary,
+        textAlign: 'center',
+        marginTop: Spacing.sm,
+    },
+
+    // ─── Location Card ───
+    locationCardRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.md,
+    },
+    locationCardText: {
+        fontSize: FontSize.md,
+        color: Colors.text,
+        flex: 1,
+    },
+    locationCardSubtext: {
+        fontSize: FontSize.md,
+        color: Colors.textSecondary,
+        flex: 1,
+    },
     miniMapContainer: {
         marginTop: Spacing.md,
         height: 180,
         borderRadius: BorderRadius.md,
         overflow: 'hidden',
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.08)',
+        borderColor: Colors.border,
     },
     miniMap: {
         flex: 1,
@@ -1002,42 +1367,193 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
         borderWidth: 2,
-        borderColor: '#fff',
+        borderColor: Colors.text,
     },
-    pricingCard: { backgroundColor: '#161B22', borderRadius: BorderRadius.md, padding: Spacing.lg, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
-    pricingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: Spacing.sm },
-    pricingLabel: { fontSize: FontSize.sm, color: Colors.textSecondary },
-    pricingValue: { fontSize: FontSize.sm, fontWeight: FontWeight.semibold, color: Colors.text },
-    pricingDivider: { height: 1, backgroundColor: 'rgba(255,255,255,0.06)', marginVertical: 2 },
-    reviewCard: { backgroundColor: '#161B22', borderRadius: BorderRadius.md, padding: Spacing.lg, marginBottom: Spacing.sm, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
-    reviewHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.sm },
-    reviewerAvatar: { width: 36, height: 36, borderRadius: 10, backgroundColor: Colors.primaryGlow, justifyContent: 'center', alignItems: 'center', marginRight: Spacing.md },
-    reviewerAvatarText: { fontSize: FontSize.sm, fontWeight: FontWeight.bold, color: '#45D0FF' },
-    reviewerInfo: { flex: 1 },
-    reviewerName: { fontSize: FontSize.sm, fontWeight: FontWeight.semibold, color: '#FFFFFF' },
-    starsRow: { flexDirection: 'row', gap: 2, marginTop: 2 },
-    reviewDate: { fontSize: FontSize.xs, color: Colors.textTertiary },
-    reviewText: { fontSize: FontSize.sm, color: Colors.textSecondary, lineHeight: 20 },
-    noReviews: { fontSize: FontSize.md, color: Colors.textTertiary, textAlign: 'center', paddingVertical: Spacing.xxl },
-    bottomBar: { position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.xxl, paddingVertical: Spacing.lg, paddingBottom: 36, backgroundColor: '#161B22', borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.08)', gap: Spacing.lg },
-    messageBtn: { width: 52, height: 52, borderRadius: 14, borderWidth: 1.5, borderColor: 'rgba(69,208,255,0.3)', backgroundColor: '#161B22', justifyContent: 'center', alignItems: 'center' },
-    bookButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: 52, borderRadius: BorderRadius.md, gap: Spacing.sm, backgroundColor: '#45D0FF', shadowColor: '#45D0FF', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 8, elevation: 6 },
-    bookButtonText: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: '#0A0D14' },
-    // Modal styles
-    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
-    modalCard: { backgroundColor: '#161B22', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: Spacing.xxl, paddingBottom: 48, borderTopWidth: 1, borderTopColor: 'rgba(69,208,255,0.15)', maxHeight: '90%' },
-    modalTitle: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: '#FFFFFF', marginBottom: Spacing.xl, textAlign: 'center' },
-    modalLabel: { fontSize: FontSize.sm, fontWeight: FontWeight.semibold, color: Colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: Spacing.sm, marginTop: Spacing.lg },
-    modalInput: { backgroundColor: '#0A0D14', borderRadius: BorderRadius.md, borderWidth: 1, borderColor: 'rgba(69,208,255,0.25)', paddingHorizontal: Spacing.lg, paddingVertical: 14, fontSize: FontSize.md, color: '#FFFFFF', marginBottom: Spacing.sm },
-    sportSelectorRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
-    sportOption: { paddingHorizontal: Spacing.lg, paddingVertical: Spacing.sm, borderRadius: BorderRadius.pill, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.15)', backgroundColor: 'transparent' },
-    sportOptionSelected: { borderColor: '#45D0FF', backgroundColor: 'rgba(69,208,255,0.12)' },
-    sportOptionText: { fontSize: FontSize.sm, fontWeight: FontWeight.medium, color: Colors.textSecondary },
-    sportOptionTextSelected: { color: '#45D0FF', fontWeight: FontWeight.semibold },
-    confirmButton: { marginTop: Spacing.xl, height: 52, borderRadius: BorderRadius.md, backgroundColor: '#45D0FF', justifyContent: 'center', alignItems: 'center', shadowColor: '#45D0FF', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.35, shadowRadius: 8, elevation: 6 },
-    confirmButtonText: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: '#0A0D14' },
-    cancelButton: { marginTop: Spacing.md, height: 48, borderRadius: BorderRadius.md, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)' },
-    cancelButtonText: { fontSize: FontSize.md, fontWeight: FontWeight.medium, color: Colors.textSecondary },
+
+    // ─── Reviews ───
+    reviewsHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: Spacing.md,
+    },
+    reviewsSummary: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.xs,
+    },
+    reviewsSummaryText: {
+        fontSize: FontSize.sm,
+        fontWeight: FontWeight.bold,
+        color: Colors.warning,
+    },
+    reviewsSummaryCount: {
+        fontSize: FontSize.sm,
+        color: Colors.textMuted,
+    },
+    reviewItem: {
+        paddingVertical: Spacing.md,
+        borderBottomWidth: 1,
+        borderBottomColor: Colors.border,
+    },
+    reviewHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: Spacing.sm,
+        gap: Spacing.md,
+    },
+    reviewerInfo: {
+        flex: 1,
+    },
+    reviewerName: {
+        fontSize: FontSize.sm,
+        fontWeight: FontWeight.semibold,
+        color: Colors.text,
+    },
+    starsRow: {
+        flexDirection: 'row',
+        gap: 2,
+        marginTop: 2,
+    },
+    reviewDate: {
+        fontSize: FontSize.xs,
+        color: Colors.textTertiary,
+    },
+    reviewText: {
+        fontSize: FontSize.sm,
+        color: Colors.textSecondary,
+        lineHeight: 20,
+    },
+    seeAllBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingTop: Spacing.lg,
+        gap: Spacing.xs,
+    },
+    seeAllText: {
+        fontSize: FontSize.sm,
+        fontWeight: FontWeight.semibold,
+        color: Colors.primary,
+    },
+
+    // ─── Bottom Bar ───
+    bottomBar: {
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: Layout.screenPadding,
+        paddingVertical: Spacing.lg,
+        paddingBottom: Platform.OS === 'ios' ? 36 : Spacing.lg,
+        backgroundColor: Colors.card,
+        borderTopWidth: 1,
+        borderTopColor: Colors.border,
+        gap: Spacing.lg,
+        ...Shadows.large,
+    },
+    messageBtn: {
+        width: 52,
+        height: 52,
+        borderRadius: BorderRadius.lg,
+        borderWidth: 1.5,
+        borderColor: Colors.borderActive,
+        backgroundColor: Colors.card,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    bookButton: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: Spacing.sm,
+        height: 52,
+        borderRadius: BorderRadius.lg,
+        backgroundColor: Colors.primary,
+        ...Shadows.glow,
+    },
+    bookButtonText: {
+        fontSize: FontSize.md,
+        fontWeight: FontWeight.bold,
+        color: Colors.textInverse,
+    },
+
+    // ─── Modal ───
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: Colors.overlay,
+        justifyContent: 'flex-end',
+    },
+    modalCard: {
+        backgroundColor: Colors.card,
+        borderTopLeftRadius: BorderRadius.xxl,
+        borderTopRightRadius: BorderRadius.xxl,
+        padding: Layout.screenPadding,
+        paddingBottom: Spacing.huge,
+        borderTopWidth: 1,
+        borderTopColor: Colors.borderActive,
+        maxHeight: '90%',
+    },
+    modalTitle: {
+        fontSize: FontSize.xxl,
+        fontWeight: FontWeight.bold,
+        color: Colors.text,
+        marginBottom: Spacing.xl,
+        textAlign: 'center',
+    },
+    modalLabel: {
+        fontSize: FontSize.sm,
+        fontWeight: FontWeight.semibold,
+        color: Colors.textSecondary,
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
+        marginBottom: Spacing.sm,
+        marginTop: Spacing.lg,
+    },
+    modalInput: {
+        backgroundColor: Colors.background,
+        borderRadius: BorderRadius.md,
+        borderWidth: 1,
+        borderColor: Colors.borderActive,
+        paddingHorizontal: Spacing.lg,
+        paddingVertical: Spacing.md + 2,
+        fontSize: FontSize.md,
+        color: Colors.text,
+        marginBottom: Spacing.sm,
+    },
+    modalActions: {
+        gap: Spacing.md,
+        marginTop: Spacing.xl,
+    },
+    sportSelectorRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: Spacing.sm,
+    },
+    sportOption: {
+        paddingHorizontal: Spacing.lg,
+        paddingVertical: Spacing.sm,
+        borderRadius: BorderRadius.pill,
+        borderWidth: 1.5,
+        borderColor: Colors.borderLight,
+        backgroundColor: 'transparent',
+    },
+    sportOptionSelected: {
+        borderColor: Colors.primary,
+        backgroundColor: Colors.primaryMuted,
+    },
+    sportOptionText: {
+        fontSize: FontSize.sm,
+        fontWeight: FontWeight.medium,
+        color: Colors.textSecondary,
+    },
+    sportOptionTextSelected: {
+        color: Colors.primary,
+        fontWeight: FontWeight.semibold,
+    },
 
     // Time slots
     timeSlotsGrid: {
@@ -1061,7 +1577,7 @@ const styles = StyleSheet.create({
     },
     timeSlotUnavailable: {
         backgroundColor: Colors.surface,
-        borderColor: 'rgba(255,255,255,0.04)',
+        borderColor: Colors.glassBorder,
         opacity: 0.45,
     },
     timeSlotText: {
@@ -1070,7 +1586,7 @@ const styles = StyleSheet.create({
         color: Colors.text,
     },
     timeSlotTextSelected: {
-        color: '#0A0D14',
+        color: Colors.textInverse,
         fontWeight: FontWeight.bold,
     },
     timeSlotTextUnavailable: {
@@ -1115,7 +1631,7 @@ const styles = StyleSheet.create({
         paddingVertical: Spacing.md,
         borderRadius: BorderRadius.pill,
         borderWidth: 1.5,
-        borderColor: 'rgba(255,255,255,0.15)',
+        borderColor: Colors.borderLight,
         backgroundColor: 'transparent',
         alignItems: 'center',
     },
@@ -1129,7 +1645,7 @@ const styles = StyleSheet.create({
         color: Colors.textSecondary,
     },
     durationChipTextSelected: {
-        color: '#0A0D14',
+        color: Colors.textInverse,
         fontWeight: FontWeight.bold,
     },
 
@@ -1138,10 +1654,10 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        backgroundColor: '#0A0D14',
+        backgroundColor: Colors.background,
         borderRadius: BorderRadius.md,
         borderWidth: 1,
-        borderColor: 'rgba(69,208,255,0.25)',
+        borderColor: Colors.borderActive,
         paddingHorizontal: Spacing.lg,
         paddingVertical: Spacing.md,
     },
@@ -1158,8 +1674,8 @@ const styles = StyleSheet.create({
     subAccountAvatar: {
         width: 32,
         height: 32,
-        borderRadius: 10,
-        backgroundColor: Colors.primaryGlow,
+        borderRadius: BorderRadius.sm,
+        backgroundColor: Colors.primaryMuted,
         justifyContent: 'center',
         alignItems: 'center',
     },
@@ -1170,10 +1686,10 @@ const styles = StyleSheet.create({
     },
     subAccountDropdown: {
         marginTop: Spacing.sm,
-        backgroundColor: '#0A0D14',
+        backgroundColor: Colors.background,
         borderRadius: BorderRadius.md,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.08)',
+        borderColor: Colors.border,
         overflow: 'hidden',
     },
     subAccountOption: {
@@ -1183,10 +1699,10 @@ const styles = StyleSheet.create({
         paddingHorizontal: Spacing.lg,
         paddingVertical: Spacing.md,
         borderBottomWidth: 1,
-        borderBottomColor: 'rgba(255,255,255,0.04)',
+        borderBottomColor: Colors.border,
     },
     subAccountOptionActive: {
-        backgroundColor: Colors.primaryGlow,
+        backgroundColor: Colors.primaryMuted,
     },
     subAccountOptionText: {
         flex: 1,
@@ -1208,11 +1724,7 @@ const styles = StyleSheet.create({
 
     // Price breakdown
     priceBreakdownCard: {
-        backgroundColor: '#0A0D14',
-        borderRadius: BorderRadius.md,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.08)',
-        padding: Spacing.lg,
+        backgroundColor: Colors.background,
     },
     priceRow: {
         flexDirection: 'row',
@@ -1228,11 +1740,6 @@ const styles = StyleSheet.create({
         fontSize: FontSize.sm,
         color: Colors.text,
         fontWeight: FontWeight.medium,
-    },
-    priceDivider: {
-        height: 1,
-        backgroundColor: 'rgba(255,255,255,0.08)',
-        marginVertical: Spacing.sm,
     },
     priceTotalLabel: {
         fontSize: FontSize.md,

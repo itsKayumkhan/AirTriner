@@ -1,16 +1,21 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import {
-    View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator,
-} from 'react-native';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { View, Text, StyleSheet, FlatList, TextInput, Pressable } from 'react-native';
+import Animated, { FadeInUp } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../../contexts/AuthContext';
-import { supabase, MessageRow, BookingRow, UserRow } from '../../lib/supabase';
-import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows, Layout} from '../../theme';
+import { supabase, MessageRow } from '../../lib/supabase';
+import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Layout } from '../../theme';
+import {
+    ScreenWrapper,
+    Avatar,
+    Badge,
+    EmptyState,
+    LoadingScreen,
+} from '../../components/ui';
 
 type ConversationItem = {
-    bookingId: string;         // most recent booking id (for display/sending)
-    allBookingIds: string[];   // all booking ids with this user
+    bookingId: string;
+    allBookingIds: string[];
     otherUserId: string;
     otherUserName: string;
     otherUserInitials: string;
@@ -20,15 +25,16 @@ type ConversationItem = {
     unreadCount: number;
 };
 
+
 export default function MessagesScreen({ navigation }: any) {
     const { user } = useAuth();
     const [conversations, setConversations] = useState<ConversationItem[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [searchQuery, setSearchQuery] = useState('');
 
     const loadConversations = useCallback(async () => {
         if (!user) return;
         try {
-            // 1. Load all bookings for this user (as trainer or athlete)
             const { data: bookings, error: bookingsError } = await supabase
                 .from('bookings')
                 .select('*')
@@ -42,11 +48,9 @@ export default function MessagesScreen({ navigation }: any) {
                 return;
             }
 
-            // 2. Get unique other user IDs
             const otherCol = user.role === 'trainer' ? 'athlete_id' : 'trainer_id';
             const otherUserIds = [...new Set(bookings.map((b: any) => b[otherCol]))];
 
-            // 3. Fetch other users' profiles
             const { data: otherUsers } = await supabase
                 .from('users')
                 .select('id, first_name, last_name')
@@ -54,7 +58,6 @@ export default function MessagesScreen({ navigation }: any) {
 
             const userMap = new Map((otherUsers || []).map((u: any) => [u.id, u]));
 
-            // 4. Fetch ALL messages across all booking IDs in one query
             const bookingIds = bookings.map((b: any) => b.id);
             const { data: allMessages } = await supabase
                 .from('messages')
@@ -62,7 +65,6 @@ export default function MessagesScreen({ navigation }: any) {
                 .in('booking_id', bookingIds)
                 .order('created_at', { ascending: false });
 
-            // 5. Build one conversation per other user (merge all bookings)
             const userConvoMap = new Map<string, ConversationItem>();
 
             bookings.forEach((b: any) => {
@@ -71,14 +73,13 @@ export default function MessagesScreen({ navigation }: any) {
                 const bookingMessages = (allMessages || []).filter(
                     (m: MessageRow) => m.booking_id === b.id
                 );
-                const lastMsg = bookingMessages[0]; // already sorted desc
+                const lastMsg = bookingMessages[0];
                 const unreadCount = bookingMessages.filter(
                     (m: any) => m.sender_id !== user.id && !m.read_at
                 ).length;
 
                 const existing = userConvoMap.get(otherUserId);
                 if (existing) {
-                    // Merge: accumulate booking IDs, unread counts; keep latest message
                     existing.allBookingIds.push(b.id);
                     existing.unreadCount += unreadCount;
                     const existingTime = new Date(existing.lastMessageAt).getTime();
@@ -108,7 +109,6 @@ export default function MessagesScreen({ navigation }: any) {
                 }
             });
 
-            // 6. Sort by most recent message
             const convos = Array.from(userConvoMap.values());
             convos.sort((a, b) => {
                 const tA = new Date(a.lastMessageAt).getTime();
@@ -131,7 +131,6 @@ export default function MessagesScreen({ navigation }: any) {
         loadConversations();
     }, [loadConversations]);
 
-    // Re-load conversations when screen comes into focus
     useEffect(() => {
         const unsubscribe = navigation.addListener('focus', () => {
             loadConversations();
@@ -139,7 +138,6 @@ export default function MessagesScreen({ navigation }: any) {
         return unsubscribe;
     }, [navigation, loadConversations]);
 
-    // Real-time subscription for new messages
     useEffect(() => {
         if (!user) return;
 
@@ -153,7 +151,6 @@ export default function MessagesScreen({ navigation }: any) {
                     if (!msg) return;
 
                     if (payload.eventType === 'UPDATE') {
-                        // Read receipt update - reload to refresh unread counts
                         loadConversations();
                         return;
                     }
@@ -164,7 +161,6 @@ export default function MessagesScreen({ navigation }: any) {
                                 c.allBookingIds.includes(msg.booking_id)
                             );
                             if (!existing) {
-                                // New conversation - reload fully
                                 loadConversations();
                                 return prev;
                             }
@@ -208,156 +204,282 @@ export default function MessagesScreen({ navigation }: any) {
         return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     };
 
-    const renderConversation = ({ item }: { item: ConversationItem }) => (
-        <TouchableOpacity
-            style={styles.convCard}
-            activeOpacity={0.7}
-            onPress={() =>
-                navigation.navigate('Chat', {
-                    bookingId: item.bookingId,
-                    allBookingIds: item.allBookingIds,
-                    otherUser: {
-                        id: item.otherUserId,
-                        first_name: item.otherUserName.split(' ')[0],
-                        last_name: item.otherUserName.split(' ').slice(1).join(' '),
-                    },
-                    sport: item.sport,
-                })
-            }
-        >
-            <LinearGradient
-                colors={['#45D0FF', '#0047AB']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={[styles.avatar, item.unreadCount > 0 && styles.avatarUnread]}
+    const isRecent = (dateStr: string) => {
+        const d = new Date(dateStr);
+        if (isNaN(d.getTime())) return false;
+        return Date.now() - d.getTime() < 600000; // 10 minutes
+    };
+
+    const totalUnread = conversations.reduce((acc, c) => acc + c.unreadCount, 0);
+
+    const filteredConversations = useMemo(() => {
+        if (!searchQuery.trim()) return conversations;
+        const q = searchQuery.toLowerCase();
+        return conversations.filter(
+            (c) =>
+                c.otherUserName.toLowerCase().includes(q) ||
+                c.sport?.toLowerCase().includes(q) ||
+                c.lastMessage.toLowerCase().includes(q)
+        );
+    }, [conversations, searchQuery]);
+
+    const renderConversation = ({ item, index }: { item: ConversationItem; index: number }) => {
+        const hasUnread = item.unreadCount > 0;
+        const recentActivity = isRecent(item.lastMessageAt);
+
+        return (
+            <Pressable
+                style={({ pressed }) => [
+                    styles.convItem,
+                    hasUnread && styles.convItemUnread,
+                    pressed && styles.convItemPressed,
+                ]}
+                onPress={() =>
+                    navigation.navigate('Chat', {
+                        bookingId: item.bookingId,
+                        allBookingIds: item.allBookingIds,
+                        otherUser: {
+                            id: item.otherUserId,
+                            first_name: item.otherUserName.split(' ')[0],
+                            last_name: item.otherUserName.split(' ').slice(1).join(' '),
+                        },
+                        sport: item.sport,
+                    })
+                }
+                accessibilityLabel={`Conversation with ${item.otherUserName}${hasUnread ? `, ${item.unreadCount} unread messages` : ''}`}
+                accessibilityRole="button"
             >
-                <Text style={styles.avatarText}>{item.otherUserInitials}</Text>
-            </LinearGradient>
-            <View style={styles.convContent}>
-                <View style={styles.convTopRow}>
-                    <Text
-                        style={[
-                            styles.convName,
-                            item.unreadCount > 0 && styles.convNameUnread,
-                        ]}
-                    >
-                        {item.otherUserName}
-                    </Text>
-                    <Text style={styles.convTime}>{formatTime(item.lastMessageAt)}</Text>
+                {/* Avatar with online indicator */}
+                <View style={styles.avatarContainer}>
+                    <Avatar
+                        name={item.otherUserName}
+                        size={48}
+                    />
+                    {recentActivity && <View style={styles.onlineDot} />}
                 </View>
-                <Text style={styles.convSport}>
-                    {(item.sport || '').replace(/_/g, ' ')}
-                    {item.allBookingIds.length > 1
-                        ? ` \u00B7 ${item.allBookingIds.length} bookings`
-                        : ''}
-                </Text>
-                <Text
-                    style={[
-                        styles.convMessage,
-                        item.unreadCount > 0 && styles.convMessageUnread,
-                    ]}
-                    numberOfLines={1}
-                >
-                    {item.lastMessage}
-                </Text>
-            </View>
-            {item.unreadCount > 0 && (
-                <View style={styles.unreadBadge}>
-                    <Text style={styles.unreadText}>{item.unreadCount}</Text>
+
+                {/* Center content */}
+                <View style={styles.convContent}>
+                    <View style={styles.convTopRow}>
+                        <Text
+                            style={[
+                                styles.convName,
+                                hasUnread && styles.convNameUnread,
+                            ]}
+                            numberOfLines={1}
+                        >
+                            {item.otherUserName}
+                        </Text>
+                        <Text style={[styles.convTime, hasUnread && styles.convTimeUnread]}>
+                            {formatTime(item.lastMessageAt)}
+                        </Text>
+                    </View>
+                    <View style={styles.convBottomRow}>
+                        <View style={styles.messageLine}>
+                            <Text
+                                style={[
+                                    styles.convMessage,
+                                    hasUnread && styles.convMessageUnread,
+                                ]}
+                                numberOfLines={1}
+                            >
+                                {item.lastMessage}
+                            </Text>
+                            <Badge
+                                label={(item.sport || '').replace(/_/g, ' ')}
+                                color={Colors.primary}
+                                size="sm"
+                                style={styles.sportBadge}
+                            />
+                        </View>
+                        {hasUnread && (
+                            <View style={styles.unreadBadge}>
+                                <Text style={styles.unreadText}>
+                                    {item.unreadCount > 99 ? '99+' : item.unreadCount}
+                                </Text>
+                            </View>
+                        )}
+                    </View>
                 </View>
-            )}
-        </TouchableOpacity>
-    );
+            </Pressable>
+        );
+    };
+
+    const renderSeparator = () => <View style={styles.separator} />;
 
     if (isLoading) {
-        return (
-            <View style={[styles.container, styles.center]}>
-                <ActivityIndicator size="large" color={Colors.primary} />
-            </View>
-        );
+        return <LoadingScreen message="Loading conversations..." />;
     }
 
     return (
-        <View style={styles.container}>
-            <View style={styles.header}>
+        <ScreenWrapper scrollable={false} noPadding>
+            {/* Header */}
+            <View style={styles.headerContainer}>
                 <Text style={styles.headerTitle}>Messages</Text>
                 <Text style={styles.headerSubtitle}>
-                    {conversations.length} conversation
-                    {conversations.length !== 1 ? 's' : ''}
-                    {conversations.reduce((acc, c) => acc + c.unreadCount, 0) > 0 && (
-                        ` \u00B7 ${conversations.reduce((acc, c) => acc + c.unreadCount, 0)} unread`
-                    )}
+                    {totalUnread > 0
+                        ? `${totalUnread} unread message${totalUnread !== 1 ? 's' : ''}`
+                        : `${conversations.length} conversation${conversations.length !== 1 ? 's' : ''}`}
                 </Text>
             </View>
+
+            {/* Search bar */}
+            <View style={styles.searchContainer}>
+                <View style={styles.searchBar}>
+                    <Ionicons
+                        name="search-outline"
+                        size={18}
+                        color={Colors.textTertiary}
+                    />
+                    <TextInput
+                        style={styles.searchInput}
+                        placeholder="Search conversations..."
+                        placeholderTextColor={Colors.textTertiary}
+                        value={searchQuery}
+                        onChangeText={setSearchQuery}
+                        returnKeyType="search"
+                        accessibilityLabel="Search conversations"
+                    />
+                    {searchQuery.length > 0 && (
+                        <Pressable
+                            onPress={() => setSearchQuery('')}
+                            hitSlop={8}
+                            style={styles.clearButton}
+                            accessibilityLabel="Clear search"
+                        >
+                            <Ionicons name="close-circle" size={18} color={Colors.textTertiary} />
+                        </Pressable>
+                    )}
+                </View>
+            </View>
+
+            {/* Conversation list */}
             <FlatList
-                data={conversations}
+                data={filteredConversations}
                 renderItem={renderConversation}
                 keyExtractor={(item) => item.otherUserId}
                 contentContainerStyle={styles.listContent}
                 showsVerticalScrollIndicator={false}
+                ItemSeparatorComponent={renderSeparator}
                 ListEmptyComponent={
-                    <View style={styles.emptyState}>
-                        <Ionicons
-                            name="chatbubbles-outline"
-                            size={48}
-                            color={Colors.textTertiary}
-                        />
-                        <Text style={styles.emptyTitle}>No conversations yet</Text>
-                        <Text style={styles.emptyText}>
-                            Messages appear after you have active bookings with{' '}
-                            {user?.role === 'trainer' ? 'athletes' : 'a trainer'}.
-                        </Text>
-                    </View>
+                    <EmptyState
+                        icon="chatbubbles-outline"
+                        title={
+                            searchQuery.trim()
+                                ? 'No results found'
+                                : 'No conversations yet'
+                        }
+                        description={
+                            searchQuery.trim()
+                                ? `No conversations match "${searchQuery}"`
+                                : `Messages appear after you have active bookings with ${
+                                      user?.role === 'trainer' ? 'athletes' : 'a trainer'
+                                  }.`
+                        }
+                    />
                 }
             />
-        </View>
+        </ScreenWrapper>
     );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#0A0D14' },
-    center: { justifyContent: 'center', alignItems: 'center' },
-    header: {
-        paddingHorizontal: Spacing.xxl,
-        paddingTop: Layout.headerTopPadding,
-        paddingBottom: Spacing.lg,
+    headerContainer: {
+        paddingHorizontal: Layout.screenPadding,
+        paddingTop: Spacing.md,
+        paddingBottom: Spacing.sm,
     },
     headerTitle: {
-        fontSize: FontSize.xxl,
+        fontSize: FontSize.xxxl,
         fontWeight: FontWeight.bold,
-        color: '#FFFFFF',
+        color: Colors.text,
+        letterSpacing: -0.5,
     },
     headerSubtitle: {
         fontSize: FontSize.sm,
         color: Colors.textSecondary,
         marginTop: 2,
     },
-    listContent: { paddingHorizontal: Layout.screenPadding, paddingBottom: 100 },
-    convCard: {
+
+    // Search bar
+    searchContainer: {
+        paddingHorizontal: Layout.screenPadding,
+        paddingVertical: Spacing.md,
+    },
+    searchBar: {
         flexDirection: 'row',
         alignItems: 'center',
-        padding: Spacing.lg,
-        backgroundColor: '#161B22',
-        borderRadius: BorderRadius.lg,
-        marginBottom: Spacing.sm,
+        backgroundColor: Colors.surface,
+        borderRadius: BorderRadius.pill,
+        paddingHorizontal: Spacing.lg,
+        height: 44,
+        gap: Spacing.sm,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.05)',
+        borderColor: Colors.border,
     },
-    avatar: {
-        width: 52,
-        height: 52,
-        borderRadius: 16,
+    searchInput: {
+        flex: 1,
+        fontSize: FontSize.md,
+        color: Colors.text,
+        paddingVertical: 0,
+    },
+    clearButton: {
+        minWidth: 44,
+        minHeight: 44,
         justifyContent: 'center',
         alignItems: 'center',
-        marginRight: Spacing.md,
     },
-    avatarUnread: { borderWidth: 2, borderColor: '#45D0FF' },
-    avatarText: {
-        fontSize: FontSize.lg,
-        fontWeight: FontWeight.bold,
-        color: '#FFFFFF',
+
+    // List
+    listContent: {
+        paddingBottom: 100,
+        flexGrow: 1,
     },
-    convContent: { flex: 1 },
+
+    // Separator
+    separator: {
+        height: 1,
+        backgroundColor: Colors.border,
+        marginLeft: Layout.screenPadding + 48 + Spacing.lg, // avatar + gap
+        marginRight: Layout.screenPadding,
+    },
+
+    // Conversation item
+    convItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: Layout.screenPadding,
+        paddingVertical: Spacing.lg,
+        gap: Spacing.lg,
+    },
+    convItemUnread: {
+        backgroundColor: Colors.surfaceElevated,
+    },
+    convItemPressed: {
+        opacity: 0.7,
+    },
+
+    // Avatar
+    avatarContainer: {
+        position: 'relative',
+    },
+    onlineDot: {
+        position: 'absolute',
+        bottom: 1,
+        right: 1,
+        width: 12,
+        height: 12,
+        borderRadius: 6,
+        backgroundColor: Colors.success,
+        borderWidth: 2,
+        borderColor: Colors.background,
+    },
+
+    // Content
+    convContent: {
+        flex: 1,
+        gap: 4,
+    },
     convTopRow: {
         flexDirection: 'row',
         justifyContent: 'space-between',
@@ -366,41 +488,59 @@ const styles = StyleSheet.create({
     convName: {
         fontSize: FontSize.md,
         fontWeight: FontWeight.semibold,
-        color: '#FFFFFF',
+        color: Colors.text,
+        flex: 1,
+        marginRight: Spacing.sm,
     },
-    convNameUnread: { fontWeight: FontWeight.bold },
-    convTime: { fontSize: FontSize.xs, color: Colors.textTertiary },
-    convSport: { fontSize: FontSize.xs, color: '#45D0FF', marginTop: 2 },
+    convNameUnread: {
+        fontWeight: FontWeight.bold,
+    },
+    convTime: {
+        fontSize: FontSize.xxs,
+        color: Colors.textTertiary,
+    },
+    convTimeUnread: {
+        color: Colors.primary,
+        fontWeight: FontWeight.semibold,
+    },
+
+    convBottomRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.sm,
+    },
+    messageLine: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.sm,
+    },
     convMessage: {
         fontSize: FontSize.sm,
         color: Colors.textTertiary,
-        marginTop: 4,
+        flexShrink: 1,
     },
-    convMessageUnread: { color: '#FFFFFF' },
+    convMessageUnread: {
+        color: Colors.textSecondary,
+        fontWeight: FontWeight.medium,
+    },
+    sportBadge: {
+        flexShrink: 0,
+    },
+
+    // Unread badge
     unreadBadge: {
-        width: 22,
+        minWidth: 22,
         height: 22,
         borderRadius: 11,
-        backgroundColor: '#45D0FF',
+        backgroundColor: Colors.error,
         justifyContent: 'center',
         alignItems: 'center',
-        marginLeft: Spacing.sm,
+        paddingHorizontal: Spacing.xs,
     },
     unreadText: {
-        fontSize: FontSize.xs,
+        fontSize: FontSize.xxs,
         fontWeight: FontWeight.bold,
-        color: '#0A0D14',
-    },
-    emptyState: { alignItems: 'center', paddingTop: 80, gap: Spacing.md },
-    emptyTitle: {
-        fontSize: FontSize.lg,
-        fontWeight: FontWeight.bold,
-        color: '#FFFFFF',
-    },
-    emptyText: {
-        fontSize: FontSize.md,
-        color: Colors.textSecondary,
-        textAlign: 'center',
-        maxWidth: 260,
+        color: Colors.text,
     },
 });

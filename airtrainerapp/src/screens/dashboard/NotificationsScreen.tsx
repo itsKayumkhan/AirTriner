@@ -1,24 +1,25 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-    View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator,
-    Modal, ScrollView, Alert, useWindowDimensions,
+    View, Text, StyleSheet, FlatList, Pressable, RefreshControl, ActivityIndicator,
+    Modal, ScrollView, Alert,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase, NotificationRow } from '../../lib/supabase';
 import { Colors, Spacing, BorderRadius, FontSize, FontWeight } from '../../theme';
+import { ScreenWrapper, ScreenHeader, Card, Badge, EmptyState, LoadingScreen, Button } from '../../components/ui';
 
 const NOTIF_ICONS: Record<string, { icon: string; color: string; bg: string }> = {
-    NEW_REQUEST_NEARBY: { icon: 'location', color: '#45D0FF', bg: 'rgba(69,208,255,0.1)' },
-    BOOKING_CONFIRMED: { icon: 'checkmark-circle', color: '#45D0FF', bg: 'rgba(69,208,255,0.1)' },
+    NEW_REQUEST_NEARBY: { icon: 'location', color: Colors.primary, bg: Colors.primaryGlow },
+    BOOKING_CONFIRMED: { icon: 'checkmark-circle', color: Colors.primary, bg: Colors.primaryGlow },
     BOOKING_CANCELLED: { icon: 'close-circle', color: Colors.error, bg: Colors.errorLight },
-    BOOKING_COMPLETED: { icon: 'trophy', color: '#45D0FF', bg: 'rgba(69,208,255,0.1)' },
+    BOOKING_COMPLETED: { icon: 'trophy', color: Colors.primary, bg: Colors.primaryGlow },
     PAYMENT_RECEIVED: { icon: 'cash', color: Colors.success, bg: Colors.successLight },
-    REVIEW_RECEIVED: { icon: 'star', color: '#45D0FF', bg: 'rgba(69,208,255,0.1)' },
-    VERIFICATION_UPDATE: { icon: 'shield-checkmark', color: '#45D0FF', bg: 'rgba(69,208,255,0.1)' },
+    REVIEW_RECEIVED: { icon: 'star', color: Colors.primary, bg: Colors.primaryGlow },
+    VERIFICATION_UPDATE: { icon: 'shield-checkmark', color: Colors.primary, bg: Colors.primaryGlow },
     SUBSCRIPTION_EXPIRING: { icon: 'warning', color: Colors.warning, bg: Colors.warningLight },
-    MESSAGE_RECEIVED: { icon: 'chatbubble', color: '#45D0FF', bg: 'rgba(69,208,255,0.1)' },
+    MESSAGE_RECEIVED: { icon: 'chatbubble', color: Colors.primary, bg: Colors.primaryGlow },
     TRAINING_OFFER: { icon: 'pricetag', color: Colors.warning, bg: Colors.warningLight },
     NEW_OFFER: { icon: 'pricetag', color: Colors.warning, bg: Colors.warningLight },
     OFFER_ACCEPTED: { icon: 'checkmark-circle', color: Colors.success, bg: Colors.successLight },
@@ -34,9 +35,37 @@ const getOfferIdFromNotification = (item: NotificationRow): string | null => {
     return d?.offerId || d?.offer_id || null;
 };
 
+function getDateGroup(dateStr: string): string {
+    const d = new Date(dateStr);
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const yesterday = new Date(today.getTime() - 86400000);
+    const notifDate = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+
+    if (notifDate.getTime() === today.getTime()) return 'Today';
+    if (notifDate.getTime() === yesterday.getTime()) return 'Yesterday';
+    return 'Earlier';
+}
+
+type GroupedNotifications = { title: string; data: NotificationRow[] }[];
+
+function groupNotifications(notifications: NotificationRow[]): GroupedNotifications {
+    const groups: Record<string, NotificationRow[]> = {};
+    const order = ['Today', 'Yesterday', 'Earlier'];
+
+    for (const n of notifications) {
+        const group = getDateGroup(n.created_at);
+        if (!groups[group]) groups[group] = [];
+        groups[group].push(n);
+    }
+
+    return order
+        .filter((key) => groups[key]?.length > 0)
+        .map((key) => ({ title: key, data: groups[key] }));
+}
+
 export default function NotificationsScreen({ navigation }: any) {
     const { user } = useAuth();
-    const insets = useSafeAreaInsets();
     const [notifications, setNotifications] = useState<NotificationRow[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -67,7 +96,6 @@ export default function NotificationsScreen({ navigation }: any) {
     useEffect(() => {
         fetchNotifications();
 
-        // Subscribe to new notifications in real-time
         if (!user) return;
         const channel = supabase
             .channel(`notifications-${user.id}`)
@@ -114,7 +142,6 @@ export default function NotificationsScreen({ navigation }: any) {
                     style: 'destructive',
                     onPress: async () => {
                         try {
-                            // Delete all notifications for this user
                             const { error } = await supabase
                                 .from('notifications')
                                 .delete()
@@ -122,7 +149,6 @@ export default function NotificationsScreen({ navigation }: any) {
 
                             if (error) {
                                 console.error('Supabase delete error:', error);
-                                // Fallback: mark all as read instead of deleting
                                 await supabase
                                     .from('notifications')
                                     .update({ read: true })
@@ -130,7 +156,6 @@ export default function NotificationsScreen({ navigation }: any) {
                                 Alert.alert('Note', 'Notifications were marked as read instead of deleted.');
                             }
 
-                            // Always clear local state
                             setNotifications([]);
                         } catch (err) {
                             console.error('Failed to clear notifications:', err);
@@ -245,84 +270,113 @@ export default function NotificationsScreen({ navigation }: any) {
         }
     };
 
-    const renderNotification = ({ item }: { item: NotificationRow }) => {
+    const unreadCount = notifications.filter((n) => !n.read).length;
+    const grouped = groupNotifications(notifications);
+
+    const renderNotification = (item: NotificationRow, index: number) => {
         const config = NOTIF_ICONS[item.type] || { icon: 'notifications', color: Colors.textSecondary, bg: Colors.surface };
 
         return (
-            <TouchableOpacity
-                style={[styles.notifCard, !item.read && styles.notifCardUnread]}
-                activeOpacity={0.7}
-                onPress={() => markAsRead(item.id)}
-            >
-                <View style={[styles.iconContainer, { backgroundColor: config.bg }]}>
-                    <Ionicons name={config.icon as any} size={20} color={config.color} />
-                </View>
-                <View style={styles.notifContent}>
-                    <Text style={[styles.notifTitle, !item.read && styles.notifTitleUnread]}>{item.title}</Text>
-                    <Text style={styles.notifBody} numberOfLines={2}>{item.body}</Text>
-                    <Text style={styles.notifTime}>{formatTime(item.created_at)}</Text>
-                    {isOfferNotification(item.type) && user?.role === 'athlete' && getOfferIdFromNotification(item) && (
-                        <TouchableOpacity
-                            style={styles.viewOfferButton}
-                            onPress={() => handleViewOffer(item)}
-                            activeOpacity={0.7}
-                        >
-                            <Ionicons name="eye-outline" size={14} color="#fff" />
-                            <Text style={styles.viewOfferButtonText}>View Offer</Text>
-                        </TouchableOpacity>
-                    )}
-                </View>
-                {!item.read && <View style={styles.unreadDot} />}
-            </TouchableOpacity>
+            <Animated.View key={item.id} entering={FadeInDown.duration(200).delay(index * 25)}>
+                <Pressable
+                    style={({ pressed }) => [pressed && { opacity: 0.9, transform: [{ scale: 0.98 }] }]}
+                    onPress={() => markAsRead(item.id)}
+                    accessibilityLabel={`Notification: ${item.title}`}
+                >
+                    <Card
+                        style={{
+                            ...styles.notifCard,
+                            ...(!item.read ? styles.notifCardUnread : {}),
+                        }}
+                    >
+                        <View style={styles.notifRow}>
+                            {/* Icon circle colored by type */}
+                            <View style={[styles.iconCircle, { backgroundColor: config.bg }]}>
+                                <Ionicons name={config.icon as any} size={20} color={config.color} />
+                            </View>
+                            <View style={styles.notifContent}>
+                                <View style={styles.notifTitleRow}>
+                                    <Text style={[styles.notifTitle, !item.read && styles.notifTitleUnread]} numberOfLines={1}>
+                                        {item.title}
+                                    </Text>
+                                    <Text style={styles.notifTime}>{formatTime(item.created_at)}</Text>
+                                </View>
+                                <Text style={styles.notifBody} numberOfLines={2}>{item.body}</Text>
+                                {isOfferNotification(item.type) && user?.role === 'athlete' && getOfferIdFromNotification(item) && (
+                                    <Pressable
+                                        style={({ pressed }) => [
+                                            styles.viewOfferButton,
+                                            pressed && { opacity: 0.9, transform: [{ scale: 0.98 }] },
+                                        ]}
+                                        onPress={() => handleViewOffer(item)}
+                                        accessibilityLabel="View Offer"
+                                    >
+                                        <Ionicons name="eye-outline" size={14} color={Colors.textInverse} />
+                                        <Text style={styles.viewOfferButtonText}>View Offer</Text>
+                                    </Pressable>
+                                )}
+                            </View>
+                            {/* Unread dot indicator */}
+                            {!item.read && <View style={styles.unreadDot} />}
+                        </View>
+                    </Card>
+                </Pressable>
+            </Animated.View>
         );
     };
 
     if (isLoading) {
-        return <View style={[styles.container, styles.center]}><ActivityIndicator size="large" color={Colors.primary} /></View>;
+        return <LoadingScreen message="Loading notifications..." />;
     }
 
-    const unreadCount = notifications.filter((n) => !n.read).length;
-
     return (
-        <View style={styles.container}>
-            <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-                <View style={styles.headerTopRow}>
-                    <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-                        <Ionicons name="arrow-back" size={24} color={Colors.text} />
-                    </TouchableOpacity>
-                    <View style={styles.headerTitleContainer}>
-                        <Text style={styles.headerTitle}>Notifications</Text>
-                        <Text style={styles.headerSubtitle}>{unreadCount} unread</Text>
-                    </View>
-                </View>
-                <View style={styles.headerActions}>
-                    {unreadCount > 0 && (
-                        <TouchableOpacity style={styles.headerActionBtn} onPress={markAllAsRead}>
-                            <Ionicons name="checkmark-done-outline" size={16} color="#45D0FF" />
-                            <Text style={styles.markAllText}>Mark all read</Text>
-                        </TouchableOpacity>
-                    )}
-                    {notifications.length > 0 && (
-                        <TouchableOpacity style={styles.headerActionBtn} onPress={clearAllNotifications}>
-                            <Ionicons name="trash-outline" size={16} color={Colors.error} />
-                            <Text style={styles.clearAllText}>Clear all</Text>
-                        </TouchableOpacity>
-                    )}
-                </View>
-            </View>
+        <ScreenWrapper scrollable={false}>
+            <ScreenHeader
+                title="Notifications"
+                subtitle={`${unreadCount} unread`}
+                onBack={() => navigation.goBack()}
+                rightAction={
+                    notifications.length > 0
+                        ? { icon: 'trash-outline', onPress: clearAllNotifications }
+                        : undefined
+                }
+                rightAction2={
+                    unreadCount > 0
+                        ? { icon: 'checkmark-done-outline', onPress: markAllAsRead }
+                        : undefined
+                }
+            />
+
             <FlatList
-                data={notifications}
-                renderItem={renderNotification}
-                keyExtractor={(item) => item.id}
+                data={grouped}
+                keyExtractor={(item) => item.title}
+                renderItem={({ item: group }) => (
+                    <View style={styles.groupSection}>
+                        {/* Date group header */}
+                        <View style={styles.groupHeader}>
+                            <View style={styles.groupHeaderLine} />
+                            <Text style={styles.groupHeaderText}>{group.title}</Text>
+                            <View style={styles.groupHeaderLine} />
+                        </View>
+                        {group.data.map((notif, idx) => renderNotification(notif, idx))}
+                    </View>
+                )}
                 contentContainerStyle={styles.listContent}
                 showsVerticalScrollIndicator={false}
-                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
+                refreshControl={
+                    <RefreshControl
+                        refreshing={refreshing}
+                        onRefresh={onRefresh}
+                        tintColor={Colors.primary}
+                        colors={[Colors.primary]}
+                    />
+                }
                 ListEmptyComponent={
-                    <View style={styles.emptyState}>
-                        <Ionicons name="notifications-off-outline" size={48} color={Colors.textTertiary} />
-                        <Text style={styles.emptyTitle}>No notifications</Text>
-                        <Text style={styles.emptyText}>You're all caught up!</Text>
-                    </View>
+                    <EmptyState
+                        icon="notifications-off-outline"
+                        title="No notifications"
+                        description="You're all caught up!"
+                    />
                 }
             />
 
@@ -336,14 +390,21 @@ export default function NotificationsScreen({ navigation }: any) {
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalCard}>
                         {offerLoading ? (
-                            <ActivityIndicator size="large" color={Colors.primary} style={{ paddingVertical: 40 }} />
+                            <ActivityIndicator size="large" color={Colors.primary} style={{ paddingVertical: Spacing.huge }} />
                         ) : selectedOffer ? (
                             <ScrollView showsVerticalScrollIndicator={false}>
                                 <View style={styles.modalHeader}>
                                     <Text style={styles.modalTitle}>Training Offer</Text>
-                                    <TouchableOpacity onPress={() => setOfferModalVisible(false)}>
+                                    <Pressable
+                                        onPress={() => setOfferModalVisible(false)}
+                                        accessibilityLabel="Close"
+                                        style={({ pressed }) => [
+                                            styles.modalCloseBtn,
+                                            pressed && { opacity: 0.7 },
+                                        ]}
+                                    >
                                         <Ionicons name="close" size={24} color={Colors.textSecondary} />
-                                    </TouchableOpacity>
+                                    </Pressable>
                                 </View>
 
                                 <View style={styles.offerDetailRow}>
@@ -385,55 +446,36 @@ export default function NotificationsScreen({ navigation }: any) {
 
                                 {selectedOffer.status === 'accepted' || selectedOffer.status === 'declined' ? (
                                     <View style={styles.statusBadgeContainer}>
-                                        <View style={[
-                                            styles.statusBadge,
-                                            { backgroundColor: selectedOffer.status === 'accepted' ? Colors.successLight : Colors.errorLight },
-                                        ]}>
-                                            <Ionicons
-                                                name={selectedOffer.status === 'accepted' ? 'checkmark-circle' : 'close-circle'}
-                                                size={16}
-                                                color={selectedOffer.status === 'accepted' ? Colors.success : Colors.error}
-                                            />
-                                            <Text style={[
-                                                styles.statusBadgeText,
-                                                { color: selectedOffer.status === 'accepted' ? Colors.success : Colors.error },
-                                            ]}>
-                                                {selectedOffer.status === 'accepted' ? 'Accepted' : 'Declined'}
-                                            </Text>
-                                        </View>
+                                        <Badge
+                                            label={selectedOffer.status === 'accepted' ? 'Accepted' : 'Declined'}
+                                            color={selectedOffer.status === 'accepted' ? Colors.success : Colors.error}
+                                            bgColor={selectedOffer.status === 'accepted' ? Colors.successLight : Colors.errorLight}
+                                            size="md"
+                                            dot
+                                        />
                                     </View>
                                 ) : (
                                     <View style={styles.offerActions}>
-                                        <TouchableOpacity
-                                            style={[styles.offerActionBtn, styles.declineBtn]}
-                                            onPress={() => handleDeclineOffer(selectedOffer)}
-                                            disabled={actionLoading}
-                                            activeOpacity={0.7}
-                                        >
-                                            {actionLoading ? (
-                                                <ActivityIndicator size="small" color="#fff" />
-                                            ) : (
-                                                <>
-                                                    <Ionicons name="close" size={18} color="#fff" />
-                                                    <Text style={styles.offerActionText}>Decline Offer</Text>
-                                                </>
-                                            )}
-                                        </TouchableOpacity>
-                                        <TouchableOpacity
-                                            style={[styles.offerActionBtn, styles.acceptBtn]}
-                                            onPress={() => handleAcceptOffer(selectedOffer)}
-                                            disabled={actionLoading}
-                                            activeOpacity={0.7}
-                                        >
-                                            {actionLoading ? (
-                                                <ActivityIndicator size="small" color="#fff" />
-                                            ) : (
-                                                <>
-                                                    <Ionicons name="checkmark" size={18} color="#fff" />
-                                                    <Text style={styles.offerActionText}>Accept Offer</Text>
-                                                </>
-                                            )}
-                                        </TouchableOpacity>
+                                        <View style={{ flex: 1 }}>
+                                            <Button
+                                                title="Decline Offer"
+                                                onPress={() => handleDeclineOffer(selectedOffer)}
+                                                variant="danger"
+                                                icon="close"
+                                                loading={actionLoading}
+                                                disabled={actionLoading}
+                                            />
+                                        </View>
+                                        <View style={{ flex: 1 }}>
+                                            <Button
+                                                title="Accept Offer"
+                                                onPress={() => handleAcceptOffer(selectedOffer)}
+                                                variant="primary"
+                                                icon="checkmark"
+                                                loading={actionLoading}
+                                                disabled={actionLoading}
+                                            />
+                                        </View>
                                     </View>
                                 )}
                             </ScrollView>
@@ -441,61 +483,176 @@ export default function NotificationsScreen({ navigation }: any) {
                     </View>
                 </View>
             </Modal>
-        </View>
+        </ScreenWrapper>
     );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#0A0D14' },
-    center: { justifyContent: 'center', alignItems: 'center' },
-    header: { paddingHorizontal: Spacing.xxl, paddingBottom: Spacing.md, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.06)' },
-    headerTopRow: { flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.sm },
-    backButton: { width: 40, height: 40, borderRadius: 12, backgroundColor: Colors.surface, justifyContent: 'center', alignItems: 'center', marginRight: Spacing.md, borderWidth: 1, borderColor: Colors.border },
-    headerTitleContainer: { flex: 1 },
-    headerTitle: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: '#FFFFFF' },
-    headerSubtitle: { fontSize: FontSize.sm, color: Colors.textSecondary, marginTop: 2 },
-    headerActions: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
-    headerActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6, paddingHorizontal: Spacing.md, borderRadius: BorderRadius.sm, backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)' },
-    markAllText: { fontSize: FontSize.xs, fontWeight: FontWeight.semibold, color: '#45D0FF' },
-    clearAllText: { fontSize: FontSize.xs, fontWeight: FontWeight.semibold, color: Colors.error },
-    listContent: { paddingHorizontal: Spacing.xxl, paddingBottom: 40 },
-    notifCard: { flexDirection: 'row', alignItems: 'flex-start', padding: Spacing.lg, backgroundColor: '#161B22', borderRadius: BorderRadius.lg, marginBottom: Spacing.sm, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
-    notifCardUnread: { backgroundColor: 'rgba(69,208,255,0.04)', borderLeftWidth: 3, borderLeftColor: '#45D0FF' },
-    iconContainer: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginRight: Spacing.md },
-    notifContent: { flex: 1 },
-    notifTitle: { fontSize: FontSize.md, fontWeight: FontWeight.semibold, color: '#FFFFFF', marginBottom: 2 },
-    notifTitleUnread: { fontWeight: FontWeight.bold },
-    notifBody: { fontSize: FontSize.sm, color: Colors.textSecondary, lineHeight: 20 },
-    notifTime: { fontSize: FontSize.xs, color: 'rgba(255,255,255,0.4)', marginTop: 4 },
-    unreadDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#45D0FF', marginLeft: Spacing.sm, marginTop: 4 },
-    emptyState: { alignItems: 'center', paddingTop: 80, gap: Spacing.md },
-    emptyTitle: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: '#FFFFFF' },
-    emptyText: { fontSize: FontSize.md, color: Colors.textSecondary },
+    listContent: {
+        paddingBottom: Spacing.huge,
+    },
 
-    // View Offer button on notification card
-    viewOfferButton: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', marginTop: Spacing.sm, paddingHorizontal: Spacing.md, paddingVertical: 6, borderRadius: BorderRadius.sm, backgroundColor: Colors.primary, gap: 4 },
-    viewOfferButtonText: { fontSize: FontSize.xs, fontWeight: FontWeight.semibold, color: '#fff' },
+    // Group sections - notifications grouped by date
+    groupSection: {
+        marginBottom: Spacing.md,
+    },
+    groupHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.md,
+        paddingVertical: Spacing.md,
+        paddingHorizontal: Spacing.xs,
+    },
+    groupHeaderLine: {
+        flex: 1,
+        height: 1,
+        backgroundColor: Colors.border,
+    },
+    groupHeaderText: {
+        fontSize: FontSize.xs,
+        fontWeight: FontWeight.bold,
+        color: Colors.textTertiary,
+        textTransform: 'uppercase',
+        letterSpacing: 1,
+    },
+
+    notifCard: {
+        marginBottom: Spacing.sm,
+    },
+    notifCardUnread: {
+        backgroundColor: Colors.primaryMuted,
+        borderLeftWidth: 3,
+        borderLeftColor: Colors.primary,
+    },
+    notifRow: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+    },
+    // Icon circle colored by type
+    iconCircle: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: Spacing.md,
+    },
+    notifContent: {
+        flex: 1,
+    },
+    notifTitleRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 2,
+    },
+    notifTitle: {
+        flex: 1,
+        fontSize: FontSize.md,
+        fontWeight: FontWeight.semibold,
+        color: Colors.text,
+        marginRight: Spacing.sm,
+    },
+    notifTitleUnread: {
+        fontWeight: FontWeight.bold,
+    },
+    notifBody: {
+        fontSize: FontSize.sm,
+        color: Colors.textSecondary,
+        lineHeight: 20,
+    },
+    notifTime: {
+        fontSize: FontSize.xs,
+        color: Colors.textMuted,
+    },
+    // Unread dot indicator
+    unreadDot: {
+        width: 10,
+        height: 10,
+        borderRadius: 5,
+        backgroundColor: Colors.primary,
+        marginLeft: Spacing.sm,
+        marginTop: Spacing.xs,
+    },
+    viewOfferButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        alignSelf: 'flex-start',
+        marginTop: Spacing.sm,
+        paddingHorizontal: Spacing.md,
+        paddingVertical: Spacing.xs + 2,
+        borderRadius: BorderRadius.sm,
+        backgroundColor: Colors.primary,
+        gap: Spacing.xs,
+        minHeight: 44,
+    },
+    viewOfferButtonText: {
+        fontSize: FontSize.xs,
+        fontWeight: FontWeight.semibold,
+        color: Colors.textInverse,
+    },
 
     // Modal
-    modalOverlay: { flex: 1, backgroundColor: Colors.overlay, justifyContent: 'center', alignItems: 'center', padding: Spacing.xxl },
-    modalCard: { width: '100%', maxHeight: '80%', backgroundColor: Colors.card, borderRadius: BorderRadius.xl, padding: Spacing.xxl, borderWidth: 1, borderColor: Colors.glassBorder },
-    modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.xl },
-    modalTitle: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: '#FFFFFF' },
-
-    // Offer detail rows
-    offerDetailRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', paddingVertical: Spacing.md, borderBottomWidth: 1, borderBottomColor: Colors.glassBorder },
-    offerLabel: { fontSize: FontSize.sm, color: Colors.textSecondary, fontWeight: FontWeight.medium },
-    offerValue: { fontSize: FontSize.sm, color: '#FFFFFF', fontWeight: FontWeight.semibold, textAlign: 'right', maxWidth: '60%' },
-
-    // Status badge
-    statusBadgeContainer: { alignItems: 'center', marginTop: Spacing.xxl },
-    statusBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.lg, paddingVertical: Spacing.sm, borderRadius: BorderRadius.pill, gap: 6 },
-    statusBadgeText: { fontSize: FontSize.md, fontWeight: FontWeight.semibold },
-
-    // Action buttons
-    offerActions: { flexDirection: 'row', gap: Spacing.md, marginTop: Spacing.xxl },
-    offerActionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: Spacing.md, borderRadius: BorderRadius.md, gap: 6 },
-    acceptBtn: { backgroundColor: Colors.success },
-    declineBtn: { backgroundColor: Colors.error },
-    offerActionText: { fontSize: FontSize.md, fontWeight: FontWeight.semibold, color: '#fff' },
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: Colors.overlay,
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: Spacing.xxl,
+    },
+    modalCard: {
+        width: '100%',
+        maxHeight: '80%',
+        backgroundColor: Colors.card,
+        borderRadius: BorderRadius.xl,
+        padding: Spacing.xxl,
+        borderWidth: 1,
+        borderColor: Colors.glassBorder,
+    },
+    modalHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: Spacing.xl,
+    },
+    modalTitle: {
+        fontSize: FontSize.xl,
+        fontWeight: FontWeight.bold,
+        color: Colors.text,
+    },
+    modalCloseBtn: {
+        width: 44,
+        height: 44,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    offerDetailRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'flex-start',
+        paddingVertical: Spacing.md,
+        borderBottomWidth: 1,
+        borderBottomColor: Colors.border,
+    },
+    offerLabel: {
+        fontSize: FontSize.sm,
+        color: Colors.textSecondary,
+        fontWeight: FontWeight.medium,
+    },
+    offerValue: {
+        fontSize: FontSize.sm,
+        color: Colors.text,
+        fontWeight: FontWeight.semibold,
+        textAlign: 'right',
+        maxWidth: '60%',
+    },
+    statusBadgeContainer: {
+        alignItems: 'center',
+        marginTop: Spacing.xxl,
+    },
+    offerActions: {
+        flexDirection: 'row',
+        gap: Spacing.md,
+        marginTop: Spacing.xxl,
+    },
 });

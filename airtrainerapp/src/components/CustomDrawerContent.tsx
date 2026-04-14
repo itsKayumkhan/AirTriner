@@ -3,17 +3,15 @@ import {
     View,
     Text,
     StyleSheet,
-    TouchableOpacity,
+    Pressable,
     ScrollView,
     Alert,
     Platform,
-    Image,
 } from 'react-native';
-import { DrawerContentScrollView } from '@react-navigation/drawer';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../contexts/AuthContext';
-import { Colors, Spacing, BorderRadius, FontSize, FontWeight } from '../theme';
+import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows } from '../theme';
+import { Avatar, Badge, Divider } from './ui';
 
 type IoniconsName = keyof typeof Ionicons.glyphMap;
 
@@ -32,8 +30,11 @@ interface MenuSection {
 
 export default function CustomDrawerContent(props: any) {
     const { user, logout } = useAuth();
-    const { navigation } = props;
+    const { navigation, state } = props;
     const role = user?.role || 'athlete';
+
+    // Determine the active screen from navigation state
+    const activeRoute = state?.routes?.[state?.index]?.name || '';
 
     const menuSections: MenuSection[] = [
         {
@@ -89,10 +90,8 @@ export default function CustomDrawerContent(props: any) {
     const handleNavigation = (screen: string) => {
         navigation.closeDrawer();
         if (tabScreens.includes(screen)) {
-            // Navigate through Main stack into the nested Tab navigator
             navigation.navigate('Main', { screen: 'Tabs', params: { screen } });
         } else {
-            // Navigate to a screen within the Main stack
             navigation.navigate('Main', { screen });
         }
     };
@@ -111,62 +110,56 @@ export default function CustomDrawerContent(props: any) {
         ]);
     };
 
-    const getInitials = () => {
-        if (!user) return '?';
-        return `${user.firstName?.[0] || ''}${user.lastName?.[0] || ''}`.toUpperCase();
-    };
-
     const getRoleBadge = () => {
         switch (role) {
-            case 'trainer': return { label: 'Trainer', color: Colors.success };
-            case 'admin': return { label: 'Admin', color: Colors.warning };
-            default: return { label: 'Athlete', color: Colors.primary };
+            case 'trainer': return { label: 'Trainer', color: Colors.success, bg: Colors.successLight };
+            case 'admin': return { label: 'Admin', color: Colors.warning, bg: Colors.warningLight };
+            default: return { label: 'Athlete', color: Colors.primary, bg: Colors.primaryGlow };
         }
     };
 
     const roleBadge = getRoleBadge();
+    const userName = `${user?.firstName || ''} ${user?.lastName || ''}`.trim();
 
     return (
         <View style={styles.container}>
-            {/* Header with user info */}
-            <LinearGradient
-                colors={[Colors.gradientStart, Colors.gradientEnd]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.header}
-            >
-                <View style={styles.headerContent}>
-                    {user?.avatarUrl ? (
-                        <Image source={{ uri: user.avatarUrl }} style={styles.avatar} />
-                    ) : (
-                        <View style={styles.avatarPlaceholder}>
-                            <Text style={styles.avatarText}>{getInitials()}</Text>
-                        </View>
-                    )}
-                    <View style={styles.userInfo}>
-                        <Text style={styles.userName} numberOfLines={1}>
-                            {user?.firstName} {user?.lastName}
-                        </Text>
-                        <Text style={styles.userEmail} numberOfLines={1}>
-                            {user?.email}
-                        </Text>
-                        <View style={[styles.roleBadge, { backgroundColor: roleBadge.color + '30' }]}>
-                            <View style={[styles.roleDot, { backgroundColor: roleBadge.color }]} />
-                            <Text style={[styles.roleText, { color: roleBadge.color }]}>
-                                {roleBadge.label}
+            {/* Header: dark card background, avatar + name + email + role badge */}
+            <View style={styles.header}>
+                <View style={styles.headerCard}>
+                    <View style={styles.headerContent}>
+                        <Avatar
+                            uri={user?.avatarUrl}
+                            name={userName}
+                            size={56}
+                            borderColor={Colors.borderActive}
+                        />
+                        <View style={styles.userInfo}>
+                            <Text style={styles.userName} numberOfLines={1}>
+                                {userName}
                             </Text>
+                            <Text style={styles.userEmail} numberOfLines={1}>
+                                {user?.email}
+                            </Text>
+                            <View style={styles.roleBadgeWrap}>
+                                <View style={[styles.roleBadgePill, { backgroundColor: roleBadge.bg }]}>
+                                    <View style={[styles.roleDot, { backgroundColor: roleBadge.color }]} />
+                                    <Text style={[styles.roleBadgeText, { color: roleBadge.color }]}>
+                                        {roleBadge.label}
+                                    </Text>
+                                </View>
+                            </View>
                         </View>
                     </View>
                 </View>
-            </LinearGradient>
+            </View>
 
-            {/* Menu items */}
+            {/* Menu items with animated press feedback + active highlight */}
             <ScrollView
                 style={styles.menuContainer}
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={styles.menuContent}
             >
-                {menuSections.map((section) => {
+                {menuSections.map((section, sectionIndex) => {
                     const visibleItems = section.items.filter((item) =>
                         item.roles.includes(role as 'athlete' | 'trainer' | 'admin')
                     );
@@ -174,36 +167,65 @@ export default function CustomDrawerContent(props: any) {
 
                     return (
                         <View key={section.title} style={styles.section}>
+                            {sectionIndex > 0 && <Divider />}
                             <Text style={styles.sectionTitle}>{section.title}</Text>
-                            {visibleItems.map((item) => (
-                                <TouchableOpacity
-                                    key={item.screen}
-                                    style={styles.menuItem}
-                                    onPress={() => handleNavigation(item.screen)}
-                                    activeOpacity={0.6}
-                                >
-                                    <View style={styles.menuIconContainer}>
-                                        <Ionicons name={item.icon} size={20} color={Colors.textSecondary} />
-                                    </View>
-                                    <Text style={styles.menuLabel}>{item.label}</Text>
-                                    <Ionicons name="chevron-forward" size={16} color={Colors.textTertiary} />
-                                </TouchableOpacity>
-                            ))}
+                            {visibleItems.map((item) => {
+                                const isActive = activeRoute === item.screen;
+                                return (
+                                    <Pressable
+                                        key={item.screen}
+                                        style={({ pressed }) => [
+                                            styles.menuItem,
+                                            isActive && styles.menuItemActive,
+                                            pressed && { opacity: 0.85, transform: [{ scale: 0.98 }] },
+                                        ]}
+                                        onPress={() => handleNavigation(item.screen)}
+                                        accessibilityLabel={item.label}
+                                    >
+                                        <View style={[
+                                            styles.menuIconContainer,
+                                            isActive && styles.menuIconContainerActive,
+                                        ]}>
+                                            <Ionicons
+                                                name={item.icon}
+                                                size={20}
+                                                color={isActive ? Colors.primary : Colors.textSecondary}
+                                            />
+                                        </View>
+                                        <Text style={[
+                                            styles.menuLabel,
+                                            isActive && styles.menuLabelActive,
+                                        ]}>
+                                            {item.label}
+                                        </Text>
+                                        {isActive ? (
+                                            <View style={styles.activeIndicator} />
+                                        ) : (
+                                            <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />
+                                        )}
+                                    </Pressable>
+                                );
+                            })}
                         </View>
                     );
                 })}
             </ScrollView>
 
-            {/* Logout button */}
+            {/* Footer */}
             <View style={styles.footer}>
-                <TouchableOpacity
-                    style={styles.logoutButton}
+                <Pressable
+                    style={({ pressed }) => [
+                        styles.logoutButton,
+                        pressed && { opacity: 0.85, transform: [{ scale: 0.98 }] },
+                    ]}
                     onPress={handleLogout}
-                    activeOpacity={0.7}
+                    accessibilityLabel="Logout"
                 >
-                    <Ionicons name="log-out-outline" size={20} color={Colors.error} />
+                    <View style={styles.logoutIconContainer}>
+                        <Ionicons name="log-out-outline" size={20} color={Colors.error} />
+                    </View>
                     <Text style={styles.logoutText}>Logout</Text>
-                </TouchableOpacity>
+                </Pressable>
                 <Text style={styles.versionText}>AirTrainr v1.0.0</Text>
             </View>
         </View>
@@ -215,36 +237,23 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: Colors.background,
     },
+    // Header: dark card background
     header: {
         paddingTop: Platform.OS === 'ios' ? 60 : 40,
-        paddingBottom: 20,
+        paddingBottom: Spacing.lg,
         paddingHorizontal: Spacing.lg,
+    },
+    headerCard: {
+        backgroundColor: Colors.card,
+        borderRadius: BorderRadius.lg,
+        padding: Spacing.lg,
+        borderWidth: 1,
+        borderColor: Colors.border,
+        ...Shadows.small,
     },
     headerContent: {
         flexDirection: 'row',
         alignItems: 'center',
-    },
-    avatar: {
-        width: 56,
-        height: 56,
-        borderRadius: 28,
-        borderWidth: 2,
-        borderColor: 'rgba(255,255,255,0.3)',
-    },
-    avatarPlaceholder: {
-        width: 56,
-        height: 56,
-        borderRadius: 28,
-        backgroundColor: 'rgba(255,255,255,0.2)',
-        justifyContent: 'center',
-        alignItems: 'center',
-        borderWidth: 2,
-        borderColor: 'rgba(255,255,255,0.3)',
-    },
-    avatarText: {
-        fontSize: FontSize.xl,
-        fontWeight: FontWeight.bold,
-        color: '#fff',
     },
     userInfo: {
         flex: 1,
@@ -253,41 +262,43 @@ const styles = StyleSheet.create({
     userName: {
         fontSize: FontSize.lg,
         fontWeight: FontWeight.bold,
-        color: '#fff',
+        color: Colors.text,
     },
     userEmail: {
         fontSize: FontSize.xs,
-        color: 'rgba(255,255,255,0.7)',
+        color: Colors.textSecondary,
         marginTop: 2,
     },
-    roleBadge: {
+    roleBadgeWrap: {
+        marginTop: Spacing.sm,
+        flexDirection: 'row',
+    },
+    roleBadgePill: {
         flexDirection: 'row',
         alignItems: 'center',
-        alignSelf: 'flex-start',
-        paddingHorizontal: 8,
-        paddingVertical: 3,
+        gap: Spacing.xs,
+        paddingHorizontal: Spacing.md,
+        paddingVertical: Spacing.xs,
         borderRadius: BorderRadius.pill,
-        marginTop: 6,
     },
     roleDot: {
         width: 6,
         height: 6,
         borderRadius: 3,
-        marginRight: 5,
     },
-    roleText: {
+    roleBadgeText: {
         fontSize: FontSize.xs,
-        fontWeight: FontWeight.semibold,
+        fontWeight: FontWeight.bold,
     },
     menuContainer: {
         flex: 1,
     },
     menuContent: {
         paddingVertical: Spacing.sm,
+        paddingHorizontal: Spacing.lg,
     },
     section: {
-        paddingHorizontal: Spacing.lg,
-        marginBottom: Spacing.md,
+        marginBottom: Spacing.xs,
     },
     sectionTitle: {
         fontSize: FontSize.xs,
@@ -298,28 +309,46 @@ const styles = StyleSheet.create({
         marginBottom: Spacing.sm,
         marginTop: Spacing.sm,
     },
+    // Menu items with active highlight
     menuItem: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingVertical: 12,
+        paddingVertical: Spacing.md,
         paddingHorizontal: Spacing.sm,
-        borderRadius: BorderRadius.sm,
+        borderRadius: BorderRadius.md,
         marginBottom: 2,
+        minHeight: 44,
+    },
+    menuItemActive: {
+        backgroundColor: Colors.primaryGlow,
     },
     menuIconContainer: {
-        width: 32,
-        height: 32,
+        width: 34,
+        height: 34,
         borderRadius: BorderRadius.sm,
         backgroundColor: Colors.glass,
         justifyContent: 'center',
         alignItems: 'center',
         marginRight: Spacing.md,
     },
+    menuIconContainerActive: {
+        backgroundColor: Colors.primaryMuted,
+    },
     menuLabel: {
         flex: 1,
         fontSize: FontSize.md,
         fontWeight: FontWeight.medium,
         color: Colors.text,
+    },
+    menuLabelActive: {
+        color: Colors.primary,
+        fontWeight: FontWeight.semibold,
+    },
+    activeIndicator: {
+        width: 6,
+        height: 6,
+        borderRadius: 3,
+        backgroundColor: Colors.primary,
     },
     footer: {
         borderTopWidth: 1,
@@ -332,12 +361,21 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         paddingVertical: Spacing.sm,
+        minHeight: 44,
+    },
+    logoutIconContainer: {
+        width: 34,
+        height: 34,
+        borderRadius: BorderRadius.sm,
+        backgroundColor: Colors.errorMuted,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: Spacing.md,
     },
     logoutText: {
         fontSize: FontSize.md,
         fontWeight: FontWeight.semibold,
         color: Colors.error,
-        marginLeft: Spacing.sm,
     },
     versionText: {
         fontSize: FontSize.xs,

@@ -3,6 +3,7 @@ import {
     View,
     Text,
     StyleSheet,
+    Pressable,
     TouchableOpacity,
     TouchableWithoutFeedback,
     ScrollView,
@@ -12,12 +13,13 @@ import {
     Platform,
     Alert,
     ActivityIndicator,
-    RefreshControl,
 } from 'react-native';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
-import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows, Layout} from '../../theme';
+import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows } from '../../theme';
+import { ScreenWrapper, ScreenHeader, Card, Badge, Avatar, EmptyState, LoadingScreen, Button, SectionHeader } from '../../components/ui';
 
 const MAX_SUB_ACCOUNTS = 6;
 
@@ -52,22 +54,6 @@ function capitalize(s: string): string {
     return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-function getInitials(pd: SubAccountProfileData): string {
-    const f = pd.first_name?.[0] || '';
-    const l = pd.last_name?.[0] || '';
-    return (f + l).toUpperCase() || '??';
-}
-
-function AvatarGradient({ initials }: { initials: string }) {
-    return (
-        <View style={styles.avatarContainer}>
-            <View style={styles.avatarGradientBase} />
-            <View style={styles.avatarGradientOverlay} />
-            <Text style={styles.avatarText}>{initials}</Text>
-        </View>
-    );
-}
-
 export default function SubAccountsScreen({ navigation }: any) {
     const { user } = useAuth();
     const [accounts, setAccounts] = useState<SubAccount[]>([]);
@@ -78,7 +64,6 @@ export default function SubAccountsScreen({ navigation }: any) {
     const [editingId, setEditingId] = useState<string | null>(null);
     const [deleteError, setDeleteError] = useState<string | null>(null);
 
-    // Form state - matches web: first_name, last_name, age, sport, skill_level, notes
     const [firstName, setFirstName] = useState('');
     const [lastName, setLastName] = useState('');
     const [age, setAge] = useState('');
@@ -188,7 +173,6 @@ export default function SubAccountsScreen({ navigation }: any) {
 
         try {
             if (editingId) {
-                // Update existing
                 const { error } = await supabase
                     .from('sub_accounts')
                     .update({ profile_data: profileData, updated_at: new Date().toISOString() })
@@ -200,7 +184,6 @@ export default function SubAccountsScreen({ navigation }: any) {
                     prev.map((a) => (a.id === editingId ? { ...a, profile_data: profileData } : a))
                 );
             } else {
-                // Create new
                 if (accounts.length >= MAX_SUB_ACCOUNTS) {
                     setSaveError(`You can only have up to ${MAX_SUB_ACCOUNTS} sub-accounts.`);
                     setIsSaving(false);
@@ -231,7 +214,6 @@ export default function SubAccountsScreen({ navigation }: any) {
         }
     };
 
-    // Soft-delete matching web behavior
     const handleDelete = (account: SubAccount) => {
         Alert.alert(
             'Remove Sub-Account',
@@ -260,199 +242,171 @@ export default function SubAccountsScreen({ navigation }: any) {
     };
 
     if (isLoading) {
-        return (
-            <View style={[styles.container, styles.center]}>
-                <ActivityIndicator size="large" color={Colors.primary} />
-            </View>
-        );
+        return <LoadingScreen message="Loading sub-accounts..." />;
     }
 
     const canAdd = accounts.length < MAX_SUB_ACCOUNTS;
 
     return (
-        <View style={styles.container}>
-            {/* Header */}
-            <View style={styles.header}>
-                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-                    <Ionicons name="arrow-back" size={22} color={Colors.text} />
-                </TouchableOpacity>
-                <Text style={styles.headerTitle}>Sub-Accounts</Text>
-                {canAdd ? (
-                    <TouchableOpacity style={styles.addHeaderButton} onPress={openAddModal}>
-                        <Ionicons name="add" size={22} color={Colors.background} />
-                    </TouchableOpacity>
-                ) : (
-                    <View style={styles.countBadge}>
-                        <Text style={styles.countText}>{accounts.length}/{MAX_SUB_ACCOUNTS}</Text>
-                    </View>
-                )}
-            </View>
-
-            <ScrollView
-                contentContainerStyle={styles.contentContainer}
-                showsVerticalScrollIndicator={false}
-                refreshControl={
-                    <RefreshControl
-                        refreshing={refreshing}
-                        onRefresh={onRefresh}
-                        tintColor={Colors.primary}
-                        colors={[Colors.primary]}
-                    />
+        <ScreenWrapper refreshing={refreshing} onRefresh={onRefresh}>
+            <ScreenHeader
+                title="Sub-Accounts"
+                subtitle={`${accounts.length}/${MAX_SUB_ACCOUNTS} used`}
+                onBack={() => navigation.goBack()}
+                rightAction={
+                    canAdd
+                        ? { icon: 'add', onPress: openAddModal }
+                        : undefined
                 }
-            >
-                {/* Subtitle */}
-                <Text style={styles.pageSubtitle}>
-                    Manage profiles for family members ({accounts.length}/{MAX_SUB_ACCOUNTS} used)
-                </Text>
+            />
 
-                {/* Capacity indicator */}
-                {accounts.length > 0 && (
-                    <View style={styles.capacityRow}>
-                        <View style={styles.capacityBarTrack}>
-                            <View
-                                style={[
-                                    styles.capacityBarFill,
-                                    {
-                                        width: `${(accounts.length / MAX_SUB_ACCOUNTS) * 100}%`,
-                                        backgroundColor: accounts.length >= MAX_SUB_ACCOUNTS ? Colors.warning : Colors.primary,
-                                    },
-                                ]}
-                            />
-                        </View>
-                        {accounts.length >= MAX_SUB_ACCOUNTS && (
-                            <Text style={styles.capacityFull}>
-                                Maximum sub-accounts reached. Remove one to add another.
-                            </Text>
-                        )}
+            {/* Capacity indicator */}
+            {accounts.length > 0 && (
+                <View style={styles.capacityRow}>
+                    <View style={styles.capacityBarTrack}>
+                        <View
+                            style={[
+                                styles.capacityBarFill,
+                                {
+                                    width: `${(accounts.length / MAX_SUB_ACCOUNTS) * 100}%`,
+                                    backgroundColor: accounts.length >= MAX_SUB_ACCOUNTS ? Colors.warning : Colors.primary,
+                                },
+                            ]}
+                        />
                     </View>
-                )}
+                    {accounts.length >= MAX_SUB_ACCOUNTS && (
+                        <Text style={styles.capacityFull}>
+                            Maximum sub-accounts reached. Remove one to add another.
+                        </Text>
+                    )}
+                </View>
+            )}
 
-                {/* Delete error toast */}
-                {deleteError && (
-                    <View style={styles.errorBanner}>
+            {/* Delete error toast */}
+            {deleteError && (
+                <Card variant="outlined" style={styles.errorBanner}>
+                    <View style={styles.errorBannerRow}>
                         <Ionicons name="close-circle" size={18} color={Colors.error} />
                         <Text style={styles.errorBannerText}>{deleteError}</Text>
                         <TouchableOpacity onPress={() => setDeleteError(null)}>
                             <Ionicons name="close" size={16} color={Colors.error} />
                         </TouchableOpacity>
                     </View>
-                )}
+                </Card>
+            )}
 
-                {/* Empty state */}
-                {accounts.length === 0 ? (
-                    <View style={styles.emptyState}>
-                        <View style={styles.emptyIconWrap}>
-                            <Ionicons name="people-outline" size={44} color={Colors.primary} />
-                        </View>
-                        <Text style={styles.emptyTitle}>No family members yet</Text>
-                        <Text style={styles.emptyText}>
-                            Add up to {MAX_SUB_ACCOUNTS} family members who can book sessions under your account.
-                        </Text>
-                        <Text style={styles.emptySubText}>
-                            All sessions booked by family members are billed to your account.
-                        </Text>
-                        <TouchableOpacity style={styles.emptyAddButton} onPress={openAddModal}>
-                            <Ionicons name="add-circle-outline" size={20} color={Colors.background} />
-                            <Text style={styles.emptyAddButtonText}>Add First Member</Text>
-                        </TouchableOpacity>
+            {/* Empty state */}
+            {accounts.length === 0 ? (
+                <>
+                    <EmptyState
+                        icon="people-outline"
+                        title="No family members yet"
+                        description={`Add up to ${MAX_SUB_ACCOUNTS} family members who can book sessions under your account. All sessions are billed to your account.`}
+                        actionLabel="Add First Member"
+                        onAction={openAddModal}
+                    />
 
-                        {/* Feature hints */}
-                        <View style={styles.featureHints}>
-                            {[
-                                { title: 'Shared Billing', desc: 'Billing goes to the parent account automatically.' },
-                                { title: 'Individual Profiles', desc: 'Each member has their own sport and skill settings.' },
-                                { title: 'Easy Booking', desc: 'Select a family member when booking a session.' },
-                            ].map((f) => (
-                                <View key={f.title} style={styles.featureHintCard}>
-                                    <Text style={styles.featureHintTitle}>{f.title}</Text>
-                                    <Text style={styles.featureHintDesc}>{f.desc}</Text>
-                                </View>
-                            ))}
-                        </View>
+                    {/* Feature hints */}
+                    <View style={styles.featureHints}>
+                        {[
+                            { title: 'Shared Billing', desc: 'Billing goes to the parent account automatically.' },
+                            { title: 'Individual Profiles', desc: 'Each member has their own sport and skill settings.' },
+                            { title: 'Easy Booking', desc: 'Select a family member when booking a session.' },
+                        ].map((f) => (
+                            <Card key={f.title} variant="outlined" style={styles.featureHintCard}>
+                                <Text style={styles.featureHintTitle}>{f.title}</Text>
+                                <Text style={styles.featureHintDesc}>{f.desc}</Text>
+                            </Card>
+                        ))}
                     </View>
-                ) : (
-                    <View style={styles.listContainer}>
-                        {accounts.map((acc) => {
-                            const pd = acc.profile_data;
-                            return (
-                                <View key={acc.id} style={styles.accountCard}>
-                                    <View style={styles.accountCardTop}>
-                                        <AvatarGradient initials={getInitials(pd)} />
-                                        <View style={styles.accountInfo}>
-                                            <Text style={styles.accountName}>
-                                                {pd.first_name} {pd.last_name}
-                                            </Text>
-                                            {pd.age ? (
-                                                <Text style={styles.accountAge}>Age {pd.age}</Text>
-                                            ) : (
-                                                <Text style={styles.accountAgeMuted}>No age set</Text>
-                                            )}
-                                        </View>
-                                    </View>
+                </>
+            ) : (
+                <View style={styles.listContainer}>
+                    {accounts.map((acc, index) => {
+                        const pd = acc.profile_data;
+                        const fullName = `${pd.first_name} ${pd.last_name}`;
 
-                                    {/* Tags */}
-                                    {(pd.sport || pd.skill_level) && (
-                                        <View style={styles.cardMetaRow}>
-                                            {pd.sport && (
-                                                <View style={styles.cardSportChip}>
-                                                    <Text style={styles.cardSportChipText}>
-                                                        {pd.sport.replace(/_/g, ' ')}
-                                                    </Text>
-                                                </View>
-                                            )}
-                                            {pd.skill_level && (
-                                                <View style={styles.cardSkillBadge}>
-                                                    <Text style={styles.cardSkillBadgeText}>
-                                                        {capitalize(pd.skill_level)}
-                                                    </Text>
-                                                </View>
-                                            )}
-                                        </View>
-                                    )}
-
-                                    {/* Notes */}
-                                    {pd.notes ? (
-                                        <View style={styles.notesContainer}>
-                                            <Text style={styles.notesLabel}>Notes</Text>
-                                            <Text style={styles.notesText} numberOfLines={2}>
-                                                {pd.notes}
-                                            </Text>
-                                        </View>
-                                    ) : null}
-
-                                    {/* Action buttons - Edit + Remove */}
-                                    <View style={styles.cardActions}>
-                                        <TouchableOpacity
-                                            style={styles.editBtn}
-                                            onPress={() => openEditModal(acc)}
-                                            activeOpacity={0.7}
-                                        >
-                                            <Ionicons name="create-outline" size={14} color={Colors.text} />
-                                            <Text style={styles.editBtnText}>Edit</Text>
-                                        </TouchableOpacity>
-                                        <TouchableOpacity
-                                            style={styles.removeBtn}
-                                            onPress={() => handleDelete(acc)}
-                                            activeOpacity={0.7}
-                                        >
-                                            <Ionicons name="trash-outline" size={14} color={Colors.error} />
-                                            <Text style={styles.removeBtnText}>Remove</Text>
-                                        </TouchableOpacity>
+                        return (
+                            <Animated.View key={acc.id} entering={FadeInDown.duration(200).delay(index * 30)}>
+                            <Card style={styles.accountCard}>
+                                <View style={styles.accountCardTop}>
+                                    <Avatar
+                                        name={fullName}
+                                        size={48}
+                                        borderColor={Colors.borderActive}
+                                    />
+                                    <View style={styles.accountInfo}>
+                                        <Text style={styles.accountName}>{fullName}</Text>
+                                        {pd.age ? (
+                                            <Text style={styles.accountAge}>Age {pd.age}</Text>
+                                        ) : (
+                                            <Text style={styles.accountAgeMuted}>No age set</Text>
+                                        )}
                                     </View>
                                 </View>
-                            );
-                        })}
-                    </View>
-                )}
 
-                {/* Add button at bottom when list has items */}
-                {accounts.length > 0 && canAdd && (
-                    <TouchableOpacity style={styles.addButton} onPress={openAddModal}>
-                        <Ionicons name="add" size={20} color={Colors.background} />
-                        <Text style={styles.addButtonText}>Add Member</Text>
-                    </TouchableOpacity>
-                )}
-            </ScrollView>
+                                {(pd.sport || pd.skill_level) && (
+                                    <View style={styles.cardMetaRow}>
+                                        {pd.sport && (
+                                            <Badge
+                                                label={pd.sport.replace(/_/g, ' ')}
+                                                color={Colors.primary}
+                                                bgColor={Colors.primaryGlow}
+                                            />
+                                        )}
+                                        {pd.skill_level && (
+                                            <Badge
+                                                label={capitalize(pd.skill_level)}
+                                                color={Colors.textSecondary}
+                                                bgColor={Colors.glass}
+                                            />
+                                        )}
+                                    </View>
+                                )}
+
+                                {pd.notes ? (
+                                    <View style={styles.notesContainer}>
+                                        <Text style={styles.notesLabel}>Notes</Text>
+                                        <Text style={styles.notesText} numberOfLines={2}>
+                                            {pd.notes}
+                                        </Text>
+                                    </View>
+                                ) : null}
+
+                                <View style={styles.cardActions}>
+                                    <Pressable
+                                        style={({ pressed }) => [styles.editBtn, pressed && { opacity: 0.9, transform: [{ scale: 0.98 }] }]}
+                                        onPress={() => openEditModal(acc)}
+                                        accessibilityLabel={`Edit ${fullName}`}
+                                    >
+                                        <Ionicons name="create-outline" size={14} color={Colors.text} />
+                                        <Text style={styles.editBtnText}>Edit</Text>
+                                    </Pressable>
+                                    <Pressable
+                                        style={({ pressed }) => [styles.removeBtn, pressed && { opacity: 0.9, transform: [{ scale: 0.98 }] }]}
+                                        onPress={() => handleDelete(acc)}
+                                        accessibilityLabel={`Remove ${fullName}`}
+                                    >
+                                        <Ionicons name="trash-outline" size={14} color={Colors.error} />
+                                        <Text style={styles.removeBtnText}>Remove</Text>
+                                    </Pressable>
+                                </View>
+                            </Card>
+                            </Animated.View>
+                        );
+                    })}
+                </View>
+            )}
+
+            {/* Add button at bottom when list has items */}
+            {accounts.length > 0 && canAdd && (
+                <Button
+                    title="Add Member"
+                    onPress={openAddModal}
+                    variant="primary"
+                    icon="add"
+                />
+            )}
 
             {/* Add/Edit Account Modal */}
             <Modal visible={isModalVisible} transparent animationType="slide">
@@ -587,106 +541,32 @@ export default function SubAccountsScreen({ navigation }: any) {
 
                             {/* Action buttons */}
                             <View style={styles.modalActions}>
-                                <TouchableOpacity
-                                    style={styles.cancelBtn}
-                                    onPress={resetForm}
-                                >
-                                    <Text style={styles.cancelBtnText}>Cancel</Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                    style={[
-                                        styles.saveButton,
-                                        (!firstName.trim() || !lastName.trim() || isSaving) && styles.saveButtonDisabled,
-                                    ]}
-                                    onPress={handleSave}
-                                    disabled={!firstName.trim() || !lastName.trim() || isSaving}
-                                >
-                                    {isSaving ? (
-                                        <ActivityIndicator color={Colors.background} size="small" />
-                                    ) : (
-                                        <Text style={styles.saveButtonText}>
-                                            {editingId ? 'Update Member' : 'Add Member'}
-                                        </Text>
-                                    )}
-                                </TouchableOpacity>
+                                <View style={{ flex: 1 }}>
+                                    <Button
+                                        title="Cancel"
+                                        onPress={resetForm}
+                                        variant="secondary"
+                                    />
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                    <Button
+                                        title={editingId ? 'Update Member' : 'Add Member'}
+                                        onPress={handleSave}
+                                        variant="primary"
+                                        loading={isSaving}
+                                        disabled={!firstName.trim() || !lastName.trim() || isSaving}
+                                    />
+                                </View>
                             </View>
                         </ScrollView>
                     </View>
                 </KeyboardAvoidingView>
             </Modal>
-        </View>
+        </ScreenWrapper>
     );
 }
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: Colors.background,
-    },
-    center: {
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-
-    // Header
-    header: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingHorizontal: Spacing.xxl,
-        paddingTop: Layout.headerTopPadding,
-        paddingBottom: Spacing.lg,
-        borderBottomWidth: 1,
-        borderBottomColor: Colors.border,
-    },
-    backButton: {
-        width: 44,
-        height: 44,
-        borderRadius: BorderRadius.md,
-        backgroundColor: Colors.surface,
-        justifyContent: 'center',
-        alignItems: 'center',
-        borderWidth: 1,
-        borderColor: Colors.border,
-    },
-    headerTitle: {
-        fontSize: FontSize.lg,
-        fontWeight: FontWeight.bold,
-        color: Colors.text,
-    },
-    addHeaderButton: {
-        width: 44,
-        height: 44,
-        borderRadius: BorderRadius.md,
-        backgroundColor: Colors.primary,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    countBadge: {
-        paddingHorizontal: Spacing.md,
-        paddingVertical: Spacing.xs,
-        backgroundColor: Colors.surface,
-        borderRadius: BorderRadius.pill,
-        borderWidth: 1,
-        borderColor: Colors.border,
-    },
-    countText: {
-        fontSize: FontSize.sm,
-        color: Colors.textSecondary,
-        fontWeight: FontWeight.medium,
-    },
-
-    // Content
-    contentContainer: {
-        padding: Spacing.xxl,
-        flexGrow: 1,
-    },
-    pageSubtitle: {
-        fontSize: FontSize.sm,
-        color: Colors.textSecondary,
-        marginBottom: Spacing.lg,
-    },
-
     // Capacity bar
     capacityRow: {
         marginBottom: Spacing.lg,
@@ -710,15 +590,14 @@ const styles = StyleSheet.create({
 
     // Error banner
     errorBanner: {
+        marginBottom: Spacing.lg,
+        borderColor: Colors.error + '33',
+        backgroundColor: Colors.errorMuted,
+    },
+    errorBannerRow: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: Spacing.sm,
-        padding: Spacing.md,
-        backgroundColor: Colors.errorLight,
-        borderRadius: BorderRadius.md,
-        borderWidth: 1,
-        borderColor: 'rgba(255,23,68,0.2)',
-        marginBottom: Spacing.lg,
     },
     errorBannerText: {
         flex: 1,
@@ -727,69 +606,13 @@ const styles = StyleSheet.create({
         color: Colors.error,
     },
 
-    // Empty state
-    emptyState: {
-        flex: 1,
-        alignItems: 'center',
-        justifyContent: 'center',
-        paddingVertical: 40,
-        gap: Spacing.md,
-    },
-    emptyIconWrap: {
-        width: 88,
-        height: 88,
-        borderRadius: BorderRadius.xxl,
-        backgroundColor: Colors.primaryGlow,
-        justifyContent: 'center',
-        alignItems: 'center',
-        borderWidth: 1,
-        borderColor: Colors.borderActive,
-    },
-    emptyTitle: {
-        fontSize: FontSize.xl,
-        fontWeight: FontWeight.bold,
-        color: Colors.text,
-    },
-    emptyText: {
-        fontSize: FontSize.md,
-        color: Colors.textSecondary,
-        textAlign: 'center',
-        paddingHorizontal: Spacing.xl,
-        lineHeight: 22,
-    },
-    emptySubText: {
-        fontSize: FontSize.sm,
-        color: Colors.textTertiary,
-        textAlign: 'center',
-        paddingHorizontal: Spacing.xxl,
-        lineHeight: 20,
-    },
-    emptyAddButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: Spacing.sm,
-        backgroundColor: Colors.primary,
-        paddingHorizontal: Spacing.xl,
-        paddingVertical: Spacing.md,
-        borderRadius: BorderRadius.md,
-        marginTop: Spacing.sm,
-    },
-    emptyAddButtonText: {
-        fontSize: FontSize.md,
-        fontWeight: FontWeight.semibold,
-        color: Colors.background,
-    },
+    // Feature hints
     featureHints: {
-        width: '100%',
         gap: Spacing.sm,
         marginTop: Spacing.xl,
     },
     featureHintCard: {
-        backgroundColor: Colors.card,
-        borderRadius: BorderRadius.md,
-        borderWidth: 1,
-        borderColor: Colors.border,
-        padding: Spacing.lg,
+        // card handles padding
     },
     featureHintTitle: {
         fontSize: FontSize.xs,
@@ -811,11 +634,6 @@ const styles = StyleSheet.create({
         marginBottom: Spacing.xl,
     },
     accountCard: {
-        backgroundColor: Colors.card,
-        padding: Spacing.lg,
-        borderRadius: BorderRadius.lg,
-        borderWidth: 1,
-        borderColor: Colors.border,
         ...Shadows.small,
     },
     accountCardTop: {
@@ -824,34 +642,6 @@ const styles = StyleSheet.create({
         gap: Spacing.md,
         marginBottom: Spacing.md,
     },
-
-    // Avatar
-    avatarContainer: {
-        width: 48,
-        height: 48,
-        borderRadius: 14,
-        overflow: 'hidden',
-        justifyContent: 'center',
-        alignItems: 'center',
-        position: 'relative',
-    },
-    avatarGradientBase: {
-        ...StyleSheet.absoluteFillObject,
-        backgroundColor: '#45D0FF',
-    },
-    avatarGradientOverlay: {
-        ...StyleSheet.absoluteFillObject,
-        backgroundColor: '#0047AB',
-        opacity: 0.55,
-    },
-    avatarText: {
-        fontSize: FontSize.md,
-        fontWeight: FontWeight.bold,
-        color: '#ffffff',
-        zIndex: 1,
-    },
-
-    // Account info
     accountInfo: {
         flex: 1,
     },
@@ -881,36 +671,6 @@ const styles = StyleSheet.create({
         gap: Spacing.sm,
         marginBottom: Spacing.md,
     },
-    cardSportChip: {
-        backgroundColor: Colors.primaryGlow,
-        paddingHorizontal: Spacing.md,
-        paddingVertical: 4,
-        borderRadius: BorderRadius.pill,
-        borderWidth: 1,
-        borderColor: Colors.borderActive,
-    },
-    cardSportChipText: {
-        fontSize: FontSize.xs,
-        color: Colors.primary,
-        fontWeight: FontWeight.bold,
-        textTransform: 'uppercase',
-        letterSpacing: 0.5,
-    },
-    cardSkillBadge: {
-        backgroundColor: Colors.glass,
-        paddingHorizontal: Spacing.md,
-        paddingVertical: 4,
-        borderRadius: BorderRadius.pill,
-        borderWidth: 1,
-        borderColor: Colors.glassBorder,
-    },
-    cardSkillBadgeText: {
-        fontSize: FontSize.xs,
-        color: Colors.textSecondary,
-        fontWeight: FontWeight.bold,
-        textTransform: 'uppercase',
-        letterSpacing: 0.5,
-    },
 
     // Notes
     notesContainer: {
@@ -927,7 +687,7 @@ const styles = StyleSheet.create({
         fontWeight: FontWeight.medium,
         textTransform: 'uppercase',
         letterSpacing: 0.5,
-        marginBottom: 4,
+        marginBottom: Spacing.xs,
     },
     notesText: {
         fontSize: FontSize.sm,
@@ -968,30 +728,14 @@ const styles = StyleSheet.create({
         gap: Spacing.xs,
         paddingVertical: Spacing.sm,
         borderRadius: BorderRadius.sm,
-        backgroundColor: Colors.errorLight,
+        backgroundColor: Colors.errorMuted,
         borderWidth: 1,
-        borderColor: 'rgba(255,23,68,0.2)',
+        borderColor: Colors.error + '33',
     },
     removeBtnText: {
         fontSize: FontSize.xs,
         fontWeight: FontWeight.bold,
         color: Colors.error,
-    },
-
-    // Add button
-    addButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: Spacing.sm,
-        backgroundColor: Colors.primary,
-        padding: Spacing.lg,
-        borderRadius: BorderRadius.md,
-    },
-    addButtonText: {
-        fontSize: FontSize.md,
-        fontWeight: FontWeight.semibold,
-        color: Colors.background,
     },
 
     // Modal
@@ -1001,7 +745,7 @@ const styles = StyleSheet.create({
     },
     modalBackdrop: {
         ...StyleSheet.absoluteFillObject,
-        backgroundColor: 'rgba(0,0,0,0.7)',
+        backgroundColor: Colors.overlay,
     },
     modalContent: {
         backgroundColor: Colors.card,
@@ -1061,7 +805,7 @@ const styles = StyleSheet.create({
         marginBottom: Spacing.lg,
     },
     inputError: {
-        borderColor: 'rgba(255,23,68,0.5)',
+        borderColor: Colors.error + '88',
     },
     inputMultiline: {
         minHeight: 80,
@@ -1092,8 +836,8 @@ const styles = StyleSheet.create({
         borderColor: Colors.glassBorder,
     },
     sportChipActive: {
-        backgroundColor: Colors.primaryGlow,
-        borderColor: Colors.primary,
+        backgroundColor: Colors.primaryMuted,
+        borderColor: Colors.borderActive,
     },
     sportChipText: {
         fontSize: FontSize.sm,
@@ -1141,10 +885,10 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         gap: Spacing.sm,
         padding: Spacing.md,
-        backgroundColor: Colors.errorLight,
+        backgroundColor: Colors.errorMuted,
         borderRadius: BorderRadius.md,
         borderWidth: 1,
-        borderColor: 'rgba(255,23,68,0.2)',
+        borderColor: Colors.error + '33',
         marginBottom: Spacing.lg,
     },
     saveErrorText: {
@@ -1159,38 +903,5 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         gap: Spacing.md,
         marginTop: Spacing.sm,
-    },
-    cancelBtn: {
-        flex: 1,
-        paddingVertical: Spacing.md,
-        borderRadius: BorderRadius.md,
-        borderWidth: 1,
-        borderColor: Colors.border,
-        backgroundColor: Colors.surface,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    cancelBtnText: {
-        fontSize: FontSize.md,
-        fontWeight: FontWeight.semibold,
-        color: Colors.textSecondary,
-    },
-
-    // Save button
-    saveButton: {
-        flex: 1,
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: Colors.primary,
-        paddingVertical: Spacing.md,
-        borderRadius: BorderRadius.md,
-    },
-    saveButtonDisabled: {
-        opacity: 0.4,
-    },
-    saveButtonText: {
-        fontSize: FontSize.md,
-        fontWeight: FontWeight.bold,
-        color: Colors.background,
     },
 });

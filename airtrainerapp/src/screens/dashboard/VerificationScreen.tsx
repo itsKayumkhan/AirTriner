@@ -3,18 +3,18 @@ import {
     View,
     Text,
     StyleSheet,
-    TouchableOpacity,
-    ScrollView,
+    Pressable,
     Alert,
     ActivityIndicator,
-    RefreshControl,
 } from 'react-native';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { TrainerProfileRow } from '../../lib/supabase';
-import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows, Layout} from '../../theme';
+import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows } from '../../theme';
+import { ScreenWrapper, ScreenHeader, Card, Badge, LoadingScreen, Button } from '../../components/ui';
 
 type VerificationStatus = 'pending' | 'verified' | 'rejected' | 'suspended' | null;
 
@@ -79,7 +79,7 @@ function buildChecklist(profile: TrainerProfileRow | null | undefined): Checklis
             id: 'submit',
             label: 'Submit for Review',
             description: 'Our team will review your profile.',
-            done: false, // controlled by status
+            done: false,
             icon: 'paper-plane-outline',
         },
     ];
@@ -90,32 +90,32 @@ function StatusBanner({ status }: { status: VerificationStatus }) {
 
     const config = {
         pending: {
-            bg: 'rgba(255,171,0,0.12)',
-            border: 'rgba(255,171,0,0.35)',
+            bg: Colors.warningMuted,
+            border: Colors.warning + '55',
             text: Colors.warning,
             icon: 'time-outline' as keyof typeof Ionicons.glyphMap,
             label: 'Pending Review',
             subtitle: "Your profile is under review. We'll notify you within 2-3 business days.",
         },
         verified: {
-            bg: 'rgba(0,200,83,0.12)',
-            border: 'rgba(0,200,83,0.35)',
+            bg: Colors.successMuted,
+            border: Colors.success + '55',
             text: Colors.success,
             icon: 'shield-checkmark-outline' as keyof typeof Ionicons.glyphMap,
             label: 'Verified Trainer',
             subtitle: "You're officially verified. Your badge is now visible to athletes.",
         },
         rejected: {
-            bg: Colors.errorLight,
-            border: 'rgba(255,23,68,0.35)',
+            bg: Colors.errorMuted,
+            border: Colors.error + '55',
             text: Colors.error,
             icon: 'close-circle-outline' as keyof typeof Ionicons.glyphMap,
             label: 'Verification Rejected',
             subtitle: 'Your application was not approved. Please update your profile and resubmit.',
         },
         suspended: {
-            bg: Colors.errorLight,
-            border: 'rgba(255,23,68,0.35)',
+            bg: Colors.errorMuted,
+            border: Colors.error + '55',
             text: Colors.error,
             icon: 'ban-outline' as keyof typeof Ionicons.glyphMap,
             label: 'Account Suspended',
@@ -136,28 +136,36 @@ function StatusBanner({ status }: { status: VerificationStatus }) {
     );
 }
 
-function ChecklistRow({ item, isLast }: { item: ChecklistItem; isLast: boolean }) {
+function ChecklistRow({ item, isLast, index }: { item: ChecklistItem; isLast: boolean; index: number }) {
     return (
-        <View style={[styles.checklistRow, !isLast && styles.checklistRowBorder]}>
-            <View style={[styles.checkIcon, item.done ? styles.checkIconDone : styles.checkIconPending]}>
-                {item.done ? (
-                    <Ionicons name="checkmark" size={14} color={Colors.background} />
-                ) : (
-                    <View style={styles.checkCircleInner} />
-                )}
+        <Animated.View entering={FadeInDown.duration(200).delay(index * 30)}>
+            <View style={styles.checklistRow}>
+                {/* Step circle with connecting line */}
+                <View style={styles.checkStepColumn}>
+                    <View style={[styles.checkIcon, item.done ? styles.checkIconDone : styles.checkIconPending]}>
+                        {item.done ? (
+                            <Ionicons name="checkmark" size={14} color={Colors.background} />
+                        ) : (
+                            <View style={styles.checkCircleInner} />
+                        )}
+                    </View>
+                    {!isLast && (
+                        <View style={[styles.connectingLine, item.done && styles.connectingLineDone]} />
+                    )}
+                </View>
+                <View style={styles.checklistContent}>
+                    <Text style={[styles.checklistLabel, item.done && styles.checklistLabelDone]}>
+                        {item.label}
+                    </Text>
+                    <Text style={styles.checklistDesc}>{item.description}</Text>
+                </View>
+                <Ionicons
+                    name={item.done ? 'checkmark-circle' : 'ellipse-outline'}
+                    size={18}
+                    color={item.done ? Colors.primary : Colors.textMuted}
+                />
             </View>
-            <View style={styles.checklistContent}>
-                <Text style={[styles.checklistLabel, item.done && styles.checklistLabelDone]}>
-                    {item.label}
-                </Text>
-                <Text style={styles.checklistDesc}>{item.description}</Text>
-            </View>
-            <Ionicons
-                name={item.done ? 'checkmark-circle' : 'ellipse-outline'}
-                size={18}
-                color={item.done ? Colors.primary : Colors.textMuted}
-            />
-        </View>
+        </Animated.View>
     );
 }
 
@@ -225,7 +233,7 @@ export default function VerificationScreen({ navigation }: any) {
                             );
                             Alert.alert(
                                 'Submitted!',
-                                'Your profile has been submitted for verification. We\'ll review it within 2–3 business days.',
+                                'Your profile has been submitted for verification. We\'ll review it within 2-3 business days.',
                                 [{ text: 'OK' }]
                             );
                         } catch (err: any) {
@@ -253,7 +261,6 @@ export default function VerificationScreen({ navigation }: any) {
             const file = result.assets[0];
             const fileName = `verification/${user.id}/${Date.now()}_${file.name}`;
 
-            // Upload to Supabase Storage
             const response = await fetch(file.uri);
             const blob = await response.blob();
 
@@ -274,7 +281,6 @@ export default function VerificationScreen({ navigation }: any) {
                 data: { publicUrl },
             } = supabase.storage.from('verification-docs').getPublicUrl(fileName);
 
-            // Add to verification_documents array
             const currentDocs = documents || [];
             const newDoc: VerificationDocument = {
                 name: file.name,
@@ -317,18 +323,13 @@ export default function VerificationScreen({ navigation }: any) {
     };
 
     if (isLoading) {
-        return (
-            <View style={[styles.container, styles.center]}>
-                <ActivityIndicator size="large" color={Colors.primary} />
-            </View>
-        );
+        return <LoadingScreen message="Loading verification..." />;
     }
 
     const status = profile?.verification_status ?? null;
     const isVerified = status === 'verified';
     const checklist = buildChecklist(profile);
 
-    // Mark "Submit for Review" as done when status is pending/verified/rejected
     if (status === 'pending' || status === 'verified') {
         const submitItem = checklist.find((i) => i.id === 'submit');
         if (submitItem) submitItem.done = true;
@@ -338,7 +339,6 @@ export default function VerificationScreen({ navigation }: any) {
     const totalCount = checklist.length;
     const progressPercent = (completedCount / totalCount) * 100;
 
-    // Prerequisites for submit (all except submit step)
     const prereqsDone = checklist
         .filter((i) => i.id !== 'submit')
         .every((i) => i.done);
@@ -348,241 +348,164 @@ export default function VerificationScreen({ navigation }: any) {
         prereqsDone && hasDocuments && (status === null || status === 'rejected') && !isSubmitting;
 
     return (
-        <View style={styles.container}>
-            {/* Header */}
-            <View style={styles.header}>
-                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-                    <Ionicons name="arrow-back" size={22} color={Colors.text} />
-                </TouchableOpacity>
-                <Text style={styles.headerTitle}>Verification</Text>
-                <View style={{ width: 44 }} />
-            </View>
+        <ScreenWrapper refreshing={refreshing} onRefresh={onRefresh}>
+            <ScreenHeader
+                title="Verification"
+                onBack={() => navigation.goBack()}
+            />
 
-            <ScrollView
-                contentContainerStyle={styles.contentContainer}
-                showsVerticalScrollIndicator={false}
-                refreshControl={
-                    <RefreshControl
-                        refreshing={refreshing}
-                        onRefresh={onRefresh}
-                        tintColor={Colors.primary}
-                        colors={[Colors.primary]}
+            {/* Verified state */}
+            {isVerified && (
+                <View style={styles.verifiedHero}>
+                    <View style={styles.verifiedIconRing}>
+                        <View style={styles.verifiedIconInner}>
+                            <Ionicons name="checkmark" size={42} color={Colors.background} />
+                        </View>
+                    </View>
+                    <Text style={styles.verifiedTitle}>You're a Verified Trainer!</Text>
+                    <Text style={styles.verifiedSubtitle}>
+                        Your verified badge is now visible to all athletes searching for trainers. Keep your profile up to date to maintain your status.
+                    </Text>
+                    <Badge
+                        label="Verified Trainer"
+                        color={Colors.success}
+                        bgColor={Colors.successLight}
+                        size="md"
+                        dot
                     />
-                }
-            >
-                {/* Verified state — big success view */}
-                {isVerified ? (
-                    <View style={styles.verifiedHero}>
-                        <View style={styles.verifiedIconRing}>
-                            <View style={styles.verifiedIconInner}>
-                                <Ionicons name="checkmark" size={42} color={Colors.background} />
-                            </View>
-                        </View>
-                        <Text style={styles.verifiedTitle}>You're a Verified Trainer!</Text>
-                        <Text style={styles.verifiedSubtitle}>
-                            Your verified badge is now visible to all athletes searching for trainers. Keep your profile up to date to maintain your status.
-                        </Text>
-                        <View style={styles.verifiedBadge}>
-                            <Ionicons name="shield-checkmark" size={16} color={Colors.success} />
-                            <Text style={styles.verifiedBadgeText}>Verified Trainer</Text>
-                        </View>
-                    </View>
-                ) : null}
-
-                {/* Status Banner */}
-                <StatusBanner status={status} />
-
-                {/* Progress Card */}
-                {!isVerified && (
-                    <View style={styles.progressCard}>
-                        <View style={styles.progressHeader}>
-                            <Text style={styles.progressTitle}>Profile Completion</Text>
-                            <Text style={styles.progressFraction}>
-                                {completedCount}/{totalCount}
-                            </Text>
-                        </View>
-                        <View style={styles.progressBarTrack}>
-                            <View
-                                style={[styles.progressBarFill, { width: `${progressPercent}%` }]}
-                            />
-                        </View>
-                        <Text style={styles.progressPercent}>
-                            {Math.round(progressPercent)}% complete
-                        </Text>
-                    </View>
-                )}
-
-                {/* Checklist */}
-                <View style={styles.checklistCard}>
-                    <Text style={styles.checklistTitle}>Verification Steps</Text>
-                    {checklist.map((item, index) => (
-                        <ChecklistRow
-                            key={item.id}
-                            item={item}
-                            isLast={index === checklist.length - 1}
-                        />
-                    ))}
                 </View>
+            )}
 
-                {/* Verification Documents */}
-                <View style={styles.documentsCard}>
-                    <Text style={styles.documentsTitle}>Verification Documents</Text>
-                    <Text style={styles.documentsSubtitle}>
-                        Upload certificates, IDs, or other supporting documents (PDF or images).
+            {/* Status Banner */}
+            <StatusBanner status={status} />
+
+            {/* Progress Card */}
+            {!isVerified && (
+                <Card style={styles.progressCard}>
+                    <View style={styles.progressHeader}>
+                        <Text style={styles.progressTitle}>Profile Completion</Text>
+                        <Text style={styles.progressFraction}>
+                            {completedCount}/{totalCount}
+                        </Text>
+                    </View>
+                    <View style={styles.progressBarTrack}>
+                        <View style={[styles.progressBarFill, { width: `${progressPercent}%` }]} />
+                    </View>
+                    <Text style={styles.progressPercent}>
+                        {Math.round(progressPercent)}% complete
                     </Text>
+                </Card>
+            )}
 
-                    {documents.length > 0 && (
-                        <View style={styles.documentsList}>
-                            {documents.map((doc, index) => (
-                                <View key={`${doc.name}-${index}`} style={styles.documentRow}>
-                                    <Ionicons
-                                        name="document-outline"
-                                        size={20}
-                                        color={Colors.primary}
-                                    />
-                                    <View style={styles.documentInfo}>
-                                        <Text
-                                            style={styles.documentName}
-                                            numberOfLines={1}
-                                            ellipsizeMode="middle"
-                                        >
-                                            {doc.name}
-                                        </Text>
-                                        <Text style={styles.documentDate}>
-                                            {new Date(doc.uploadedAt).toLocaleDateString()}
-                                        </Text>
-                                    </View>
-                                    <TouchableOpacity
-                                        onPress={() => handleDeleteDocument(index)}
-                                        style={styles.documentDeleteButton}
-                                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                                    >
-                                        <Ionicons
-                                            name="close-circle"
-                                            size={20}
-                                            color={Colors.error}
-                                        />
-                                    </TouchableOpacity>
+            {/* Checklist */}
+            <Card style={styles.checklistCard}>
+                <Text style={styles.checklistTitle}>Verification Steps</Text>
+                {checklist.map((item, index) => (
+                    <ChecklistRow
+                        key={item.id}
+                        item={item}
+                        isLast={index === checklist.length - 1}
+                        index={index}
+                    />
+                ))}
+            </Card>
+
+            {/* Verification Documents */}
+            <Card style={styles.documentsCard}>
+                <Text style={styles.documentsTitle}>Verification Documents</Text>
+                <Text style={styles.documentsSubtitle}>
+                    Upload certificates, IDs, or other supporting documents (PDF or images).
+                </Text>
+
+                {documents.length > 0 && (
+                    <View style={styles.documentsList}>
+                        {documents.map((doc, index) => (
+                            <View key={`${doc.name}-${index}`} style={styles.documentRow}>
+                                <Ionicons name="document-outline" size={20} color={Colors.primary} />
+                                <View style={styles.documentInfo}>
+                                    <Text style={styles.documentName} numberOfLines={1} ellipsizeMode="middle">
+                                        {doc.name}
+                                    </Text>
+                                    <Text style={styles.documentDate}>
+                                        {new Date(doc.uploadedAt).toLocaleDateString()}
+                                    </Text>
                                 </View>
-                            ))}
-                        </View>
+                                <Pressable
+                                    onPress={() => handleDeleteDocument(index)}
+                                    style={({ pressed }) => [styles.documentDeleteButton, pressed && { opacity: 0.7 }]}
+                                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                    accessibilityLabel="Delete document"
+                                >
+                                    <Ionicons name="close-circle" size={20} color={Colors.error} />
+                                </Pressable>
+                            </View>
+                        ))}
+                    </View>
+                )}
+
+                <Pressable
+                    style={({ pressed }) => [styles.uploadButton, pressed && { opacity: 0.9, transform: [{ scale: 0.98 }] }]}
+                    onPress={handleUploadDocument}
+                    disabled={uploading}
+                    accessibilityLabel="Upload document"
+                >
+                    {uploading ? (
+                        <ActivityIndicator size="small" color={Colors.primary} />
+                    ) : (
+                        <>
+                            <Ionicons name="cloud-upload-outline" size={22} color={Colors.primary} />
+                            <Text style={styles.uploadButtonText}>Upload Document</Text>
+                        </>
                     )}
+                </Pressable>
+            </Card>
 
-                    <TouchableOpacity
-                        style={styles.uploadButton}
-                        onPress={handleUploadDocument}
-                        disabled={uploading}
-                    >
-                        {uploading ? (
-                            <ActivityIndicator size="small" color={Colors.primary} />
-                        ) : (
-                            <>
-                                <Ionicons
-                                    name="cloud-upload-outline"
-                                    size={22}
-                                    color={Colors.primary}
-                                />
-                                <Text style={styles.uploadButtonText}>Upload Document</Text>
-                            </>
-                        )}
-                    </TouchableOpacity>
-                </View>
+            {/* Submit Button */}
+            {!isVerified && (
+                <Button
+                    title={
+                        status === 'pending'
+                            ? 'Verification Submitted'
+                            : status === 'rejected'
+                            ? 'Resubmit for Verification'
+                            : 'Submit for Verification'
+                    }
+                    onPress={handleSubmitVerification}
+                    variant="primary"
+                    icon="paper-plane-outline"
+                    loading={isSubmitting}
+                    disabled={!canSubmit}
+                />
+            )}
 
-                {/* Submit Button */}
-                {!isVerified && (
-                    <TouchableOpacity
-                        style={[styles.submitButton, !canSubmit && styles.submitButtonDisabled]}
-                        onPress={handleSubmitVerification}
-                        disabled={!canSubmit}
-                    >
-                        {isSubmitting ? (
-                            <ActivityIndicator color={Colors.background} size="small" />
-                        ) : (
-                            <>
-                                <Ionicons name="paper-plane-outline" size={20} color={Colors.background} />
-                                <Text style={styles.submitButtonText}>
-                                    {status === 'pending'
-                                        ? 'Verification Submitted'
-                                        : status === 'rejected'
-                                        ? 'Resubmit for Verification'
-                                        : 'Submit for Verification'}
-                                </Text>
-                            </>
-                        )}
-                    </TouchableOpacity>
-                )}
-
-                {!canSubmit && !isVerified && status !== 'pending' && !isSubmitting && (
-                    <Text style={styles.submitHint}>
-                        {!prereqsDone
-                            ? 'Complete all steps above before submitting.'
-                            : !hasDocuments
-                            ? 'Upload at least one verification document before submitting.'
-                            : 'Complete all steps above before submitting.'}
-                    </Text>
-                )}
-            </ScrollView>
-        </View>
+            {!canSubmit && !isVerified && status !== 'pending' && !isSubmitting && (
+                <Text style={styles.submitHint}>
+                    {!prereqsDone
+                        ? 'Complete all steps above before submitting.'
+                        : !hasDocuments
+                        ? 'Upload at least one verification document before submitting.'
+                        : 'Complete all steps above before submitting.'}
+                </Text>
+            )}
+        </ScreenWrapper>
     );
 }
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: Colors.background,
-    },
-    center: {
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-
-    // Header
-    header: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingHorizontal: Spacing.xxl,
-        paddingTop: Layout.headerTopPadding,
-        paddingBottom: Spacing.lg,
-        borderBottomWidth: 1,
-        borderBottomColor: Colors.border,
-    },
-    backButton: {
-        width: 44,
-        height: 44,
-        borderRadius: BorderRadius.md,
-        backgroundColor: Colors.surface,
-        justifyContent: 'center',
-        alignItems: 'center',
-        borderWidth: 1,
-        borderColor: Colors.border,
-    },
-    headerTitle: {
-        fontSize: FontSize.lg,
-        fontWeight: FontWeight.bold,
-        color: Colors.text,
-    },
-
-    // Content
-    contentContainer: {
-        padding: Spacing.xxl,
-        gap: Spacing.lg,
-        flexGrow: 1,
-    },
-
     // Verified Hero
     verifiedHero: {
         alignItems: 'center',
         paddingVertical: Spacing.xl,
         gap: Spacing.md,
+        marginBottom: Spacing.lg,
     },
     verifiedIconRing: {
         width: 100,
         height: 100,
         borderRadius: 50,
-        backgroundColor: 'rgba(0,200,83,0.12)',
+        backgroundColor: Colors.successMuted,
         borderWidth: 2,
-        borderColor: 'rgba(0,200,83,0.4)',
+        borderColor: Colors.success + '66',
         justifyContent: 'center',
         alignItems: 'center',
         marginBottom: Spacing.sm,
@@ -608,23 +531,6 @@ const styles = StyleSheet.create({
         lineHeight: 22,
         paddingHorizontal: Spacing.md,
     },
-    verifiedBadge: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: Spacing.xs,
-        backgroundColor: 'rgba(0,200,83,0.12)',
-        paddingHorizontal: Spacing.lg,
-        paddingVertical: Spacing.sm,
-        borderRadius: BorderRadius.pill,
-        borderWidth: 1,
-        borderColor: 'rgba(0,200,83,0.3)',
-        marginTop: Spacing.sm,
-    },
-    verifiedBadgeText: {
-        fontSize: FontSize.sm,
-        fontWeight: FontWeight.semibold,
-        color: Colors.success,
-    },
 
     // Status Banner
     statusBanner: {
@@ -634,10 +540,11 @@ const styles = StyleSheet.create({
         padding: Spacing.lg,
         borderRadius: BorderRadius.lg,
         borderWidth: 1,
+        marginBottom: Spacing.lg,
     },
     statusBannerText: {
         flex: 1,
-        gap: 4,
+        gap: Spacing.xs,
     },
     statusBannerLabel: {
         fontSize: FontSize.md,
@@ -651,11 +558,7 @@ const styles = StyleSheet.create({
 
     // Progress Card
     progressCard: {
-        backgroundColor: Colors.card,
-        borderRadius: BorderRadius.lg,
-        padding: Spacing.lg,
-        borderWidth: 1,
-        borderColor: Colors.border,
+        marginBottom: Spacing.lg,
         gap: Spacing.sm,
         ...Shadows.small,
     },
@@ -693,11 +596,7 @@ const styles = StyleSheet.create({
 
     // Checklist Card
     checklistCard: {
-        backgroundColor: Colors.card,
-        borderRadius: BorderRadius.lg,
-        padding: Spacing.lg,
-        borderWidth: 1,
-        borderColor: Colors.border,
+        marginBottom: Spacing.lg,
         ...Shadows.small,
     },
     checklistTitle: {
@@ -708,13 +607,22 @@ const styles = StyleSheet.create({
     },
     checklistRow: {
         flexDirection: 'row',
-        alignItems: 'center',
+        alignItems: 'flex-start',
         gap: Spacing.md,
-        paddingVertical: Spacing.md,
+        paddingVertical: Spacing.sm,
     },
-    checklistRowBorder: {
-        borderBottomWidth: 1,
-        borderBottomColor: Colors.border,
+    checkStepColumn: {
+        alignItems: 'center',
+    },
+    connectingLine: {
+        width: 2,
+        flex: 1,
+        minHeight: 20,
+        backgroundColor: Colors.border,
+        marginTop: Spacing.xs,
+    },
+    connectingLineDone: {
+        backgroundColor: Colors.primary,
     },
     checkIcon: {
         width: 28,
@@ -757,11 +665,7 @@ const styles = StyleSheet.create({
 
     // Documents Section
     documentsCard: {
-        backgroundColor: Colors.card,
-        borderRadius: BorderRadius.lg,
-        padding: Spacing.lg,
-        borderWidth: 1,
-        borderColor: Colors.border,
+        marginBottom: Spacing.lg,
         gap: Spacing.sm,
         ...Shadows.small,
     },
@@ -803,7 +707,7 @@ const styles = StyleSheet.create({
         color: Colors.textMuted,
     },
     documentDeleteButton: {
-        padding: 4,
+        padding: Spacing.xs,
     },
     uploadButton: {
         flexDirection: 'row',
@@ -824,30 +728,11 @@ const styles = StyleSheet.create({
         color: Colors.primary,
     },
 
-    // Submit button
-    submitButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: Spacing.sm,
-        backgroundColor: Colors.primary,
-        padding: Spacing.lg,
-        borderRadius: BorderRadius.md,
-        ...Shadows.glow,
-    },
-    submitButtonDisabled: {
-        opacity: 0.4,
-        ...Shadows.small,
-    },
-    submitButtonText: {
-        color: Colors.background,
-        fontSize: FontSize.md,
-        fontWeight: FontWeight.bold,
-    },
+    // Submit hint
     submitHint: {
         fontSize: FontSize.sm,
         color: Colors.textMuted,
         textAlign: 'center',
-        marginTop: -Spacing.sm,
+        marginTop: Spacing.sm,
     },
 });

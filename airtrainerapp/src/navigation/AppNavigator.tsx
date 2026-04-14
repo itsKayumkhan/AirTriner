@@ -1,12 +1,12 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, Platform, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { View, Text, StyleSheet, Platform, Animated, Easing } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createDrawerNavigator } from '@react-navigation/drawer';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
-import { Colors, FontSize, FontWeight } from '../theme';
+import { Colors, FontSize, FontWeight, BorderRadius, Spacing, Shadows } from '../theme';
 import { supabase } from '../lib/supabase';
 import { registerForPushNotifications, getUnreadMessageCount, sendLocalNotification } from '../lib/notifications';
 import CustomDrawerContent from '../components/CustomDrawerContent';
@@ -166,10 +166,11 @@ function TabNavigator() {
             screenOptions={({ route }) => ({
                 headerShown: false,
                 tabBarStyle: styles.tabBar,
-                tabBarActiveTintColor: '#45D0FF',
-                tabBarInactiveTintColor: 'rgba(255,255,255,0.35)',
+                tabBarActiveTintColor: Colors.primary,
+                tabBarInactiveTintColor: Colors.textMuted,
                 tabBarLabelStyle: styles.tabBarLabel,
-                tabBarIcon: ({ focused, color, size }) => {
+                tabBarItemStyle: styles.tabBarItem,
+                tabBarIcon: ({ focused, color }) => {
                     let iconName: keyof typeof Ionicons.glyphMap = 'home';
 
                     switch (route.name) {
@@ -193,8 +194,9 @@ function TabNavigator() {
                     }
 
                     return (
-                        <View style={[styles.tabIconContainer, focused && styles.tabIconContainerActive]}>
-                            <Ionicons name={iconName} size={24} color={color} />
+                        <View style={styles.tabIconContainer}>
+                            <Ionicons name={iconName} size={22} color={color} />
+                            {focused && <View style={styles.activeIndicator} />}
                             {route.name === 'Messages' && unreadMessages > 0 && (
                                 <View style={styles.badge}>
                                     <Text style={styles.badgeText}>
@@ -293,7 +295,7 @@ function MainNavigator() {
                     width: 300,
                     backgroundColor: Colors.background,
                 },
-                overlayColor: 'rgba(0, 0, 0, 0.6)',
+                overlayColor: Colors.overlay,
                 swipeEnabled: true,
                 swipeEdgeWidth: 50,
             }}
@@ -303,15 +305,56 @@ function MainNavigator() {
     );
 }
 
+/** Pulsing logo dot for the loading screen */
+function PulsingDot() {
+    const pulseAnim = useRef(new Animated.Value(1)).current;
+
+    useEffect(() => {
+        const pulse = Animated.loop(
+            Animated.sequence([
+                Animated.timing(pulseAnim, {
+                    toValue: 1.6,
+                    duration: 800,
+                    easing: Easing.inOut(Easing.ease),
+                    useNativeDriver: true,
+                }),
+                Animated.timing(pulseAnim, {
+                    toValue: 1,
+                    duration: 800,
+                    easing: Easing.inOut(Easing.ease),
+                    useNativeDriver: true,
+                }),
+            ])
+        );
+        pulse.start();
+        return () => pulse.stop();
+    }, [pulseAnim]);
+
+    const opacityAnim = pulseAnim.interpolate({
+        inputRange: [1, 1.6],
+        outputRange: [1, 0.4],
+    });
+
+    return (
+        <View style={styles.loadingContainer}>
+            {/* Outer glow ring */}
+            <Animated.View
+                style={[
+                    styles.loadingGlowRing,
+                    { transform: [{ scale: pulseAnim }], opacity: opacityAnim },
+                ]}
+            />
+            {/* Core dot */}
+            <View style={styles.loadingDot} />
+        </View>
+    );
+}
+
 export default function AppNavigator() {
     const { isAuthenticated, isLoading } = useAuth();
 
     if (isLoading) {
-        return (
-            <View style={styles.loadingContainer}>
-                <View style={styles.loadingDot} />
-            </View>
-        );
+        return <PulsingDot />;
     }
 
     return (
@@ -323,28 +366,35 @@ export default function AppNavigator() {
 
 const styles = StyleSheet.create({
     tabBar: {
-        backgroundColor: '#0A0D14',
+        backgroundColor: Colors.card,
         borderTopWidth: 1,
-        borderTopColor: 'rgba(255,255,255,0.05)',
-        height: Platform.OS === 'ios' ? 88 : 68,
-        paddingTop: 8,
-        paddingBottom: Platform.OS === 'ios' ? 28 : 8,
+        borderTopColor: Colors.border,
+        height: Platform.OS === 'ios' ? 88 : 64,
+        paddingTop: Spacing.sm,
+        paddingBottom: Platform.OS === 'ios' ? 28 : Spacing.sm,
         elevation: 0,
+        ...Shadows.small,
     },
     tabBarLabel: {
         fontSize: FontSize.xs,
         fontWeight: FontWeight.medium,
         marginTop: 2,
     },
+    tabBarItem: {
+        borderWidth: 0,
+    },
     tabIconContainer: {
         justifyContent: 'center',
         alignItems: 'center',
         width: 44,
-        height: 32,
-        borderRadius: 10,
+        height: 36,
     },
-    tabIconContainerActive: {
-        backgroundColor: Colors.primaryGlow,
+    activeIndicator: {
+        width: 4,
+        height: 4,
+        borderRadius: 2,
+        backgroundColor: Colors.primary,
+        marginTop: 3,
     },
     badge: {
         position: 'absolute',
@@ -359,9 +409,9 @@ const styles = StyleSheet.create({
         paddingHorizontal: 4,
     },
     badgeText: {
-        fontSize: 10,
+        fontSize: FontSize.xxs,
         fontWeight: FontWeight.bold,
-        color: '#fff',
+        color: Colors.text,
     },
     loadingContainer: {
         flex: 1,
@@ -369,10 +419,20 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         backgroundColor: Colors.background,
     },
+    loadingGlowRing: {
+        position: 'absolute',
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: Colors.primaryGlow,
+        borderWidth: 1,
+        borderColor: Colors.primaryMuted,
+    },
     loadingDot: {
-        width: 12,
-        height: 12,
-        borderRadius: 6,
+        width: 14,
+        height: 14,
+        borderRadius: 7,
         backgroundColor: Colors.primary,
+        ...Shadows.glow,
     },
 });

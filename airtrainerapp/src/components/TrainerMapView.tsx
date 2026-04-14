@@ -1,9 +1,9 @@
 import React, { useMemo, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, FontSize, FontWeight, BorderRadius, Spacing, Shadows } from '../theme';
-import { MapView, Marker, Callout, PROVIDER_GOOGLE, MAPS_AVAILABLE } from '../lib/maps';
+import { MapView, Marker, Callout, MAPS_AVAILABLE } from '../lib/maps';
 
 export interface TrainerPin {
     id: string;
@@ -35,13 +35,16 @@ export default function TrainerMapView({
     onTrainerPress,
 }: Props) {
     const mapRef = useRef<any>(null);
+    const [mapError, setMapError] = React.useState(false);
 
-    // Web fallback - maps not supported
-    if (!MAPS_AVAILABLE) {
+    // Web fallback or map load error
+    if (!MAPS_AVAILABLE || mapError) {
         return (
             <View style={[styles.container, styles.emptyOverlay]}>
                 <Ionicons name="map-outline" size={36} color={Colors.textTertiary} />
-                <Text style={styles.emptyText}>Map view is available on mobile devices</Text>
+                <Text style={styles.emptyText}>
+                    {mapError ? 'Map failed to load' : 'Map view is available on mobile devices'}
+                </Text>
                 <Text style={styles.emptySubtext}>
                     {trainers.length} coach{trainers.length !== 1 ? 'es' : ''} available
                 </Text>
@@ -175,7 +178,6 @@ export default function TrainerMapView({
             <MapView
                 ref={mapRef}
                 style={styles.map}
-                provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
                 initialRegion={{
                     latitude: centerLat,
                     longitude: centerLng,
@@ -185,6 +187,7 @@ export default function TrainerMapView({
                 customMapStyle={darkMapStyle}
                 showsUserLocation
                 showsMyLocationButton={false}
+                onMapReady={() => {}}
             >
                 {validTrainers.map(renderMarker)}
             </MapView>

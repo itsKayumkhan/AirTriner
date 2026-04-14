@@ -1,7 +1,8 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Layout} from '../../theme';
+import { Colors, Spacing, BorderRadius, FontSize, FontWeight } from '../../theme';
+import { ScreenWrapper, ScreenHeader, Card } from '../../components/ui';
 
 type Section = {
     heading: string;
@@ -49,35 +50,28 @@ const SECTIONS: Section[] = [
 
 export default function TermsScreen({ navigation }: any) {
     return (
-        <View style={styles.container}>
-            {/* Header */}
-            <View style={styles.header}>
-                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-                    <Ionicons name="arrow-back" size={24} color={Colors.text} />
-                </TouchableOpacity>
-                <Text style={styles.headerTitle}>Terms of Service</Text>
-                <View style={{ width: 44 }} />
-            </View>
+        <ScreenWrapper>
+            <ScreenHeader title="Terms of Service" onBack={() => navigation.goBack()} />
 
-            <ScrollView contentContainerStyle={styles.contentContainer} showsVerticalScrollIndicator={false}>
-                {/* Intro block */}
-                <View style={styles.introCard}>
-                    <View style={styles.introIconWrapper}>
-                        <Ionicons name="document-text-outline" size={28} color={Colors.primary} />
-                    </View>
-                    <View style={styles.introTextBlock}>
-                        <Text style={styles.introTitle}>Terms of Service</Text>
-                        <Text style={styles.introSubtitle}>Last updated: March 2026</Text>
-                    </View>
+            {/* Intro block */}
+            <Card style={styles.introCard}>
+                <View style={styles.introIconWrapper}>
+                    <Ionicons name="document-text-outline" size={28} color={Colors.primary} />
                 </View>
+                <View style={styles.introTextBlock}>
+                    <Text style={styles.introTitle}>Terms of Service</Text>
+                    <Text style={styles.introSubtitle}>Last updated: March 2026</Text>
+                </View>
+            </Card>
 
-                <Text style={styles.introNote}>
-                    Please read these terms carefully before using the AirTrainr platform. By creating an account you agree to be bound by the following conditions.
-                </Text>
+            <Text style={styles.introNote}>
+                Please read these terms carefully before using the AirTrainr platform. By creating an account you agree to be bound by the following conditions.
+            </Text>
 
-                {/* Sections */}
-                {SECTIONS.map((section, index) => (
-                    <View key={index} style={styles.sectionCard}>
+            {/* Sections */}
+            {SECTIONS.map((section, index) => (
+                <Card key={index} style={styles.sectionCard}>
+                    <View style={styles.sectionRow}>
                         <View style={styles.sectionNumberBadge}>
                             <Text style={styles.sectionNumber}>{index + 1}</Text>
                         </View>
@@ -86,65 +80,26 @@ export default function TermsScreen({ navigation }: any) {
                             <Text style={styles.sectionBody}>{section.body}</Text>
                         </View>
                     </View>
-                ))}
+                </Card>
+            ))}
 
-                {/* Footer */}
-                <View style={styles.footerCard}>
-                    <Ionicons name="shield-checkmark-outline" size={20} color={Colors.primary} />
-                    <Text style={styles.footerText}>
-                        Questions? Email{' '}
-                        <Text style={styles.footerLink}>legal@airtrainr.com</Text>
-                    </Text>
-                </View>
-
-                <View style={{ height: 48 }} />
-            </ScrollView>
-        </View>
+            {/* Footer */}
+            <Card style={styles.footerCard}>
+                <Ionicons name="shield-checkmark-outline" size={20} color={Colors.primary} />
+                <Text style={styles.footerText}>
+                    Questions? Email{' '}
+                    <Text style={styles.footerLink}>legal@airtrainr.com</Text>
+                </Text>
+            </Card>
+        </ScreenWrapper>
     );
 }
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: Colors.background,
-    },
-    header: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingHorizontal: Spacing.xxl,
-        paddingTop: Layout.headerTopPadding,
-        paddingBottom: Spacing.lg,
-        borderBottomWidth: 1,
-        borderBottomColor: Colors.border,
-    },
-    backButton: {
-        width: 44,
-        height: 44,
-        borderRadius: BorderRadius.md,
-        backgroundColor: Colors.surface,
-        justifyContent: 'center',
-        alignItems: 'center',
-        borderWidth: 1,
-        borderColor: Colors.border,
-    },
-    headerTitle: {
-        fontSize: FontSize.lg,
-        fontWeight: FontWeight.bold,
-        color: Colors.text,
-    },
-    contentContainer: {
-        padding: Spacing.xxl,
-    },
     introCard: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: Spacing.md,
-        backgroundColor: Colors.card,
-        borderRadius: BorderRadius.lg,
-        padding: Spacing.lg,
-        borderWidth: 1,
-        borderColor: Colors.border,
         marginBottom: Spacing.lg,
     },
     introIconWrapper: {
@@ -175,13 +130,10 @@ const styles = StyleSheet.create({
         marginBottom: Spacing.xxl,
     },
     sectionCard: {
-        flexDirection: 'row',
-        backgroundColor: Colors.card,
-        borderRadius: BorderRadius.md,
-        padding: Spacing.lg,
         marginBottom: Spacing.sm,
-        borderWidth: 1,
-        borderColor: Colors.border,
+    },
+    sectionRow: {
+        flexDirection: 'row',
         gap: Spacing.md,
     },
     sectionNumberBadge: {
@@ -210,7 +162,7 @@ const styles = StyleSheet.create({
     },
     sectionBody: {
         fontSize: FontSize.sm,
-        color: 'rgba(255,255,255,0.7)',
+        color: Colors.textSecondary,
         lineHeight: 22,
     },
     footerCard: {
@@ -219,11 +171,7 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         gap: Spacing.sm,
         marginTop: Spacing.xl,
-        paddingVertical: Spacing.md,
-        paddingHorizontal: Spacing.lg,
         backgroundColor: Colors.primaryGlow,
-        borderRadius: BorderRadius.md,
-        borderWidth: 1,
         borderColor: Colors.borderActive,
     },
     footerText: {

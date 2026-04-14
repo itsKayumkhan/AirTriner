@@ -1,15 +1,21 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
-    View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, KeyboardAvoidingView,
-    Platform, ActivityIndicator,
+    View, Text, StyleSheet, FlatList, TextInput, Pressable,
+    KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase, MessageRow } from '../../lib/supabase';
 import { createNotification } from '../../lib/notifications';
 import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Layout } from '../../theme';
+import {
+    ScreenWrapper,
+    Avatar,
+    EmptyState,
+    LoadingScreen,
+} from '../../components/ui';
 
-// ---------- Date helpers (matching web) ----------
+// ---------- Date helpers ----------
 function isToday(d: Date) {
     const n = new Date();
     return (
@@ -37,7 +43,6 @@ function getDateLabel(d: Date): string {
     });
 }
 
-// Group messages by date for section separators
 type DateGroup = { date: string; msgs: MessageRow[] };
 function groupMessagesByDate(messages: MessageRow[]): DateGroup[] {
     const groups: DateGroup[] = [];
@@ -53,20 +58,24 @@ function groupMessagesByDate(messages: MessageRow[]): DateGroup[] {
     return groups;
 }
 
+
 export default function ChatScreen({ route, navigation }: any) {
     const { user } = useAuth();
     const { bookingId, allBookingIds: paramAllBookingIds, otherUser, sport } = route.params;
 
-    // Use allBookingIds if passed; fall back to single bookingId
-    const allBookingIds: string[] = paramAllBookingIds && paramAllBookingIds.length > 0
-        ? paramAllBookingIds
-        : [bookingId];
+    const allBookingIds: string[] =
+        paramAllBookingIds && paramAllBookingIds.length > 0
+            ? paramAllBookingIds
+            : [bookingId];
 
     const [messages, setMessages] = useState<MessageRow[]>([]);
     const [newMessage, setNewMessage] = useState('');
     const [isLoading, setIsLoading] = useState(true);
     const [isSending, setIsSending] = useState(false);
     const flatListRef = useRef<FlatList>(null);
+
+    const otherUserName = `${otherUser?.first_name || ''} ${otherUser?.last_name || ''}`.trim();
+    const sportLabel = (sport || '').replace(/_/g, ' ');
 
     // ---------- Mark messages as read ----------
     const markMessagesAsRead = useCallback(async () => {
@@ -80,7 +89,6 @@ export default function ChatScreen({ route, navigation }: any) {
 
         if (error) console.error('Error marking messages as read:', error);
 
-        // Update local state to reflect read status
         setMessages((prev) =>
             prev.map((m) =>
                 m.sender_id !== user.id && !m.read_at
@@ -90,7 +98,7 @@ export default function ChatScreen({ route, navigation }: any) {
         );
     }, [allBookingIds, user]);
 
-    // ---------- Fetch all messages for this conversation ----------
+    // ---------- Fetch messages ----------
     const fetchMessages = useCallback(async () => {
         try {
             const { data, error } = await supabase
@@ -102,7 +110,6 @@ export default function ChatScreen({ route, navigation }: any) {
             if (error) throw error;
             setMessages(data || []);
 
-            // Mark as read after short delay
             if (user) {
                 setTimeout(() => markMessagesAsRead(), 500);
             }
@@ -113,23 +120,17 @@ export default function ChatScreen({ route, navigation }: any) {
         }
     }, [allBookingIds, user, markMessagesAsRead]);
 
-    // ---------- Load messages + real-time subscription ----------
+    // ---------- Real-time subscription ----------
     useEffect(() => {
         fetchMessages();
 
-        // Subscribe to new messages and updates across ALL booking IDs in this conversation
         const channel = supabase
             .channel(`chat:${allBookingIds.join(',')}`)
             .on(
                 'postgres_changes',
-                {
-                    event: 'INSERT',
-                    schema: 'public',
-                    table: 'messages',
-                },
+                { event: 'INSERT', schema: 'public', table: 'messages' },
                 (payload) => {
                     const newMsg = payload.new as MessageRow;
-                    // Only handle messages belonging to this conversation
                     if (!allBookingIds.includes(newMsg.booking_id)) return;
 
                     setMessages((prev) => {
@@ -137,7 +138,6 @@ export default function ChatScreen({ route, navigation }: any) {
                         return [...prev, newMsg];
                     });
 
-                    // If message is from the other user, mark as read since we're viewing
                     if (newMsg.sender_id !== user?.id) {
                         setTimeout(() => markMessagesAsRead(), 300);
                     }
@@ -145,16 +145,11 @@ export default function ChatScreen({ route, navigation }: any) {
             )
             .on(
                 'postgres_changes',
-                {
-                    event: 'UPDATE',
-                    schema: 'public',
-                    table: 'messages',
-                },
+                { event: 'UPDATE', schema: 'public', table: 'messages' },
                 (payload) => {
                     const updatedMsg = payload.new as MessageRow;
                     if (!allBookingIds.includes(updatedMsg.booking_id)) return;
 
-                    // Update read receipts in real-time
                     setMessages((prev) =>
                         prev.map((m) => (m.id === updatedMsg.id ? updatedMsg : m))
                     );
@@ -167,7 +162,7 @@ export default function ChatScreen({ route, navigation }: any) {
         };
     }, [fetchMessages, allBookingIds, user, markMessagesAsRead]);
 
-    // ---------- Auto-scroll on new messages ----------
+    // ---------- Auto-scroll ----------
     useEffect(() => {
         if (messages.length > 0) {
             setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
@@ -181,7 +176,6 @@ export default function ChatScreen({ route, navigation }: any) {
         setNewMessage('');
         setIsSending(true);
 
-        // Optimistic update
         const optimisticMessage: MessageRow = {
             id: `temp-${Date.now()}`,
             booking_id: bookingId,
@@ -205,7 +199,6 @@ export default function ChatScreen({ route, navigation }: any) {
 
             if (error) throw error;
 
-            // Replace optimistic message with real one
             if (data) {
                 setMessages((prev) =>
                     prev.map((m) =>
@@ -214,7 +207,6 @@ export default function ChatScreen({ route, navigation }: any) {
                 );
             }
 
-            // Create notification for the other user
             if (otherUser?.id) {
                 await createNotification({
                     userId: otherUser.id,
@@ -232,7 +224,7 @@ export default function ChatScreen({ route, navigation }: any) {
             setMessages((prev) =>
                 prev.filter((m) => m.id !== optimisticMessage.id)
             );
-            setNewMessage(content); // restore message on failure
+            setNewMessage(content);
         } finally {
             setIsSending(false);
         }
@@ -244,7 +236,7 @@ export default function ChatScreen({ route, navigation }: any) {
         return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
     };
 
-    // ---------- Build flat list data with date separators ----------
+    // ---------- Build flat list data ----------
     type ListItem =
         | { type: 'date'; label: string; key: string }
         | { type: 'message'; message: MessageRow; key: string };
@@ -263,13 +255,15 @@ export default function ChatScreen({ route, navigation }: any) {
 
     const listData = buildListData();
 
-    // ---------- Render ----------
-    const renderItem = ({ item, index }: { item: ListItem; index: number }) => {
+    // ---------- Render items ----------
+    const renderItem = ({ item }: { item: ListItem }) => {
         if (item.type === 'date') {
             return (
-                <View style={styles.dateHeader}>
+                <View style={styles.dateSeparator}>
                     <View style={styles.dateLine} />
-                    <Text style={styles.dateHeaderText}>{item.label}</Text>
+                    <View style={styles.datePill}>
+                        <Text style={styles.dateText}>{item.label}</Text>
+                    </View>
                     <View style={styles.dateLine} />
                 </View>
             );
@@ -277,8 +271,8 @@ export default function ChatScreen({ route, navigation }: any) {
 
         const m = item.message;
         const isMe = m.sender_id === user?.id;
+        const isTemp = m.id.startsWith('temp-');
 
-        // Check if this is the last message sent by current user (for read receipt)
         const isLastMyMessage =
             isMe &&
             !messages
@@ -289,53 +283,73 @@ export default function ChatScreen({ route, navigation }: any) {
             <View>
                 <View
                     style={[
-                        styles.messageBubble,
-                        isMe ? styles.myMessage : styles.otherMessage,
+                        styles.bubbleRow,
+                        isMe ? styles.bubbleRowMe : styles.bubbleRowOther,
                     ]}
                 >
-                    <Text
+                    {/* Received: small avatar to the left */}
+                    {!isMe && (
+                        <Avatar name={otherUserName} size={24} />
+                    )}
+                    <View
                         style={[
-                            styles.messageText,
-                            isMe ? styles.myMessageText : styles.otherMessageText,
+                            styles.bubble,
+                            isMe ? styles.bubbleMe : styles.bubbleOther,
                         ]}
                     >
-                        {m.content}
-                    </Text>
-                    <View style={styles.messageFooter}>
-                        <Text style={[styles.messageTime, isMe && styles.myMessageTime]}>
-                            {formatTime(m.created_at)}
+                        <Text
+                            style={[
+                                styles.bubbleText,
+                                isMe ? styles.bubbleTextMe : styles.bubbleTextOther,
+                            ]}
+                        >
+                            {m.content}
                         </Text>
-                        {isMe && (
-                            <View style={styles.readReceiptContainer}>
-                                {m.id.startsWith('temp-') ? (
-                                    <Ionicons
-                                        name="time-outline"
-                                        size={14}
-                                        color="rgba(255,255,255,0.5)"
-                                    />
-                                ) : m.read_at ? (
-                                    <Ionicons
-                                        name="checkmark-done"
-                                        size={14}
-                                        color="#4FC3F7"
-                                    />
-                                ) : (
-                                    <Ionicons
-                                        name="checkmark-done"
-                                        size={14}
-                                        color="rgba(255,255,255,0.5)"
-                                    />
-                                )}
-                            </View>
-                        )}
                     </View>
                 </View>
+
+                {/* Timestamp + read receipts below bubble */}
+                <View style={[styles.metaRow, isMe ? styles.metaRowMe : styles.metaRowOther]}>
+                    <Text style={styles.metaTime}>{formatTime(m.created_at)}</Text>
+                    {isMe && (
+                        <View style={styles.readReceipt}>
+                            {isTemp ? (
+                                <Ionicons
+                                    name="time-outline"
+                                    size={12}
+                                    color={Colors.textMuted}
+                                />
+                            ) : m.read_at ? (
+                                <Ionicons
+                                    name="checkmark-done"
+                                    size={12}
+                                    color={Colors.primary}
+                                />
+                            ) : (
+                                <Ionicons
+                                    name="checkmark-done"
+                                    size={12}
+                                    color={Colors.textMuted}
+                                />
+                            )}
+                        </View>
+                    )}
+                </View>
+
+                {/* "Read at" label for last sent message */}
                 {isLastMyMessage && isMe && m.read_at && (
-                    <Text style={styles.readText}>Read {formatTime(m.read_at)}</Text>
+                    <Text style={styles.readLabel}>Read {formatTime(m.read_at)}</Text>
                 )}
             </View>
         );
     };
+
+    // ---------- Loading state ----------
+    if (isLoading) {
+        return <LoadingScreen message="Loading messages..." />;
+    }
+
+    const hasText = newMessage.trim().length > 0;
 
     return (
         <KeyboardAvoidingView
@@ -343,38 +357,45 @@ export default function ChatScreen({ route, navigation }: any) {
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             keyboardVerticalOffset={0}
         >
-            {/* Header */}
-            <View style={styles.header}>
-                <TouchableOpacity
-                    style={styles.backButton}
-                    onPress={() => navigation.goBack()}
-                >
-                    <Ionicons name="arrow-back" size={24} color={Colors.text} />
-                </TouchableOpacity>
-                <View style={styles.headerAvatar}>
-                    <Text style={styles.headerAvatarText}>
-                        {(otherUser?.first_name?.[0] || '') +
-                            (otherUser?.last_name?.[0] || '')}
-                    </Text>
-                </View>
-                <View style={styles.headerInfo}>
-                    <Text style={styles.headerName}>
-                        {otherUser?.first_name} {otherUser?.last_name}
-                    </Text>
-                    {sport && (
-                        <Text style={styles.headerSport}>
-                            {(sport || '').replace(/_/g, ' ')} Session
-                        </Text>
-                    )}
-                </View>
-            </View>
+            <ScreenWrapper scrollable={false} noPadding>
+                {/* Header */}
+                <View style={styles.header}>
+                    <Pressable
+                        onPress={() => navigation.goBack()}
+                        style={styles.backButton}
+                        accessibilityLabel="Go back"
+                        accessibilityRole="button"
+                        hitSlop={8}
+                    >
+                        <Ionicons name="chevron-back" size={24} color={Colors.text} />
+                    </Pressable>
 
-            {/* Messages */}
-            {isLoading ? (
-                <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color={Colors.primary} />
+                    <Avatar name={otherUserName} size={32} />
+
+                    <View style={styles.headerInfo}>
+                        <Text style={styles.headerName} numberOfLines={1}>
+                            {otherUserName || 'Chat'}
+                        </Text>
+                        {sportLabel ? (
+                            <Text style={styles.headerSubtitle} numberOfLines={1}>
+                                {sportLabel} Session
+                            </Text>
+                        ) : null}
+                    </View>
+
+                    <Pressable
+                        style={styles.callButton}
+                        accessibilityLabel={`Call ${otherUserName}`}
+                        accessibilityRole="button"
+                        hitSlop={8}
+                    >
+                        <Ionicons name="call-outline" size={20} color={Colors.primary} />
+                    </Pressable>
                 </View>
-            ) : (
+
+                <View style={styles.divider} />
+
+                {/* Messages list */}
                 <FlatList
                     ref={flatListRef}
                     data={listData}
@@ -391,192 +412,238 @@ export default function ChatScreen({ route, navigation }: any) {
                     keyboardDismissMode="interactive"
                     keyboardShouldPersistTaps="handled"
                     ListEmptyComponent={
-                        <View style={styles.emptyChat}>
-                            <Ionicons
-                                name="chatbubble-ellipses-outline"
-                                size={40}
-                                color={Colors.textTertiary}
+                        <View style={styles.emptyContainer}>
+                            <EmptyState
+                                icon="chatbubble-ellipses-outline"
+                                title="Start the conversation!"
+                                description={`Say hello to ${otherUserName}`}
                             />
-                            <Text style={styles.emptyChatTitle}>No messages yet</Text>
-                            <Text style={styles.emptyChatText}>
-                                Start the conversation below
-                            </Text>
                         </View>
                     }
                 />
-            )}
 
-            {/* Input Bar */}
-            <View style={styles.inputBar}>
-                <View style={styles.inputContainer}>
-                    <TextInput
-                        style={styles.textInput}
-                        placeholder="Type a message..."
-                        placeholderTextColor={Colors.textTertiary}
-                        value={newMessage}
-                        onChangeText={setNewMessage}
-                        multiline
-                        maxLength={1000}
-                        onFocus={() =>
-                            setTimeout(
-                                () =>
-                                    flatListRef.current?.scrollToEnd({
-                                        animated: true,
-                                    }),
-                                200
-                            )
-                        }
-                    />
+                {/* Input bar */}
+                <View style={styles.inputBar}>
+                    <View style={styles.inputPill}>
+                        <TextInput
+                            style={styles.textInput}
+                            placeholder="Type a message..."
+                            placeholderTextColor={Colors.textTertiary}
+                            value={newMessage}
+                            onChangeText={setNewMessage}
+                            multiline
+                            maxLength={1000}
+                            accessibilityLabel="Message input"
+                            onFocus={() =>
+                                setTimeout(
+                                    () =>
+                                        flatListRef.current?.scrollToEnd({
+                                            animated: true,
+                                        }),
+                                    200
+                                )
+                            }
+                        />
+                    </View>
+                    {hasText && (
+                        <Pressable
+                            style={({ pressed }) => [
+                                styles.sendButton,
+                                pressed && styles.sendButtonPressed,
+                            ]}
+                            onPress={sendMessage}
+                            disabled={isSending}
+                            accessibilityLabel="Send message"
+                            accessibilityRole="button"
+                        >
+                            <Ionicons name="arrow-up" size={22} color={Colors.textInverse} />
+                        </Pressable>
+                    )}
                 </View>
-                <TouchableOpacity
-                    style={[
-                        styles.sendButton,
-                        !newMessage.trim() && styles.sendButtonDisabled,
-                    ]}
-                    onPress={sendMessage}
-                    disabled={!newMessage.trim() || isSending}
-                >
-                    <Ionicons
-                        name="send"
-                        size={20}
-                        color={newMessage.trim() ? '#0A0D14' : Colors.textTertiary}
-                    />
-                </TouchableOpacity>
-            </View>
+            </ScreenWrapper>
         </KeyboardAvoidingView>
     );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#0A0D14' },
+    container: {
+        flex: 1,
+        backgroundColor: Colors.background,
+    },
+
+    // Header
     header: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: Spacing.lg,
-        paddingTop: Layout.headerTopPadding,
-        paddingBottom: Spacing.lg,
-        backgroundColor: '#0A0D14',
-        borderBottomWidth: 1,
-        borderBottomColor: 'rgba(255,255,255,0.05)',
+        paddingHorizontal: Spacing.md,
+        paddingVertical: Spacing.md,
+        gap: Spacing.md,
     },
     backButton: {
-        width: 40,
-        height: 40,
-        borderRadius: 12,
+        width: 44,
+        height: 44,
         justifyContent: 'center',
         alignItems: 'center',
-        marginRight: Spacing.sm,
     },
-    headerAvatar: {
-        width: 40,
-        height: 40,
-        borderRadius: 12,
-        backgroundColor: Colors.primaryGlow,
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginRight: Spacing.md,
+    headerInfo: {
+        flex: 1,
     },
-    headerAvatarText: {
+    headerName: {
         fontSize: FontSize.md,
         fontWeight: FontWeight.bold,
-        color: '#45D0FF',
+        color: Colors.text,
     },
-    headerInfo: { flex: 1 },
-    headerName: {
-        fontSize: FontSize.lg,
-        fontWeight: FontWeight.bold,
-        color: '#FFFFFF',
-    },
-    headerSport: {
+    headerSubtitle: {
         fontSize: FontSize.xs,
-        color: Colors.textTertiary,
-        marginTop: 2,
-        textTransform: 'uppercase',
-        letterSpacing: 1,
+        color: Colors.textSecondary,
+        marginTop: 1,
     },
-    loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+    callButton: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: Colors.primaryMuted,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    divider: {
+        height: 1,
+        backgroundColor: Colors.border,
+    },
+
+    // Messages
     messagesList: {
-        paddingHorizontal: Spacing.lg,
+        paddingHorizontal: Layout.screenPadding,
         paddingVertical: Spacing.lg,
         flexGrow: 1,
         justifyContent: 'flex-end',
     },
-    // Date separators (matching web style)
-    dateHeader: {
+
+    // Date separator
+    dateSeparator: {
         flexDirection: 'row',
         alignItems: 'center',
-        marginVertical: Spacing.lg,
+        marginVertical: Spacing.xl,
         gap: Spacing.sm,
     },
     dateLine: {
         flex: 1,
         height: 1,
-        backgroundColor: 'rgba(255,255,255,0.06)',
+        backgroundColor: Colors.border,
     },
-    dateHeaderText: {
-        fontSize: FontSize.xs,
+    datePill: {
+        backgroundColor: Colors.surface,
+        borderRadius: BorderRadius.pill,
+        paddingHorizontal: Spacing.md,
+        paddingVertical: Spacing.xs,
+    },
+    dateText: {
+        fontSize: FontSize.xxs,
         fontWeight: FontWeight.bold,
-        color: 'rgba(255,255,255,0.25)',
+        color: Colors.textTertiary,
         textTransform: 'uppercase',
-        letterSpacing: 1.5,
-        paddingHorizontal: Spacing.sm,
+        letterSpacing: 1,
     },
-    messageBubble: {
-        maxWidth: '80%',
-        padding: Spacing.md,
-        borderRadius: BorderRadius.lg,
-        marginBottom: Spacing.sm,
+
+    // Bubble rows
+    bubbleRow: {
+        flexDirection: 'row',
+        marginBottom: 2,
+        gap: Spacing.sm,
     },
-    myMessage: {
-        alignSelf: 'flex-end',
-        backgroundColor: '#0047AB',
-        borderBottomRightRadius: 4,
+    bubbleRowMe: {
+        justifyContent: 'flex-end',
     },
-    otherMessage: {
-        alignSelf: 'flex-start',
-        backgroundColor: '#161B22',
-        borderBottomLeftRadius: 4,
+    bubbleRowOther: {
+        justifyContent: 'flex-start',
+        alignItems: 'flex-end',
+    },
+
+    // Bubbles
+    bubble: {
+        maxWidth: '75%',
+        paddingHorizontal: Spacing.lg,
+        paddingVertical: Spacing.md,
+    },
+    bubbleMe: {
+        backgroundColor: Colors.accent,
+        borderRadius: BorderRadius.xl,
+        borderBottomRightRadius: Spacing.xs,
+    },
+    bubbleOther: {
+        backgroundColor: Colors.card,
+        borderRadius: BorderRadius.xl,
+        borderBottomLeftRadius: Spacing.xs,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.07)',
+        borderColor: Colors.border,
     },
-    messageText: { fontSize: FontSize.md, lineHeight: 22 },
-    myMessageText: { color: '#fff' },
-    otherMessageText: { color: '#FFFFFF' },
-    messageFooter: {
+    bubbleText: {
+        fontSize: FontSize.md,
+        lineHeight: 22,
+    },
+    bubbleTextMe: {
+        color: '#FFFFFF',
+    },
+    bubbleTextOther: {
+        color: '#FFFFFF',
+    },
+
+    // Meta row (time + read receipt)
+    metaRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'flex-end',
         gap: 4,
-        marginTop: 4,
+        marginBottom: Spacing.sm,
+        paddingHorizontal: 2,
     },
-    messageTime: { fontSize: FontSize.xs, color: Colors.textTertiary },
-    myMessageTime: { color: 'rgba(255,255,255,0.7)' },
-    readReceiptContainer: { marginLeft: 2 },
-    readText: {
+    metaRowMe: {
+        justifyContent: 'flex-end',
+    },
+    metaRowOther: {
+        justifyContent: 'flex-start',
+        marginLeft: 24 + Spacing.sm, // avatar width + gap
+    },
+    metaTime: {
+        fontSize: 10,
+        color: Colors.textMuted,
+    },
+    readReceipt: {
+        marginLeft: 2,
+    },
+    readLabel: {
         fontSize: 10,
         color: Colors.textTertiary,
         textAlign: 'right',
         marginBottom: Spacing.sm,
         marginRight: Spacing.xs,
     },
+
+    // Empty
+    emptyContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+
+    // Input bar
     inputBar: {
         flexDirection: 'row',
         alignItems: 'flex-end',
-        paddingHorizontal: Spacing.md,
+        paddingHorizontal: Layout.screenPadding,
         paddingTop: Spacing.sm,
-        paddingBottom: Platform.OS === 'ios' ? Spacing.xl : Spacing.sm,
-        backgroundColor: '#161B22',
+        paddingBottom: Platform.OS === 'ios' ? Spacing.xl : Spacing.md,
+        backgroundColor: Colors.card,
         borderTopWidth: 1,
-        borderTopColor: 'rgba(255,255,255,0.08)',
+        borderTopColor: Colors.border,
         gap: Spacing.sm,
     },
-    inputContainer: {
+    inputPill: {
         flex: 1,
-        backgroundColor: '#161B22',
-        borderRadius: BorderRadius.lg,
+        backgroundColor: Colors.surface,
+        borderRadius: BorderRadius.pill,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.08)',
-        paddingHorizontal: Spacing.md,
+        borderColor: Colors.border,
+        paddingHorizontal: Spacing.lg,
         paddingVertical: Platform.OS === 'ios' ? Spacing.sm : 0,
         maxHeight: 100,
     },
@@ -590,25 +657,12 @@ const styles = StyleSheet.create({
     sendButton: {
         width: 44,
         height: 44,
-        borderRadius: 14,
-        backgroundColor: '#45D0FF',
+        borderRadius: 22,
+        backgroundColor: Colors.primary,
         justifyContent: 'center',
         alignItems: 'center',
     },
-    sendButtonDisabled: { backgroundColor: Colors.surface },
-    emptyChat: {
-        alignItems: 'center',
-        justifyContent: 'center',
-        flex: 1,
-        gap: Spacing.sm,
-    },
-    emptyChatTitle: {
-        fontSize: FontSize.md,
-        fontWeight: FontWeight.bold,
-        color: 'rgba(255,255,255,0.4)',
-    },
-    emptyChatText: {
-        fontSize: FontSize.sm,
-        color: 'rgba(255,255,255,0.25)',
+    sendButtonPressed: {
+        opacity: 0.7,
     },
 });
