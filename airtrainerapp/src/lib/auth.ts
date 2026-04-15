@@ -11,9 +11,9 @@ export interface AuthUser {
     athleteProfile?: AthleteProfileRow | null;
 }
 
-function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+function withTimeout<T>(promise: PromiseLike<T>, ms: number, message: string): Promise<T> {
     return Promise.race([
-        promise,
+        Promise.resolve(promise),
         new Promise<T>((_, reject) => setTimeout(() => reject(new Error(message)), ms)),
     ]);
 }

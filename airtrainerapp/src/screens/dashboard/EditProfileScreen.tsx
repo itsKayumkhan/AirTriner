@@ -31,6 +31,16 @@ const SESSION_LENGTH_OPTIONS = [30, 45, 60, 90];
 const SEX_OPTIONS = ['Male', 'Female', 'Other', 'Prefer not to say'];
 const SKILL_LEVELS = ['beginner', 'intermediate', 'advanced', 'pro'] as const;
 
+/** Returns true if the given string matches a Canadian postal code (e.g. A1A 1A1) */
+function isCanadianPostalCode(zip: string): boolean {
+    return /^[A-Za-z]\d[A-Za-z][\s-]?\d[A-Za-z]\d$/.test(zip.trim());
+}
+
+/** Returns true if the user is likely in Canada based on postal code or country */
+function isCanada(zip: string, countryVal: string): boolean {
+    return isCanadianPostalCode(zip) || countryVal.toLowerCase().includes('canada');
+}
+
 /* ── Chip Component ── */
 function Chip({
     label,
@@ -138,6 +148,7 @@ export default function EditProfileScreen({ navigation }: any) {
     const [lastName, setLastName] = useState(user?.lastName || '');
     const [avatarUrl, setAvatarUrl] = useState(user?.avatarUrl || '');
     const [avatarLoading, setAvatarLoading] = useState(false);
+    const [avatarPendingApproval, setAvatarPendingApproval] = useState(false);
     const [headline, setHeadline] = useState(tp?.headline || '');
     const [bio, setBio] = useState(tp?.bio || '');
     const [hourlyRate, setHourlyRate] = useState(String(tp?.hourly_rate || '50'));
@@ -146,6 +157,9 @@ export default function EditProfileScreen({ navigation }: any) {
     const [selectedTrainingTypes, setSelectedTrainingTypes] = useState<string[]>((tp as any)?.trainingTypes || []);
     const [city, setCity] = useState(tp?.city || user?.athleteProfile?.city || '');
     const [stateVal, setStateVal] = useState(tp?.state || user?.athleteProfile?.state || '');
+    const [country, setCountry] = useState(
+        (tp as any)?.country || user?.athleteProfile?.country || ''
+    );
     const [isSaving, setIsSaving] = useState(false);
     const [trainingLocations, setTrainingLocations] = useState<string[]>((tp as any)?.training_locations || []);
     const [locationInput, setLocationInput] = useState('');
@@ -230,8 +244,23 @@ export default function EditProfileScreen({ navigation }: any) {
 
                 const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(fileName);
 
-                await supabase.from('users').update({ avatar_url: publicUrl }).eq('id', user!.id);
-                setAvatarUrl(publicUrl);
+                if (isTrainer) {
+                    // Trainers: save to pending_avatar_url for admin review
+                    const { error: pendingError } = await supabase
+                        .from('users')
+                        .update({ pending_avatar_url: publicUrl })
+                        .eq('id', user!.id);
+                    if (pendingError) {
+                        // Column may not exist yet — fall back to direct update
+                        await supabase.from('users').update({ avatar_url: publicUrl }).eq('id', user!.id);
+                        setAvatarUrl(publicUrl);
+                    } else {
+                        setAvatarPendingApproval(true);
+                    }
+                } else {
+                    await supabase.from('users').update({ avatar_url: publicUrl }).eq('id', user!.id);
+                    setAvatarUrl(publicUrl);
+                }
             } catch (error: any) {
                 Alert.alert('Upload Failed', error.message || 'Could not upload avatar.');
             } finally {
@@ -456,6 +485,12 @@ export default function EditProfileScreen({ navigation }: any) {
                         </View>
                     )}
                 </Pressable>
+                {avatarPendingApproval && (
+                    <View style={styles.pendingApprovalBadge}>
+                        <Ionicons name="time-outline" size={12} color="#ffab00" />
+                        <Text style={styles.pendingApprovalText}>Pending admin approval</Text>
+                    </View>
+                )}
             </Animated.View>
 
             {/* ── Personal Info Card ── */}
@@ -527,10 +562,11 @@ export default function EditProfileScreen({ navigation }: any) {
             <SectionCard title="Location" delay={250}>
                 <View style={{ zIndex: 100 }}>
                     <LocationAutocomplete
-                        value={{ city, state: stateVal, country: '', lat: null, lng: null }}
+                        value={{ city, state: stateVal, country, lat: null, lng: null }}
                         onChange={(loc: LocationValue) => {
                             setCity(loc.city);
                             setStateVal(loc.state);
+                            setCountry(loc.country);
                             if (loc.lat && loc.lng && user) {
                                 const table = isTrainer ? 'trainer_profiles' : 'athlete_profiles';
                                 supabase.from(table).update({
@@ -538,6 +574,7 @@ export default function EditProfileScreen({ navigation }: any) {
                                     longitude: loc.lng,
                                     city: loc.city,
                                     state: loc.state,
+                                    country: loc.country,
                                 }).eq('user_id', user.id).then(() => {});
                             }
                         }}
@@ -556,16 +593,16 @@ export default function EditProfileScreen({ navigation }: any) {
                         <View style={styles.row}>
                             <View style={{ flex: 1 }}>
                                 <Input
-                                    label="ZIP Code"
+                                    label="ZIP / Postal Code"
                                     value={zipCode}
                                     onChangeText={setZipCode}
-                                    placeholder="12345"
-                                    keyboardType="numeric"
+                                    placeholder="12345 or A1A 1A1"
+                                    autoCapitalize="characters"
                                 />
                             </View>
                             <View style={{ flex: 1 }}>
                                 <Input
-                                    label="Travel Radius (mi)"
+                                    label={`Travel Radius (${isCanada(zipCode, country) ? 'km' : 'mi'})`}
                                     value={travelRadius}
                                     onChangeText={setTravelRadius}
                                     placeholder="25"
@@ -745,7 +782,7 @@ export default function EditProfileScreen({ navigation }: any) {
                     <>
                         <Divider />
                         <Input
-                            label="Travel Radius (miles)"
+                            label={`Travel Radius (${isCanada(zipCode, country) ? 'km' : 'miles'})`}
                             value={travelRadius}
                             onChangeText={setTravelRadius}
                             placeholder="25"
@@ -855,6 +892,23 @@ const styles = StyleSheet.create({
         backgroundColor: 'rgba(0,0,0,0.5)',
         justifyContent: 'center',
         alignItems: 'center',
+    },
+    pendingApprovalBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        backgroundColor: 'rgba(255,171,0,0.12)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,171,0,0.35)',
+        borderRadius: BorderRadius.pill,
+        paddingHorizontal: Spacing.sm,
+        paddingVertical: 4,
+        marginTop: Spacing.sm,
+    },
+    pendingApprovalText: {
+        fontSize: FontSize.xs,
+        color: '#ffab00',
+        fontWeight: FontWeight.medium,
     },
 
     /* Section cards */
