@@ -91,7 +91,7 @@ export default function NotificationsPage() {
                 const { data: settings } = await supabase
                     .from("platform_settings")
                     .select("platform_fee_percentage")
-                    .single();
+                    .maybeSingle();
                 const feePercent = (settings?.platform_fee_percentage ?? 3) / 100;
                 const platformFee = Math.round(price * feePercent * 100) / 100;
                 const totalPaid = price + platformFee;

@@ -5,6 +5,7 @@ import { loginUser } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { Eye, EyeOff } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { toast } from "@/components/ui/Toast";
 
 function LoginForm() {
     const router = useRouter();
@@ -13,25 +14,22 @@ function LoginForm() {
     const [password, setPassword] = useState("");
     const [showPassword, setShowPassword] = useState(false);
     const [loading, setLoading] = useState(false);
-    const [error, setError] = useState("");
     // Fix A: functional rememberMe state
     const [rememberMe, setRememberMe] = useState(false);
 
     const handleOAuth = async (provider: "google" | "apple") => {
-        setError("");
         const { error } = await supabase.auth.signInWithOAuth({
             provider,
             options: {
                 redirectTo: window.location.origin + "/auth/callback",
             },
         });
-        if (error) setError(error.message);
+        if (error) toast.error(error.message);
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
-        setError("");
 
         try {
             const user = await loginUser(email, password);
@@ -45,7 +43,7 @@ function LoginForm() {
             const returnTo = searchParams.get("returnTo");
             router.push(returnTo || (user.role === "admin" ? "/admin" : "/dashboard"));
         } catch (err: unknown) {
-            setError(err instanceof Error ? err.message : "Login failed");
+            toast.error(err instanceof Error ? err.message : "Login failed");
         } finally {
             setLoading(false);
         }
@@ -109,12 +107,6 @@ function LoginForm() {
                         <h2 style={{ fontSize: "clamp(24px, 6vw, 32px)", fontWeight: 900, fontFamily: "var(--font-display)", marginBottom: "8px" }}>Welcome Back</h2>
                         <p style={{ color: "var(--gray-400)", fontSize: "14px" }}>Enter your credentials to access your dashboard</p>
                     </div>
-
-                    {error && (
-                        <div style={{ padding: "12px 16px", borderRadius: "var(--radius-md)", background: "rgba(239, 68, 68, 0.1)", borderLeft: "4px solid var(--error)", color: "var(--error)", fontSize: "14px", marginBottom: "24px" }}>
-                            {error}
-                        </div>
-                    )}
 
                     <form onSubmit={handleSubmit}>
                         {/* Fix B: autoComplete="email" */}

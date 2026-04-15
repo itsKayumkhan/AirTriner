@@ -3,6 +3,7 @@
 import React from "react";
 import { Zap, XCircle } from "lucide-react";
 import { NotificationRow } from "@/lib/supabase";
+import { formatSportName } from "@/lib/format";
 
 interface OfferNotificationData {
     offer_id?: string;
@@ -13,6 +14,8 @@ interface OfferNotificationData {
     rate?: number | string;
     time_slot?: string;
     scheduledAt?: string;
+    sessions?: { date: string; time: string }[];
+    timezone?: string;
     [key: string]: unknown;
 }
 
@@ -60,7 +63,7 @@ export function OfferModal({ isOpen, onClose, notification, onResponse, isRespon
                         <div>
                             <h3 className="font-bold text-lg text-white">{data?.trainer_name || "Trainer"}</h3>
                             <p className="text-[12px] text-primary font-black uppercase tracking-[0.2em] mt-1">
-                                {data?.sport?.replace(/_/g, ' ') || "Coach"}
+                                {data?.sport ? formatSportName(data.sport) : "Coach"}
                             </p>
                         </div>
                     </div>
@@ -79,7 +82,7 @@ export function OfferModal({ isOpen, onClose, notification, onResponse, isRespon
                             <div className="bg-[#12141A] border border-white/5 rounded-2xl p-4 text-center">
                                 <label className="block text-[9px] font-black text-text-main/30 uppercase tracking-[0.2em] mb-2">Session Type</label>
                                 <p className="text-sm font-bold text-white capitalize">
-                                    {data?.session_type?.replace(/_/g, ' ') || "Private"}
+                                    {data?.session_type ? formatSportName(data.session_type) : "Private"}
                                 </p>
                             </div>
                             <div className="bg-[#12141A] border border-white/5 rounded-2xl p-4 text-center">
@@ -90,7 +93,28 @@ export function OfferModal({ isOpen, onClose, notification, onResponse, isRespon
                             </div>
                         </div>
 
-                        {data?.time_slot && (
+                        {(data?.sessions && data.sessions.length > 0) ? (
+                            <div className="bg-[#12141A] border border-white/5 rounded-2xl p-4">
+                                <label className="block text-[9px] font-black text-text-main/30 uppercase tracking-[0.2em] mb-3 text-center">Proposed Sessions</label>
+                                <div className="space-y-2">
+                                    {data.sessions.map((s, i) => (
+                                        <div key={i} className="flex items-center justify-between bg-[#1A1C23] rounded-xl px-4 py-2.5 border border-white/5">
+                                            <p className="text-sm font-bold text-white">
+                                                {new Date(s.date + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
+                                            </p>
+                                            <p className="text-sm font-black text-primary">
+                                                {new Date(`2000-01-01T${s.time}`).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                                            </p>
+                                        </div>
+                                    ))}
+                                </div>
+                                {data.timezone && (
+                                    <p className="text-[10px] text-text-main/30 text-center mt-2">
+                                        Times shown in trainer&apos;s timezone: {data.timezone}
+                                    </p>
+                                )}
+                            </div>
+                        ) : data?.time_slot ? (
                             <div className="bg-[#12141A] border border-white/5 rounded-2xl p-4">
                                 <label className="block text-[9px] font-black text-text-main/30 uppercase tracking-[0.2em] mb-2 text-center">Proposed Availability</label>
                                 <div className="text-center">
@@ -104,7 +128,7 @@ export function OfferModal({ isOpen, onClose, notification, onResponse, isRespon
                                     )}
                                 </div>
                             </div>
-                        )}
+                        ) : null}
                     </div>
 
                     {/* Actions */}

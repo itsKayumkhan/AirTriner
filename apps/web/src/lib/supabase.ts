@@ -5,6 +5,21 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
+// Handle expired/invalid refresh tokens automatically
+if (typeof window !== 'undefined') {
+    supabase.auth.onAuthStateChange((event) => {
+        if (event === 'TOKEN_REFRESHED') return;
+        if (event === 'SIGNED_OUT') {
+            localStorage.removeItem('airtrainr_session');
+            document.cookie = 'airtrainr_token=; path=/; max-age=0';
+            const path = window.location.pathname;
+            if (!path.startsWith('/auth/')) {
+                window.location.href = '/auth/login';
+            }
+        }
+    });
+}
+
 // Helper types for database tables
 export type UserRow = {
     id: string;

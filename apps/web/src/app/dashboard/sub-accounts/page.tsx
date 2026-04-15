@@ -4,6 +4,7 @@ import { Users, XCircle, Plus, Edit2, Trash2, AlertTriangle, Info } from "lucide
 import { useEffect, useState } from "react";
 import { getSession, AuthUser } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
+import { formatSportName } from "@/lib/format";
 
 interface SubAccount {
     id: string;
@@ -460,7 +461,7 @@ CREATE INDEX ON sub_accounts(parent_user_id);`}</pre>
                                                         : "bg-white/5 text-text-main/60 border-white/5 hover:border-white/10 hover:text-text-main"
                                             }`}
                                         >
-                                            {s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+                                            {formatSportName(s)}
                                         </button>
                                     );
                                 })}
@@ -585,7 +586,7 @@ CREATE INDEX ON sub_accounts(parent_user_id);`}</pre>
                             <div className="flex flex-wrap gap-2 mb-5">
                                 {normalizeSports(acct.profile_data).map((sp) => (
                                     <span key={sp} className="px-3 py-1 rounded-full bg-primary/10 text-primary border border-primary/20 text-[10px] font-black uppercase tracking-widest">
-                                        {sp.replace(/_/g, " ")}
+                                        {formatSportName(sp)}
                                     </span>
                                 ))}
                                 {acct.profile_data.skill_level && (

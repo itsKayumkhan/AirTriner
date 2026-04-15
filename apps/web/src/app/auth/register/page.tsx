@@ -5,6 +5,8 @@ import { useState, Suspense } from "react";
 import { registerUser } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { useRouter, useSearchParams } from "next/navigation";
+import { toast } from "@/components/ui/Toast";
+import LocationAutocomplete, { type LocationValue } from "@/components/forms/LocationAutocomplete";
 
 const SPORTS = [
     "Hockey", "Baseball", "Basketball", "Football", "Soccer",
@@ -38,41 +40,39 @@ function RegisterForm() {
     const [selectedSports, setSelectedSports] = useState<string[]>([]);
     const [skillLevel, setSkillLevel] = useState("");
     const [city, setCity] = useState("");
+    const [locationData, setLocationData] = useState<LocationValue>(null);
     const [dateOfBirth, setDateOfBirth] = useState("");
 
     const [loading, setLoading] = useState(false);
-    const [error, setError] = useState("");
-
     const handleStep1Submit = (e: React.FormEvent) => {
         e.preventDefault();
-        setError("");
 
         if (!role) {
-            setError("Please select a role");
+            toast.error("Please select a role");
             return;
         }
         if (!fullName.trim().includes(" ")) {
-            setError("Please enter both first and last name");
+            toast.error("Please enter both first and last name");
             return;
         }
 
         // Fix D: client-side email validation
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         if (!emailRegex.test(email)) {
-            setError("Please enter a valid email address");
+            toast.error("Please enter a valid email address");
             return;
         }
 
         // Fix C: match backend password requirements (12+ chars, complexity)
         const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#^()\-_=+])[A-Za-z\d@$!%*?&#^()\-_=+]{12,}$/;
         if (!passwordRegex.test(password)) {
-            setError("Password must be at least 12 characters with uppercase, lowercase, number, and special character");
+            toast.error("Password must be at least 12 characters with uppercase, lowercase, number, and special character");
             return;
         }
 
         // Fix B: confirm password check
         if (password !== confirmPassword) {
-            setError("Passwords do not match");
+            toast.error("Passwords do not match");
             return;
         }
 
@@ -89,10 +89,9 @@ function RegisterForm() {
     const doRegister = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
-        setError("");
 
         if (selectedSports.length === 0) {
-            setError("Please select at least one sport");
+            toast.error("Please select at least one sport");
             setLoading(false);
             return;
         }
@@ -103,7 +102,7 @@ function RegisterForm() {
             const today = new Date();
             const eighteenYearsAgo = new Date(today.getFullYear() - 18, today.getMonth(), today.getDate());
             if (dob > eighteenYearsAgo) {
-                setError("You must be at least 18 years old to register");
+                toast.error("You must be at least 18 years old to register");
                 setLoading(false);
                 return;
             }
@@ -126,20 +125,19 @@ function RegisterForm() {
             });
             router.push(role === "trainer" ? "/dashboard/trainer/setup" : "/dashboard");
         } catch (err: unknown) {
-            setError(err instanceof Error ? err.message : "Registration failed");
+            toast.error(err instanceof Error ? err.message : "Registration failed");
             setLoading(false);
         }
     };
 
     const handleOAuth = async (provider: "google" | "apple") => {
-        setError("");
         const { error } = await supabase.auth.signInWithOAuth({
             provider,
             options: {
                 redirectTo: window.location.origin + "/auth/callback",
             },
         });
-        if (error) setError(error.message);
+        if (error) toast.error(error.message);
     };
 
     const inputStyle: React.CSSProperties = {
@@ -186,12 +184,6 @@ function RegisterForm() {
                             <div style={{ height: "100%", width: step === 1 ? "50%" : "100%", background: "var(--primary)", transition: "width 0.3s ease-out" }} />
                         </div>
                     </div>
-
-                    {error && (
-                        <div style={{ padding: "12px 16px", borderRadius: "var(--radius-md)", background: "rgba(239, 68, 68, 0.1)", borderLeft: "4px solid var(--error)", color: "var(--error)", fontSize: "14px", marginBottom: "24px" }}>
-                            {error}
-                        </div>
-                    )}
 
                     {step === 1 ? (
                         <form onSubmit={handleStep1Submit}>
@@ -378,7 +370,14 @@ function RegisterForm() {
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4" style={{ marginBottom: "32px" }}>
                                 <div>
                                     <label style={{ display: "block", fontSize: "12px", fontWeight: 700, color: "var(--gray-300)", marginBottom: "8px" }}>City</label>
-                                    <input type="text" value={city} onChange={e => setCity(e.target.value)} placeholder="Toronto" style={inputStyle} />
+                                    <LocationAutocomplete
+                                        value={locationData}
+                                        onChange={(loc: LocationValue) => {
+                                            setLocationData(loc);
+                                            setCity(loc?.city || "");
+                                        }}
+                                        placeholder="Start typing a city..."
+                                    />
                                 </div>
                                 <div>
                                     <label style={{ display: "block", fontSize: "12px", fontWeight: 700, color: "var(--gray-300)", marginBottom: "8px" }}>Date of Birth</label>

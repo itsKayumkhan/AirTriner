@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { getSession, AuthUser } from "@/lib/auth";
 import { supabase, BookingRow } from "@/lib/supabase";
 import { Plus, X, CheckCircle2, Circle, Clock, CalendarDays, List } from "lucide-react";
+import { toast } from "@/components/ui/Toast";
 
 interface AvailabilitySlot {
     id: string;
@@ -68,7 +69,6 @@ export default function AvailabilityPage() {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [saved, setSaved] = useState(false);
-    const [error, setError] = useState("");
 
     // Mode toggle
     const [mode, setMode] = useState<"recurring" | "per_slot">("per_slot");
@@ -192,7 +192,7 @@ export default function AvailabilityPage() {
         if (!user) return;
 
         if (!newSlot.start) {
-            setError("Please select a start time.");
+            toast.error("Please select a start time.");
             return;
         }
 
@@ -200,7 +200,7 @@ export default function AvailabilityPage() {
 
         // Validate end doesn't wrap past midnight in a weird way
         if (computedEnd <= newSlot.start && newSlot.duration > 0) {
-            setError("Slot would extend past midnight. Choose an earlier start time.");
+            toast.error("Slot would extend past midnight. Choose an earlier start time.");
             return;
         }
 
@@ -217,15 +217,14 @@ export default function AvailabilityPage() {
         });
 
         if (conflictingSlot) {
-            setError(`Time conflicts with existing slot: ${to12h(conflictingSlot.start_time.slice(0, 5))} – ${to12h(conflictingSlot.end_time.slice(0, 5))}`);
+            toast.error(`Time conflicts with existing slot: ${to12h(conflictingSlot.start_time.slice(0, 5))} – ${to12h(conflictingSlot.end_time.slice(0, 5))}`);
             return;
         }
 
-        setError("");
-        setSaving(true);
+                setSaving(true);
         try {
             if (!user.trainerProfile?.id) {
-                setError("Trainer profile not found. Please setup your profile first.");
+                toast.error("Trainer profile not found. Please setup your profile first.");
                 return;
             }
 
@@ -245,11 +244,10 @@ export default function AvailabilityPage() {
             setSlots((prev) => [...prev, data as AvailabilitySlot].sort((a, b) =>
                 a.day_of_week - b.day_of_week || a.start_time.localeCompare(b.start_time)
             ));
-            setSaved(true);
-            setTimeout(() => setSaved(false), 2000);
+            toast.success("Availability updated!");
         } catch (err) {
             console.error("Failed to add slot:", err);
-            setError("Failed to add slot. Please try again.");
+            toast.error("Failed to add slot. Please try again.");
         } finally {
             setSaving(false);
         }
@@ -274,20 +272,19 @@ export default function AvailabilityPage() {
 
     const saveRecurring = async () => {
         if (!user?.trainerProfile?.id) {
-            setError("Trainer profile not found. Please setup your profile first.");
+            toast.error("Trainer profile not found. Please setup your profile first.");
             return;
         }
 
         // Validate: for active days, end must be after start
         for (const day of recurring) {
             if (day.is_active && timeToMinutes(day.end_time) <= timeToMinutes(day.start_time)) {
-                setError(`${DAYS[day.day_of_week]}: End time must be after start time.`);
+                toast.error(`${DAYS[day.day_of_week]}: End time must be after start time.`);
                 return;
             }
         }
 
-        setError("");
-        setRecurringSaving(true);
+                setRecurringSaving(true);
         try {
             const rows = recurring.map((d) => ({
                 trainer_id: user.trainerProfile!.id,
@@ -304,11 +301,10 @@ export default function AvailabilityPage() {
 
             if (upsertError) throw upsertError;
 
-            setRecurringSaved(true);
-            setTimeout(() => setRecurringSaved(false), 2000);
+            toast.success("Recurring schedule saved!");
         } catch (err) {
             console.error("Failed to save recurring availability:", err);
-            setError("Failed to save recurring schedule. Please try again.");
+            toast.error("Failed to save recurring schedule. Please try again.");
         } finally {
             setRecurringSaving(false);
         }
@@ -367,18 +363,6 @@ export default function AvailabilityPage() {
             )}
 
             {/* Confirmation banners */}
-            {(saved || recurringSaved) && (
-                <div className="p-4 bg-green-500/10 border border-green-500/20 rounded-2xl text-green-500 text-[14px] font-bold mb-6 flex items-center gap-2">
-                    <CheckCircle2 size={18} /> Availability updated!
-                </div>
-            )}
-
-            {error && (
-                <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl text-red-500 text-[14px] font-bold mb-6 flex items-center gap-2">
-                    <Circle size={18} className="rotate-45" /> {error}
-                </div>
-            )}
-
             {/* ====== RECURRING MODE ====== */}
             {mode === "recurring" && recurringTableAvailable && (
                 <div className="flex flex-col gap-4">

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./app.css";
+import { GlobalToast } from "@/components/ui/Toast";
 
 export const metadata: Metadata = {
   title: "AirTrainr | Find Your Perfect Sports Trainer",
@@ -58,7 +59,7 @@ export default function RootLayout({
           crossOrigin="anonymous"
         />
       </head>
-      <body>{children}</body>
+      <body>{children}<GlobalToast /></body>
     </html>
   );
 }

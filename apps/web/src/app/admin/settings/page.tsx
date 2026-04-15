@@ -57,7 +57,7 @@ export default function AdminSettingsPage() {
             const { data, error } = await supabase
                 .from("platform_settings")
                 .select("*")
-                .single();
+                .maybeSingle();
 
             if (error) {
                 if (error.code === "PGRST116") {

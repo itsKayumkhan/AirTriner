@@ -6,6 +6,7 @@ import { useEffect, useState, useRef } from "react";
 import { getSession, AuthUser } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { useMessages } from "@/context/MessagesContext";
+import { formatSportName } from "@/lib/format";
 
 interface Conversation {
     bookingId: string;       // most recent booking id (for display)
@@ -321,7 +322,7 @@ export default function MessagesPage() {
                                         </p>
                                         <span className="inline-flex items-center gap-1 mt-1.5 text-[9px] font-black uppercase tracking-wider text-text-main/40 bg-white/[0.05] px-2 py-0.5 rounded-full border border-white/[0.06]">
                                             <Activity size={8} />
-                                            {c.sport.replace(/_/g, " ")}
+                                            {formatSportName(c.sport)}
                                         </span>
                                     </div>
                                 </button>
@@ -356,7 +357,7 @@ export default function MessagesPage() {
                                 <div className="flex items-center gap-1.5 mt-0.5">
                                     <Activity size={9} className="text-primary/50" />
                                     <p className="text-[10px] text-text-main/40 font-semibold uppercase tracking-wider">
-                                        {selectedConvo.sport.replace(/_/g, " ")} Session
+                                        {formatSportName(selectedConvo.sport)} Session
                                     </p>
                                 </div>
                             </div>

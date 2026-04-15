@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { getSession, AuthUser } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
-import { Send, Users, Plus, X, Clock, MapPin, DollarSign, Star, ChevronRight, Filter, Search, Calendar, MessageSquare, Zap, Award, PartyPopper, Lock, Crown } from "lucide-react";
+import { Send, Users, Plus, X, Clock, MapPin, DollarSign, Star, ChevronRight, Filter, Search, Calendar, MessageSquare, Zap, Award, PartyPopper, Lock, Crown, Trash2, Repeat } from "lucide-react";
+import { formatSportName } from "@/lib/format";
 
 interface Athlete {
     id: string;
@@ -50,14 +51,17 @@ export default function TrainingOffersPage() {
     const [offerToCancel, setOfferToCancel] = useState<string | null>(null);
     const [isCanceling, setIsCanceling] = useState(false);
 
+    // Camps
+    const [camps, setCamps] = useState<Array<{ name: string; hoursPerDay: number; days: number; totalPrice: number }>>([]);
+    const [selectedCamp, setSelectedCamp] = useState<number | null>(null);
+
     const [offerData, setOfferData] = useState({
         message: "",
         sessionType: "private",
         rate: "",
         introDiscount: false,
         discountPercent: "20",
-        date: "",
-        timeSlot: "",
+        sessionDates: [{ date: "", time: "" }] as { date: string; time: string }[],
         sport: "",
     });
 
@@ -85,6 +89,16 @@ export default function TrainingOffersPage() {
 
     const loadData = async (session: AuthUser) => {
         try {
+            // Load trainer's camp offerings
+            const { data: trainerProfile } = await supabase
+                .from("trainer_profiles")
+                .select("camp_offerings")
+                .eq("user_id", session.id)
+                .maybeSingle();
+            if (trainerProfile?.camp_offerings && Array.isArray(trainerProfile.camp_offerings)) {
+                setCamps(trainerProfile.camp_offerings);
+            }
+
             // Load athletes
             const { data: athleteData } = await supabase
                 .from("users")
@@ -152,13 +166,9 @@ export default function TrainingOffersPage() {
 
         const finalRateToUse = hasCustomRate ? numericRate : finalTrainerRate;
 
-        if (!offerData.date) {
-            setOfferError("Please select a date for the session.");
-            return;
-        }
-
-        if (!offerData.timeSlot.trim()) {
-            setOfferError("Please select or enter a preferred time slot.");
+        const validDates = offerData.sessionDates.filter(d => d.date && d.time);
+        if (validDates.length === 0) {
+            setOfferError("Please add at least one date and time for the session.");
             return;
         }
 
@@ -166,6 +176,8 @@ export default function TrainingOffersPage() {
 
         try {
             const finalRate = offerData.introDiscount ? finalRateToUse * (1 - parseInt(offerData.discountPercent) / 100) : finalRateToUse;
+
+            const trainerTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
             // Save to training_offers table
             const { data: insertedOffer, error: offerError } = await supabase.from("training_offers").insert({
@@ -176,10 +188,12 @@ export default function TrainingOffersPage() {
                 price: finalRate,
                 session_length_min: offerData.sessionType === "private" ? 60 : 60,
                 sport: offerData.sport || selectedAthlete.athlete_profile?.sports?.[0] || null,
-                proposed_dates: { 
-                    time_slot: offerData.timeSlot, 
+                proposed_dates: {
+                    sessions: validDates.map(d => ({ date: d.date, time: d.time })),
                     session_type: offerData.sessionType,
-                    scheduledAt: offerData.date
+                    timezone: trainerTimezone,
+                    scheduledAt: validDates[0].date,
+                    ...(selectedCamp !== null && camps[selectedCamp] ? { camp: camps[selectedCamp] } : {}),
                 },
             }).select("id").single();
             if (offerError) throw offerError;
@@ -199,8 +213,10 @@ export default function TrainingOffersPage() {
                     rate: finalRate,
                     original_rate: finalRateToUse,
                     has_discount: offerData.introDiscount,
-                    time_slot: offerData.timeSlot,
-                    scheduledAt: offerData.date,
+                    sessions: validDates.map(d => ({ date: d.date, time: d.time })),
+                    timezone: trainerTimezone,
+                    scheduledAt: validDates[0].date,
+                    ...(selectedCamp !== null && camps[selectedCamp] ? { camp: camps[selectedCamp] } : {}),
                 },
             });
 
@@ -208,7 +224,7 @@ export default function TrainingOffersPage() {
             setShowNewOffer(false);
             setOfferError("");
             setSelectedAthlete(null);
-            setOfferData({ message: "", sessionType: "private", rate: "", introDiscount: false, discountPercent: "20", date: "", timeSlot: "", sport: "" });
+            setOfferData({ message: "", sessionType: "private", rate: "", introDiscount: false, discountPercent: "20", sessionDates: [{ date: "", time: "" }], sport: "" });
 
             // Reload
             if (user) loadData(user);
@@ -374,7 +390,7 @@ export default function TrainingOffersPage() {
                                     <div className="flex flex-wrap gap-2 mb-6 flex-1 content-start">
                                         {(athlete.athlete_profile?.sports || []).slice(0, 3).map((s: string) => (
                                             <span key={s} className="inline-flex items-center px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-white/5 text-text-main/70 border border-white/5 whitespace-nowrap">
-                                                {s.replace(/_/g, " ")}
+                                                {formatSportName(s)}
                                             </span>
                                         ))}
                                         {athlete.athlete_profile?.skill_level && (
@@ -432,12 +448,12 @@ export default function TrainingOffersPage() {
                                             {offer.sport && (
                                                 <>
                                                     <span className="w-1 h-1 rounded-full bg-white/20" />
-                                                    <span className="text-white/80 capitalize">{offer.sport.replace(/_/g, ' ')}</span>
+                                                    <span className="text-white/80">{formatSportName(offer.sport)}</span>
                                                 </>
                                             )}
                                         </p>
                                         <p className="text-[12px] text-text-main/40 mt-1 flex items-center gap-1.5">
-                                            <Calendar size={12} /> {new Date(offer.created_at).toLocaleDateString()} at {new Date(offer.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                            <Calendar size={12} /> {new Date(offer.created_at).toLocaleDateString()} at {new Date(offer.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZoneName: 'short' })}
                                         </p>
                                     </div>
                                 </div>
@@ -486,7 +502,7 @@ export default function TrainingOffersPage() {
                                 <div>
                                     <h3 className="font-bold text-[16px] text-white">{selectedAthlete.first_name} {selectedAthlete.last_name}</h3>
                                     <p className="text-[12px] text-text-main/50 uppercase tracking-widest font-bold mt-1">
-                                        {(selectedAthlete.athlete_profile?.sports || []).slice(0, 2).map((s: string) => s.replace(/_/g, " ")).join(", ") || "Athletic Training"}
+                                        {(selectedAthlete.athlete_profile?.sports || []).slice(0, 2).map((s: string) => formatSportName(s)).join(", ") || "Athletic Training"}
                                     </p>
                                     <p className="text-[11px] text-text-main/40 font-medium flex items-center gap-1 mt-1">
                                         <MapPin size={10} className="text-primary/50" />
@@ -528,13 +544,70 @@ export default function TrainingOffersPage() {
                                         style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 16px center' }}
                                     >
                                         {(selectedAthlete.athlete_profile?.sports || []).map((s: string) => (
-                                            <option key={s} value={s}>{s.replace(/_/g, " ")}</option>
+                                            <option key={s} value={s}>{formatSportName(s)}</option>
                                         ))}
                                         {(!selectedAthlete.athlete_profile?.sports || selectedAthlete.athlete_profile.sports.length === 0) && (
                                             <option value="">Athletic Training</option>
                                         )}
                                     </select>
                                 </div>
+
+                                {/* Camp Selection */}
+                                {camps.length > 0 && (
+                                    <div>
+                                        <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-3">
+                                            <Repeat size={12} className="inline mr-1.5 -mt-0.5" />
+                                            Send a Camp Offer
+                                        </label>
+                                        <div className="space-y-2">
+                                            {camps.map((camp, idx) => {
+                                                const isSelected = selectedCamp === idx;
+                                                return (
+                                                    <button
+                                                        key={idx}
+                                                        onClick={(e) => {
+                                                            e.preventDefault();
+                                                            if (isSelected) {
+                                                                setSelectedCamp(null);
+                                                                setOfferData(prev => ({ ...prev, sessionType: "private", rate: "", message: prev.message }));
+                                                            } else {
+                                                                setSelectedCamp(idx);
+                                                                setOfferData(prev => ({
+                                                                    ...prev,
+                                                                    sessionType: "camp",
+                                                                    rate: camp.totalPrice.toString(),
+                                                                    message: prev.message || `Join my ${camp.name} camp! ${camp.hoursPerDay} hrs/day for ${camp.days} days.`,
+                                                                }));
+                                                            }
+                                                        }}
+                                                        className={`w-full text-left p-3.5 rounded-xl border transition-all flex items-center justify-between ${
+                                                            isSelected
+                                                                ? "border-primary bg-primary/5 shadow-[0_0_15px_rgba(69,208,255,0.1)]"
+                                                                : "border-white/5 bg-[#12141A] hover:border-white/10"
+                                                        }`}
+                                                    >
+                                                        <div>
+                                                            <p className={`text-sm font-bold ${isSelected ? "text-white" : "text-white/80"}`}>
+                                                                {camp.name}
+                                                            </p>
+                                                            <p className="text-[11px] text-text-main/40 mt-0.5">
+                                                                {camp.hoursPerDay} hrs/day &times; {camp.days} days
+                                                            </p>
+                                                        </div>
+                                                        <span className={`text-sm font-black ${isSelected ? "text-primary" : "text-text-main/50"}`}>
+                                                            ${camp.totalPrice.toLocaleString()}
+                                                        </span>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                        {selectedCamp !== null && (
+                                            <p className="text-[10px] text-primary/60 mt-2 font-bold">
+                                                Camp selected — rate and message auto-filled. You can still edit below.
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
 
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
@@ -548,6 +621,7 @@ export default function TrainingOffersPage() {
                                             <option value="private">Private (1-on-1)</option>
                                             <option value="semi_private">Semi-Private</option>
                                             <option value="group">Group</option>
+                                            <option value="camp">Camp</option>
                                         </select>
                                     </div>
                                     <div>
@@ -563,57 +637,71 @@ export default function TrainingOffersPage() {
                                 </div>
 
                                 <div>
-                                    <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">Session Date</label>
-                                    <div className="relative">
-                                        <Calendar className="absolute left-5 top-1/2 -translate-y-1/2 text-primary/50" size={16} />
-                                        <input
-                                            type="date"
-                                            value={offerData.date}
-                                            min={new Date().toISOString().split('T')[0]}
-                                            onChange={(e) => setOfferData(prev => ({ ...prev, date: e.target.value }))}
-                                            className="w-full bg-[#12141A] border border-white/5 rounded-2xl pl-12 pr-5 py-3.5 text-white text-sm outline-none focus:border-primary/50 transition-colors"
-                                            required
-                                        />
+                                    <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">
+                                        Session Date & Time
+                                    </label>
+                                    <div className="space-y-3">
+                                        {offerData.sessionDates.map((session, idx) => (
+                                            <div key={idx} className="flex items-center gap-3">
+                                                <div className="flex-1 relative">
+                                                    <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-primary/50" size={14} />
+                                                    <input
+                                                        type="date"
+                                                        value={session.date}
+                                                        min={new Date().toISOString().split('T')[0]}
+                                                        onChange={(e) => {
+                                                            const updated = [...offerData.sessionDates];
+                                                            updated[idx] = { ...updated[idx], date: e.target.value };
+                                                            setOfferData(prev => ({ ...prev, sessionDates: updated }));
+                                                        }}
+                                                        className="w-full bg-[#12141A] border border-white/5 rounded-xl pl-10 pr-3 py-3 text-white text-sm outline-none focus:border-primary/50 transition-colors"
+                                                    />
+                                                </div>
+                                                <div className="flex-1 relative">
+                                                    <Clock className="absolute left-4 top-1/2 -translate-y-1/2 text-primary/50" size={14} />
+                                                    <input
+                                                        type="time"
+                                                        value={session.time}
+                                                        onChange={(e) => {
+                                                            const updated = [...offerData.sessionDates];
+                                                            updated[idx] = { ...updated[idx], time: e.target.value };
+                                                            setOfferData(prev => ({ ...prev, sessionDates: updated }));
+                                                        }}
+                                                        className="w-full bg-[#12141A] border border-white/5 rounded-xl pl-10 pr-3 py-3 text-white text-sm outline-none focus:border-primary/50 transition-colors"
+                                                    />
+                                                </div>
+                                                {offerData.sessionDates.length > 1 && (
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.preventDefault();
+                                                            setOfferData(prev => ({
+                                                                ...prev,
+                                                                sessionDates: prev.sessionDates.filter((_, i) => i !== idx),
+                                                            }));
+                                                        }}
+                                                        className="w-9 h-9 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 flex items-center justify-center hover:bg-red-500/20 transition-colors shrink-0"
+                                                    >
+                                                        <Trash2 size={14} />
+                                                    </button>
+                                                )}
+                                            </div>
+                                        ))}
                                     </div>
-                                </div>
-
-                                <div>
-                                    <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">Preferred Time Slot</label>
-
-                                    <div className="grid grid-cols-2 gap-3 mb-3">
-                                        {[
-                                            { id: "Morning", label: "Morning", sub: "6am - 12pm" },
-                                            { id: "Afternoon", label: "Afternoon", sub: "12pm - 5pm" },
-                                            { id: "Evening", label: "Evening", sub: "5pm - 9pm" },
-                                            { id: "Anytime", label: "Anytime", sub: "Flexible" }
-                                        ].map(slot => {
-                                            const isSelected = offerData.timeSlot === slot.id;
-                                            return (
-                                                <button
-                                                    key={slot.id}
-                                                    onClick={(e) => {
-                                                        e.preventDefault();
-                                                        setOfferData(prev => ({ ...prev, timeSlot: slot.id }));
-                                                    }}
-                                                    className={`py-2.5 rounded-xl flex flex-col items-center justify-center transition-all border
-                                                        ${isSelected
-                                                            ? "bg-transparent border-primary border-[2px] shadow-[0_0_15px_rgba(69,208,255,0.15)]"
-                                                            : "bg-[#272A35] border-transparent hover:bg-[#323644]"}`}
-                                                >
-                                                    <span className={`text-xs font-black mb-0.5 ${isSelected ? 'text-white' : 'text-white/80'}`}>{slot.label}</span>
-                                                    <span className={`text-[10px] font-bold uppercase tracking-wider ${isSelected ? 'text-primary/80' : 'text-text-main/40'}`}>{slot.sub}</span>
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-
-                                    <input
-                                        type="text"
-                                        value={!["Morning", "Afternoon", "Evening", "Anytime"].includes(offerData.timeSlot) ? offerData.timeSlot : ""}
-                                        onChange={(e) => setOfferData(prev => ({ ...prev, timeSlot: e.target.value }))}
-                                        placeholder="Or type a custom time (e.g. Weekdays 4-6pm)"
-                                        className="w-full bg-[#1A1C23] border border-white/5 rounded-2xl px-5 py-3.5 text-white text-sm outline-none focus:border-primary/50 transition-colors placeholder:text-text-main/30"
-                                    />
+                                    <button
+                                        onClick={(e) => {
+                                            e.preventDefault();
+                                            setOfferData(prev => ({
+                                                ...prev,
+                                                sessionDates: [...prev.sessionDates, { date: "", time: "" }],
+                                            }));
+                                        }}
+                                        className="mt-3 w-full py-2.5 rounded-xl border border-dashed border-white/10 text-text-main/50 text-xs font-bold flex items-center justify-center gap-2 hover:border-primary/30 hover:text-primary/80 transition-colors"
+                                    >
+                                        <Plus size={14} /> Add Another Date & Time
+                                    </button>
+                                    <p className="text-[10px] text-text-main/30 mt-2">
+                                        Times are in your local timezone ({Intl.DateTimeFormat().resolvedOptions().timeZone})
+                                    </p>
                                 </div>
 
                                 {/* Intro Discount Toggle */}

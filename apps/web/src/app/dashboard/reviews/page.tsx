@@ -4,6 +4,7 @@ import { FileText, Download } from "lucide-react";
 import { useEffect, useState } from "react";
 import { getSession, AuthUser } from "@/lib/auth";
 import { supabase, ReviewRow } from "@/lib/supabase";
+import { toast } from "@/components/ui/Toast";
 
 type ReviewWithUser = ReviewRow & {
     reviewer?: { first_name: string; last_name: string };
@@ -13,7 +14,6 @@ export default function ReviewsPage() {
     const [user, setUser] = useState<AuthUser | null>(null);
     const [reviews, setReviews] = useState<ReviewWithUser[]>([]);
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
         const session = getSession();
@@ -48,7 +48,7 @@ export default function ReviewsPage() {
             );
         } catch (err) {
             console.error("Failed to load reviews:", err);
-            setError("Failed to load reviews. Please refresh the page.");
+            toast.error("Failed to load reviews. Please refresh the page.");
         } finally {
             setLoading(false);
         }
@@ -88,14 +88,6 @@ export default function ReviewsPage() {
         return (
             <div className="flex justify-center flex-col items-center h-full min-h-[50vh]">
                 <div className="w-12 h-12 border-4 border-primary/20 border-t-primary rounded-full animate-spin"></div>
-            </div>
-        );
-    }
-
-    if (error) {
-        return (
-            <div className="flex justify-center items-center min-h-[40vh]">
-                <p className="text-text-main/50 font-semibold text-sm">{error}</p>
             </div>
         );
     }

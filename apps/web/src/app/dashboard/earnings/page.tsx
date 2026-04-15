@@ -4,6 +4,7 @@ import { Wallet, Download, Clock, ShieldCheck, TrendingUp, RotateCcw } from "luc
 import { useEffect, useState } from "react";
 import { getSession, AuthUser } from "@/lib/auth";
 import { supabase, BookingRow } from "@/lib/supabase";
+import { formatSportName } from "@/lib/format";
 
 type PaymentTransaction = {
     id: string;
@@ -153,7 +154,7 @@ export default function EarningsPage() {
             rows = completedBookings.map((b) => [
                 new Date(b.scheduled_at).toLocaleDateString(),
                 '',
-                b.sport.replace(/_/g, ' '),
+                formatSportName(b.sport),
                 String(b.duration_minutes || 60),
                 Number(b.price).toFixed(2),
                 '0.00',
@@ -164,7 +165,7 @@ export default function EarningsPage() {
             rows = athleteTransactions.map((t) => [
                 new Date(t.created_at).toLocaleDateString(),
                 t.trainer_name || '',
-                (t.booking?.sport || '').replace(/_/g, ' '),
+                formatSportName(t.booking?.sport || ''),
                 String(t.booking?.duration_minutes || 60),
                 Number(t.amount).toFixed(2),
                 Number(t.platform_fee || 0).toFixed(2),
@@ -344,7 +345,7 @@ export default function EarningsPage() {
                                                 <div className="text-xs text-text-main/40 font-medium">{sessionDate.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}</div>
                                             </td>
                                             <td className="px-4 py-4 font-medium whitespace-nowrap">{b.athlete_name}</td>
-                                            <td className="px-4 py-4 font-medium capitalize whitespace-nowrap">{b.sport.replace(/_/g, " ")} · {b.duration_minutes}min</td>
+                                            <td className="px-4 py-4 font-medium capitalize whitespace-nowrap">{formatSportName(b.sport)} · {b.duration_minutes}min</td>
                                             <td className="px-4 py-4 whitespace-nowrap">
                                                 {holdUntil ? (
                                                     <span className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-lg ${isPast ? "bg-green-500/10 text-green-400" : "bg-yellow-500/10 text-yellow-400"}`}>
@@ -425,7 +426,7 @@ export default function EarningsPage() {
                                     {completedBookings.map((b) => (
                                         <tr key={b.id} className="border-b border-white/5 last:border-0 hover:bg-white/5 transition-colors">
                                             <td className="px-6 py-4 font-medium whitespace-nowrap">{new Date(b.scheduled_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</td>
-                                            <td className="px-4 py-4 font-medium capitalize whitespace-nowrap">{b.sport.replace(/_/g, " ")}</td>
+                                            <td className="px-4 py-4 font-medium capitalize whitespace-nowrap">{formatSportName(b.sport)}</td>
                                             <td className="px-4 py-4 font-medium text-text-main/60 whitespace-nowrap">{b.duration_minutes} min</td>
                                             <td className="px-6 py-4 text-right font-black text-green-500 whitespace-nowrap">${Number(b.price).toFixed(2)}</td>
                                         </tr>
@@ -463,7 +464,7 @@ export default function EarningsPage() {
                                             </td>
                                             <td className="px-4 py-4 font-medium whitespace-nowrap">{tx.trainer_name}</td>
                                             <td className="px-4 py-4 font-medium capitalize whitespace-nowrap">
-                                                {tx.booking?.sport?.replace(/_/g, " ") || "—"} · {tx.booking?.duration_minutes || "—"}min
+                                                {tx.booking?.sport ? formatSportName(tx.booking.sport) : "—"} · {tx.booking?.duration_minutes || "—"}min
                                             </td>
                                             <td className="px-4 py-4 whitespace-nowrap">
                                                 {tx.status === "held" && (

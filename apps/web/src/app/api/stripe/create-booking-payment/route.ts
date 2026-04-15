@@ -6,6 +6,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
 
+function formatSportName(sport: string): string {
+    return sport.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 export async function POST(req: NextRequest) {
     const supabase = createClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -83,7 +87,7 @@ export async function POST(req: NextRequest) {
                     price_data: {
                         currency: 'usd',
                         product_data: {
-                            name: `${booking.sport.replace(/_/g, ' ')} Session with ${trainerName}`,
+                            name: `${formatSportName(booking.sport)} Session with ${trainerName}`,
                             description: `${booking.duration_minutes} min · ${sessionDate} · Funds held in escrow until session completes`,
                         },
                         unit_amount: amountCents,

@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import LocationAutocomplete, { type LocationValue } from "@/components/forms/LocationAutocomplete";
 import { detectCountry, radiusUnit, formatRadius, kmToMi, miToKm } from "@/lib/units";
+import { toast } from "@/components/ui/Toast";
 
 const FALLBACK_SPORTS: { id: string; name: string; slug: string }[] = [
     { id: "hockey", name: "Hockey", slug: "hockey" },
@@ -33,7 +34,6 @@ export default function ProfilePage() {
     const [sportsList, setSportsList] = useState<{ id: string; name: string; slug: string }[]>([]);
     const [sportsLoading, setSportsLoading] = useState(true);
     const [saved, setSaved] = useState(false);
-    const [error, setError] = useState<string | null>(null);
     const [deleting, setDeleting] = useState(false);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
     const [isDirty, setIsDirty] = useState(false);
@@ -243,13 +243,12 @@ export default function ProfilePage() {
     const handleSave = async () => {
         if (!user) return;
         if (!validate()) {
-            setError("Please fix the highlighted fields below before saving.");
+            toast.error("Please fix the highlighted fields below before saving.");
             window.scrollTo({ top: 0, behavior: "smooth" });
             return;
         }
         setSaving(true);
         try {
-            setError(null);
             const { error: userError } = await supabase.from("users").update({
                 first_name: form.firstName,
                 last_name: form.lastName,
@@ -324,12 +323,13 @@ export default function ProfilePage() {
             setUser(updatedUser);
             initialFormRef.current = form;
             setIsDirty(false);
+            toast.success("Profile updated successfully!");
             setSaved(true);
             window.scrollTo({ top: 0, behavior: "smooth" });
             setTimeout(() => setSaved(false), 3000);
         } catch (err: any) {
             console.error("Save failed:", err);
-            setError(err.message || "Failed to save profile. Please check your connection and try again.");
+            toast.error(err.message || "Failed to save profile. Please check your connection and try again.");
         } finally {
             setSaving(false);
         }
@@ -395,17 +395,6 @@ export default function ProfilePage() {
                     </button>
                 </div>
             </div>
-
-            {saved && (
-                <div className="px-5 py-3.5 bg-white/[0.04] border border-white/[0.08] rounded-xl text-text-main text-sm font-bold mb-6 flex items-center gap-3">
-                    <CheckCircle className="w-4 h-4 text-green-400 shrink-0" /> Profile updated successfully!
-                </div>
-            )}
-            {error && (
-                <div className="px-5 py-3.5 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm font-bold mb-6 flex items-center gap-3">
-                    <AlertTriangle className="w-4 h-4 shrink-0" /> {error}
-                </div>
-            )}
 
             {/* Profile Header Card */}
             <div className="bg-surface border border-white/[0.06] rounded-2xl p-6 mb-4">

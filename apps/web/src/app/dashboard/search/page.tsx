@@ -10,6 +10,7 @@ import { FoundingBadge, FoundingBadgeTooltip } from "@/components/ui/FoundingBad
 import { detectCountry, radiusUnit, formatRadius, miToKm } from "@/lib/units";
 import dynamic from "next/dynamic";
 import type { TrainerPin } from "@/components/search/FindTrainerMap";
+import { formatSportName } from "@/lib/format";
 
 const FindTrainerMap = dynamic(() => import("@/components/search/FindTrainerMap"), { ssr: false });
 
@@ -237,7 +238,7 @@ export default function SearchTrainersPage() {
             const { data: settings } = await supabase
                 .from("platform_settings")
                 .select("require_trainer_verification")
-                .single();
+                .maybeSingle();
             
             const requireVerification = settings?.require_trainer_verification ?? true;
 
@@ -623,7 +624,7 @@ export default function SearchTrainersPage() {
                         .map((t) => ({
                             id: t.id,
                             name: `${t.user?.first_name || ""} ${t.user?.last_name || ""}`.trim(),
-                            sport: (t.sports || []).map((s: string) => sportLabels[s] || s.replace(/_/g, " ")).join(", "),
+                            sport: (t.sports || []).map((s: string) => sportLabels[s] || formatSportName(s)).join(", "),
                             rating: t.avg_rating,
                             reviewCount: t.review_count,
                             hourlyRate: Number(t.hourly_rate),
@@ -700,7 +701,7 @@ export default function SearchTrainersPage() {
                             <div className="flex flex-wrap gap-1.5 min-h-[24px]">
                                 {trainer.sports.slice(0, 3).map(sport => (
                                     <span key={sport} className="bg-white/8 border border-white/10 text-white/60 text-[10px] font-semibold px-2.5 py-0.5 rounded-full">
-                                        {sportLabels[sport] || sport.replace(/_/g, " ")}
+                                        {sportLabels[sport] || formatSportName(sport)}
                                     </span>
                                 ))}
                             </div>

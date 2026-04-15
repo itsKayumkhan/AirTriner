@@ -13,7 +13,7 @@ import { AddToCalendarDropdown } from "@/components/bookings/AddToCalendarDropdo
 import { CancelBookingDialog } from "@/components/bookings/CancelBookingDialog";
 import { ReviewModal } from "@/components/bookings/ReviewModal";
 import Link from "next/link";
-import { ToastContainer, useToast } from "@/components/ui/Toast";
+import { toast } from "@/components/ui/Toast";
 
 type RescheduleInfo = {
     id: string;
@@ -50,7 +50,8 @@ export default function BookingsPage() {
     const [loadError, setLoadError] = useState<string | null>(null);
     const [refreshing, setRefreshing] = useState(false);
     const [actionLoading, setActionLoading] = useState<string | null>(null);
-    const { toasts, remove, success: toastSuccess, error: toastError } = useToast();
+    const toastSuccess = toast.success;
+    const toastError = toast.error;
 
     const [paidBookingIds, setPaidBookingIds] = useState<Set<string>>(new Set());
     const [paymentLoading, setPaymentLoading] = useState<string | null>(null);
@@ -339,7 +340,6 @@ export default function BookingsPage() {
 
     return (
         <div className="max-w-[960px] w-full pb-16">
-            <ToastContainer toasts={toasts} onRemove={remove} />
 
             {/* ── Page Header ── */}
             <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-8 sm:mb-10">

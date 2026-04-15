@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { CheckCircle, XCircle, AlertTriangle, Info, X } from "lucide-react";
 
 export type ToastType = "success" | "error" | "warning" | "info";
@@ -12,17 +12,44 @@ export interface ToastMessage {
     message?: string;
 }
 
-interface ToastProps {
-    toasts: ToastMessage[];
-    onRemove: (id: string) => void;
+// --- Global store ---
+let _id = 0;
+let _toasts: ToastMessage[] = [];
+const _listeners = new Set<() => void>();
+
+function notify() { _listeners.forEach((l) => l()); }
+
+function addToast(type: ToastType, title: string, message?: string) {
+    const id = String(++_id);
+    _toasts = [..._toasts, { id, type, title, message }];
+    notify();
 }
 
-const ICONS = {
-    success: CheckCircle,
-    error: XCircle,
-    warning: AlertTriangle,
-    info: Info,
+function removeToast(id: string) {
+    _toasts = _toasts.filter((t) => t.id !== id);
+    notify();
+}
+
+/** Call from anywhere — no hooks, no context needed */
+export const toast = {
+    success: (title: string, message?: string) => addToast("success", title, message),
+    error:   (title: string, message?: string) => addToast("error",   title, message),
+    warning: (title: string, message?: string) => addToast("warning", title, message),
+    info:    (title: string, message?: string) => addToast("info",    title, message),
 };
+
+// --- Keep the hook for backwards compat ---
+export function useToast() {
+    const toasts = useSyncExternalStore(
+        (cb) => { _listeners.add(cb); return () => _listeners.delete(cb); },
+        () => _toasts,
+        () => _toasts,
+    );
+    return { toasts, remove: removeToast, ...toast };
+}
+
+// --- UI ---
+const ICONS = { success: CheckCircle, error: XCircle, warning: AlertTriangle, info: Info };
 
 const STYLES = {
     success: { border: "border-green-500/30", bg: "bg-green-500/10", icon: "text-green-400", title: "text-green-300" },
@@ -31,21 +58,19 @@ const STYLES = {
     info:    { border: "border-primary/30",   bg: "bg-primary/10",   icon: "text-primary",   title: "text-primary" },
 };
 
-function ToastItem({ toast, onRemove }: { toast: ToastMessage; onRemove: (id: string) => void }) {
+function ToastItem({ toast: t, onRemove }: { toast: ToastMessage; onRemove: (id: string) => void }) {
     const [visible, setVisible] = useState(false);
-    const s = STYLES[toast.type];
-    const Icon = ICONS[toast.type];
+    const s = STYLES[t.type];
+    const Icon = ICONS[t.type];
 
     useEffect(() => {
-        // Animate in
         const showTimer = setTimeout(() => setVisible(true), 10);
-        // Auto remove after 4s
         const hideTimer = setTimeout(() => {
             setVisible(false);
-            setTimeout(() => onRemove(toast.id), 300);
+            setTimeout(() => onRemove(t.id), 300);
         }, 4000);
         return () => { clearTimeout(showTimer); clearTimeout(hideTimer); };
-    }, [toast.id, onRemove]);
+    }, [t.id, onRemove]);
 
     return (
         <div
@@ -54,11 +79,11 @@ function ToastItem({ toast, onRemove }: { toast: ToastMessage; onRemove: (id: st
         >
             <Icon size={18} className={`${s.icon} shrink-0 mt-0.5`} />
             <div className="flex-1 min-w-0">
-                <p className={`text-sm font-bold ${s.title}`}>{toast.title}</p>
-                {toast.message && <p className="text-xs text-text-main/60 mt-0.5 leading-relaxed">{toast.message}</p>}
+                <p className={`text-sm font-bold ${s.title}`}>{t.title}</p>
+                {t.message && <p className="text-xs text-text-main/60 mt-0.5 leading-relaxed">{t.message}</p>}
             </div>
             <button
-                onClick={() => { setVisible(false); setTimeout(() => onRemove(toast.id), 300); }}
+                onClick={() => { setVisible(false); setTimeout(() => onRemove(t.id), 300); }}
                 className="text-text-main/30 hover:text-text-main/70 transition-colors shrink-0"
             >
                 <X size={14} />
@@ -67,36 +92,20 @@ function ToastItem({ toast, onRemove }: { toast: ToastMessage; onRemove: (id: st
     );
 }
 
-export function ToastContainer({ toasts, onRemove }: ToastProps) {
+/** Render once in your root layout */
+export function GlobalToast() {
+    const { toasts, remove } = useToast();
+    if (!toasts.length) return null;
     return (
         <div className="fixed bottom-6 right-6 z-[9999] flex flex-col gap-3 items-end pointer-events-none">
             {toasts.map((t) => (
                 <div key={t.id} className="pointer-events-auto">
-                    <ToastItem toast={t} onRemove={onRemove} />
+                    <ToastItem toast={t} onRemove={remove} />
                 </div>
             ))}
         </div>
     );
 }
 
-// Hook
-let _toastId = 0;
-export function useToast() {
-    const [toasts, setToasts] = useState<ToastMessage[]>([]);
-
-    const toast = (type: ToastType, title: string, message?: string) => {
-        const id = String(++_toastId);
-        setToasts((prev) => [...prev, { id, type, title, message }]);
-    };
-
-    const remove = (id: string) => setToasts((prev) => prev.filter((t) => t.id !== id));
-
-    return {
-        toasts,
-        remove,
-        success: (title: string, message?: string) => toast("success", title, message),
-        error:   (title: string, message?: string) => toast("error",   title, message),
-        warning: (title: string, message?: string) => toast("warning", title, message),
-        info:    (title: string, message?: string) => toast("info",    title, message),
-    };
-}
+// Keep old name for existing imports
+export const ToastContainer = GlobalToast;

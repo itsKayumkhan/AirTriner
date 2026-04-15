@@ -29,7 +29,7 @@ export default function DashboardOverview() {
             supabase
                 .from("platform_settings")
                 .select("require_trainer_verification")
-                .single()
+                .maybeSingle()
                 .then(({ data }) => {
                     if (data) setRequireVerification(data.require_trainer_verification);
                 });

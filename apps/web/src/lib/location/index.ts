@@ -33,22 +33,33 @@ let _cached: LocationProvider | null = null;
 /**
  * Return the active location provider singleton.
  *
- * - If `NEXT_PUBLIC_LOCATIONIQ_KEY` is set → LocationIQ provider.
- * - Otherwise → silent fallback (autocomplete returns `[]`, geocode `null`).
+ * Priority:
+ * 1. `NEXT_PUBLIC_GOOGLE_PLACES_KEY` → Google Places provider.
+ * 2. `NEXT_PUBLIC_LOCATIONIQ_KEY` → LocationIQ provider.
+ * 3. Otherwise → silent fallback (autocomplete returns `[]`, geocode `null`).
  */
 export function getLocationProvider(): LocationProvider {
   if (_cached) return _cached;
 
-  const key =
+  const googleKey =
+    typeof process !== "undefined"
+      ? process.env.NEXT_PUBLIC_GOOGLE_PLACES_KEY
+      : undefined;
+
+  const liqKey =
     typeof process !== "undefined"
       ? process.env.NEXT_PUBLIC_LOCATIONIQ_KEY
       : undefined;
 
-  if (key) {
-    // Lazy-import so the fallback path never loads the LocationIQ module.
+  if (googleKey) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { GooglePlacesProvider } = require("./google-places") as typeof import("./google-places");
+    _cached = new GooglePlacesProvider(googleKey);
+  } else if (liqKey) {
+    // LocationIQ fallback when Google key not set
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { LocationIQProvider } = require("./locationiq") as typeof import("./locationiq");
-    _cached = new LocationIQProvider(key);
+    _cached = new LocationIQProvider(liqKey);
   } else {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { FallbackProvider } = require("./fallback") as typeof import("./fallback");

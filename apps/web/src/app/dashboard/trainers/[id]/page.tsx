@@ -7,7 +7,8 @@ import { supabase, TrainerProfileRow } from "@/lib/supabase";
 import { Star, MapPin, MessageSquare, BadgeCheck, ChevronLeft, ChevronRight } from "lucide-react";
 import { ReviewSection } from "@/components/trainers/ReviewSection";
 import { FoundingBadgeTooltip } from "@/components/ui/FoundingBadge";
-import { ToastContainer, useToast } from "@/components/ui/Toast";
+import { toast } from "@/components/ui/Toast";
+import { formatSportName } from "@/lib/format";
 
 type Review = {
     id: string;
@@ -104,7 +105,9 @@ export default function BookTrainerPage() {
     const [loading, setLoading] = useState(true);
     const [pageError, setPageError] = useState<string | null>(null);
     const [processing, setProcessing] = useState(false);
-    const { toasts, remove, warning, error: toastError, success } = useToast();
+    const warning = toast.warning;
+    const toastError = toast.error;
+    const success = toast.success;
 
     // Available dates for calendar green highlights (date string → slot count)
     const [availableDates, setAvailableDates] = useState<Map<string, number>>(new Map());
@@ -577,7 +580,7 @@ export default function BookTrainerPage() {
             const { data: feeSettings } = await supabase
                 .from("platform_settings")
                 .select("platform_fee_percentage")
-                .single();
+                .maybeSingle();
             const feePercent = (feeSettings?.platform_fee_percentage ?? 3) / 100;
 
             const sessionPrice = (trainer.hourly_rate || 0) * (durationMinutes / 60);
@@ -652,7 +655,6 @@ export default function BookTrainerPage() {
         </button>
 
         <div className="max-w-[1280px] mx-auto pb-20 px-2 sm:px-4 md:px-8 mt-4">
-            <ToastContainer toasts={toasts} onRemove={remove} />
 
             {/* Cover Image */}
             <div className="w-full h-[200px] sm:h-[320px] rounded-2xl sm:rounded-[32px] overflow-hidden relative mb-16 shadow-2xl">
@@ -711,7 +713,7 @@ export default function BookTrainerPage() {
             <div className="px-2 sm:px-4 md:px-12 flex flex-wrap gap-2 sm:gap-3 mb-6 sm:mb-10">
                 {trainer.sports.map((sport, i) => (
                     <span key={i} className="bg-surface border border-white/5 text-text-main/80 px-5 py-2 rounded-full text-xs font-bold uppercase tracking-wider">
-                        {SPORT_LABELS[sport] || sport.replace(/_/g, " ")}
+                        {SPORT_LABELS[sport] || formatSportName(sport)}
                     </span>
                 ))}
             </div>
@@ -915,7 +917,7 @@ export default function BookTrainerPage() {
                                                 : "bg-white/[0.03] border-white/[0.07] text-text-main/60 hover:bg-white/[0.07] hover:text-text-main hover:border-white/[0.12]"
                                         }`}
                                     >
-                                        {SPORT_LABELS[sport] || sport.replace(/_/g, " ")}
+                                        {SPORT_LABELS[sport] || formatSportName(sport)}
                                     </button>
                                 ))}
                             </div>

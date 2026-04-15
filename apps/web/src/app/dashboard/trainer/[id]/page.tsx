@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { getSession, AuthUser } from "@/lib/auth";
 import { supabase, TrainerProfileRow, ReviewRow } from "@/lib/supabase";
+import { formatSportName } from "@/lib/format";
 
 type TrainerData = TrainerProfileRow & {
     user: { first_name: string; last_name: string; email: string };
@@ -38,7 +39,7 @@ export default function TrainerProfilePage() {
             const { data: settings } = await supabase
                 .from("platform_settings")
                 .select("require_trainer_verification")
-                .single();
+                .maybeSingle();
             
             if (settings) {
                 setRequireVerification(settings.require_trainer_verification);
@@ -216,7 +217,7 @@ export default function TrainerProfilePage() {
                         <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
                             {trainer.sports.map((s: string) => (
                                 <span key={s} style={{ padding: "6px 14px", borderRadius: "var(--radius-full)", background: "var(--primary-50)", color: "var(--primary)", fontSize: "13px", fontWeight: 600, textTransform: "capitalize" }}>
-                                    {s.replace(/_/g, " ")}
+                                    {formatSportName(s)}
                                 </span>
                             ))}
                         </div>

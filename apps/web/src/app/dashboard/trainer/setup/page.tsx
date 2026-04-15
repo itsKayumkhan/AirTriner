@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase";
 import { uploadToCloudinary } from "@/lib/cloudinary";
 import { useRouter } from "next/navigation";
 import { v4 as uuidv4 } from "uuid";
+import LocationAutocomplete, { type LocationValue } from "@/components/forms/LocationAutocomplete";
 import {
     Pencil,
     FileText,
@@ -141,7 +142,7 @@ export default function TrainerEditProfilePage() {
         const fetchData = async () => {
             // Fetch Platform Settings & Latest Profile in parallel
             const [settingsRes, profileRes] = await Promise.all([
-                supabase.from("platform_settings").select("require_trainer_verification").single(),
+                supabase.from("platform_settings").select("require_trainer_verification").maybeSingle(),
                 supabase.from("trainer_profiles").select("*").eq("user_id", session.id).single()
             ]);
             
@@ -815,22 +816,20 @@ export default function TrainerEditProfilePage() {
                             <h3 className="text-[15px] font-black text-white tracking-widest uppercase">LOCATION & MATCHING</h3>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                            <div>
+                            <div className="md:col-span-2">
                                 <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">City</label>
-                                <input
-                                    value={formData.city}
-                                    onChange={(e) => setFormData((p) => ({ ...p, city: e.target.value }))}
-                                    placeholder="e.g. Austin"
-                                    className="w-full bg-[#12141A] border border-white/5 rounded-2xl px-5 py-3.5 text-white text-sm outline-none focus:border-primary/50 transition-colors placeholder:text-text-main/30"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">State</label>
-                                <input
-                                    value={formData.state}
-                                    onChange={(e) => setFormData((p) => ({ ...p, state: e.target.value }))}
-                                    placeholder="e.g. TX"
-                                    className="w-full bg-[#12141A] border border-white/5 rounded-2xl px-5 py-3.5 text-white text-sm outline-none focus:border-primary/50 transition-colors placeholder:text-text-main/30"
+                                <LocationAutocomplete
+                                    value={formData.city ? { city: formData.city, state: formData.state || "", country: "", lat: null, lng: null } : null}
+                                    onChange={(loc: LocationValue) => {
+                                        if (loc) {
+                                            setFormData((p) => ({
+                                                ...p,
+                                                city: loc.city,
+                                                state: loc.state,
+                                            }));
+                                        }
+                                    }}
+                                    placeholder="Start typing a city..."
                                 />
                             </div>
                             <div>

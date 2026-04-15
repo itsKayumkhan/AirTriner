@@ -233,7 +233,7 @@ export async function registerUser(data: {
         const { data: settings } = await supabase
             .from('platform_settings')
             .select('auto_approve_trainers')
-            .single();
+            .maybeSingle();
         
         const autoApprove = settings?.auto_approve_trainers || false;
 

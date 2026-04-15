@@ -2,18 +2,17 @@
 import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
+import { toast } from '@/components/ui/Toast'
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('')
   const [loading, setLoading] = useState(false)
   const [sent, setSent] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!email) { setError('Please enter your email'); return }
+    if (!email) { toast.error('Please enter your email'); return }
     setLoading(true)
-    setError(null)
     try {
       const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: `${window.location.origin}/auth/reset-password`,
@@ -21,7 +20,7 @@ export default function ForgotPasswordPage() {
       if (resetError) throw resetError
       setSent(true)
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to send reset email')
+      toast.error(err instanceof Error ? err.message : 'Failed to send reset email')
     } finally {
       setLoading(false)
     }
@@ -44,11 +43,6 @@ export default function ForgotPasswordPage() {
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
-            {error && (
-              <div className="bg-red-900/30 border border-red-700 rounded-lg p-3 text-red-400 text-sm">
-                {error}
-              </div>
-            )}
             <div>
               <label className="block text-zinc-300 text-sm font-medium mb-2">Email Address</label>
               <input

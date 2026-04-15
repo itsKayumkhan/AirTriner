@@ -5,6 +5,7 @@ import { PrimaryButton } from "../ui/Buttons";
 import { supabase } from "@/lib/supabase";
 import { getSession } from "@/lib/auth";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { toast } from "@/components/ui/Toast";
 
 interface RescheduleDialogProps {
     bookingId: string;
@@ -68,7 +69,6 @@ export function RescheduleDialog({
     const [reason, setReason] = useState("");
     const [loading, setLoading] = useState(false);
     const [slotsLoading, setSlotsLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState(false);
     const [availableSlots, setAvailableSlots] = useState<string[]>([]);
     const [noSlotsMsg, setNoSlotsMsg] = useState<string | null>(null);
@@ -83,8 +83,7 @@ export function RescheduleDialog({
     useEffect(() => {
         if (!selectedDate) { setAvailableSlots([]); setNoSlotsMsg(null); return; }
         const fetchSlots = async () => {
-            setSlotsLoading(true); setAvailableSlots([]); setSelectedTime(""); setNoSlotsMsg(null); setError(null);
-            try {
+            setSlotsLoading(true); setAvailableSlots([]); setSelectedTime(""); setNoSlotsMsg(null);             try {
                 const date = new Date(selectedDate + "T00:00:00");
                 const dayOfWeek = date.getDay(); // 0=Sun, 1=Mon, ... 6=Sat
                 const dayName = date.toLocaleDateString("en-US", { weekday: "long" });
@@ -138,8 +137,7 @@ export function RescheduleDialog({
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault();
         if (!selectedDate || !selectedTime) return;
-        setLoading(true); setError(null);
-        try {
+        setLoading(true);         try {
             const session = getSession();
             if (!session) throw new Error("You must be logged in");
             const proposed = new Date(`${selectedDate}T${selectedTime}`);
@@ -171,7 +169,7 @@ export function RescheduleDialog({
             }
             setSuccess(true);
             setTimeout(() => { onClose(); onSuccess?.(); }, 1500);
-        } catch (err: unknown) { setError(err instanceof Error ? err.message : "Something went wrong"); }
+        } catch (err: unknown) { toast.error(err instanceof Error ? err.message : "Something went wrong"); }
         finally { setLoading(false); }
     }
 
@@ -293,9 +291,6 @@ export function RescheduleDialog({
                                 />
                             </label>
 
-                            {error && (
-                                <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-[12px] rounded-xl px-4 py-2.5">{error}</div>
-                            )}
                         </div>
 
                         {/* Footer */}
