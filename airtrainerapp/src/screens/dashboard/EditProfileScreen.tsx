@@ -10,6 +10,7 @@ import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows } from '..
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import LocationAutocomplete, { LocationValue } from '../../components/LocationAutocomplete';
+import { detectCountry, radiusUnit, miToKm, kmToMi } from '../../lib/units';
 import {
     ScreenWrapper, Card, Button, Input, Avatar, Divider,
 } from '../../components/ui';
@@ -31,14 +32,9 @@ const SESSION_LENGTH_OPTIONS = [30, 45, 60, 90];
 const SEX_OPTIONS = ['Male', 'Female', 'Other', 'Prefer not to say'];
 const SKILL_LEVELS = ['beginner', 'intermediate', 'advanced', 'pro'] as const;
 
-/** Returns true if the given string matches a Canadian postal code (e.g. A1A 1A1) */
-function isCanadianPostalCode(zip: string): boolean {
-    return /^[A-Za-z]\d[A-Za-z][\s-]?\d[A-Za-z]\d$/.test(zip.trim());
-}
-
 /** Returns true if the user is likely in Canada based on postal code or country */
 function isCanada(zip: string, countryVal: string): boolean {
-    return isCanadianPostalCode(zip) || countryVal.toLowerCase().includes('canada');
+    return detectCountry(zip) === 'CA' || countryVal.toLowerCase().includes('canada');
 }
 
 /* ── Chip Component ── */
@@ -174,9 +170,16 @@ export default function EditProfileScreen({ navigation }: any) {
     const [skillLevel, setSkillLevel] = useState(user?.athleteProfile?.skill_level || 'beginner');
     const [addressLine1, setAddressLine1] = useState(user?.athleteProfile?.address_line1 || '');
     const [zipCode, setZipCode] = useState(user?.athleteProfile?.zip_code || '');
-    const [travelRadius, setTravelRadius] = useState(
-        String(tp?.travel_radius_miles || user?.athleteProfile?.travel_radius_miles || 25)
-    );
+    const storedRadiusMiles = tp?.travel_radius_miles || user?.athleteProfile?.travel_radius_miles || 25;
+    const initialZip = user?.athleteProfile?.zip_code || '';
+    const initialCountry = (tp as any)?.country || user?.athleteProfile?.country || '';
+    const [travelRadius, setTravelRadius] = useState(() => {
+        // Display in km when the stored postal code looks Canadian
+        if (isCanada(initialZip, initialCountry)) {
+            return String(Math.round(miToKm(storedRadiusMiles)));
+        }
+        return String(storedRadiusMiles);
+    });
     const [sportsList, setSportsList] = useState<string[]>(FALLBACK_SPORTS);
     const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
     const [saveError, setSaveError] = useState<string | null>(null);
@@ -373,6 +376,12 @@ export default function EditProfileScreen({ navigation }: any) {
                 .eq('id', user.id);
             if (userError) throw userError;
 
+            // Convert display radius back to miles for storage when user is in Canada
+            const displayRadius = parseInt(travelRadius) || 25;
+            const radiusMiles = isCanada(zipCode, country)
+                ? Math.round(kmToMi(displayRadius))
+                : displayRadius;
+
             if (isTrainer) {
                 const { error: trainerError } = await supabase
                     .from('trainer_profiles')
@@ -387,7 +396,7 @@ export default function EditProfileScreen({ navigation }: any) {
                         preferredTrainingTimes: selectedTrainingTimes,
                         city: city.trim(),
                         state: stateVal.trim(),
-                        travel_radius_miles: parseInt(travelRadius) || 25,
+                        travel_radius_miles: radiusMiles,
                         training_locations: trainingLocations,
                         session_lengths: sessionLengths,
                     }, { onConflict: 'user_id' });
@@ -405,7 +414,7 @@ export default function EditProfileScreen({ navigation }: any) {
                         city: city.trim() || null,
                         state: stateVal.trim() || null,
                         zip_code: zipCode.trim() || null,
-                        travel_radius_miles: parseInt(travelRadius) || 25,
+                        travel_radius_miles: radiusMiles,
                         preferredTrainingTimes: selectedTrainingTimes,
                     }, { onConflict: 'user_id' });
                 if (athleteError) throw athleteError;
@@ -782,7 +791,7 @@ export default function EditProfileScreen({ navigation }: any) {
                     <>
                         <Divider />
                         <Input
-                            label={`Travel Radius (${isCanada(zipCode, country) ? 'km' : 'miles'})`}
+                            label={`Travel Radius (${isCanada(zipCode, country) ? 'km' : 'mi'})`}
                             value={travelRadius}
                             onChangeText={setTravelRadius}
                             placeholder="25"

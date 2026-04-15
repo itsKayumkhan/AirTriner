@@ -8,6 +8,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { supabase, MessageRow } from '../../lib/supabase';
 import { createNotification } from '../../lib/notifications';
 import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Layout } from '../../theme';
+import { formatSportName } from '../../lib/format';
 import {
     ScreenWrapper,
     Avatar,
@@ -75,7 +76,7 @@ export default function ChatScreen({ route, navigation }: any) {
     const flatListRef = useRef<FlatList>(null);
 
     const otherUserName = `${otherUser?.first_name || ''} ${otherUser?.last_name || ''}`.trim();
-    const sportLabel = (sport || '').replace(/_/g, ' ');
+    const sportLabel = formatSportName(sport || '');
 
     // ---------- Mark messages as read ----------
     const markMessagesAsRead = useCallback(async () => {

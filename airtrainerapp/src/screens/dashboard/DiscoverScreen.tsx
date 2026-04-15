@@ -1,13 +1,15 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
     View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl,
-    FlatList, Modal, Dimensions, TextInput, Pressable,
+    FlatList, Modal, Dimensions, TextInput, Pressable, Animated as RNAnimated,
+    Platform,
 } from 'react-native';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase, TrainerProfileRow, UserRow, AthleteProfileRow } from '../../lib/supabase';
 import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows, Layout } from '../../theme';
+import { formatSportName } from '../../lib/format';
 import {
     ScreenWrapper, Avatar, Badge, Button,
     EmptyState, LoadingScreen,
@@ -54,6 +56,20 @@ const SPORT_EMOJI: Record<string, string> = {
     volleyball: '\u{1F3D0}',
 };
 
+// Sport color map for tag pills
+const SPORT_COLOR: Record<string, string> = {
+    hockey: Colors.sportHockey,
+    baseball: Colors.sportBaseball,
+    basketball: Colors.sportBasketball,
+    soccer: Colors.sportSoccer,
+    football: Colors.sportFootball,
+    tennis: Colors.sportTennis,
+    golf: Colors.sportGolf,
+    swimming: Colors.sportSwimming,
+    boxing: Colors.sportBoxing,
+    lacrosse: Colors.sportLacrosse,
+};
+
 const RATING_OPTIONS = [
     { label: 'Any', value: 0 },
     { label: '3.5+', value: 3.5 },
@@ -92,10 +108,10 @@ const PRICE_OPTIONS = [
 ];
 
 const SORT_OPTIONS = [
-    { label: 'Relevance', value: 'match' },
-    { label: 'Rating', value: 'rating' },
-    { label: 'Price', value: 'price_low' },
-    { label: 'Distance', value: 'distance' },
+    { label: 'Relevance', value: 'match', icon: 'sparkles' as const },
+    { label: 'Rating', value: 'rating', icon: 'star' as const },
+    { label: 'Price', value: 'price_low', icon: 'pricetag' as const },
+    { label: 'Distance', value: 'distance', icon: 'navigate' as const },
 ];
 
 // ─── Types ───
@@ -136,6 +152,75 @@ const normalizeSport = (s: string) =>
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
+// ─── Format location properly: "City, ST" ───
+const formatLocation = (city?: string | null, state?: string | null): string => {
+    const parts: string[] = [];
+    if (city) {
+        // Capitalize first letter of each word
+        parts.push(city.replace(/\b\w/g, (c) => c.toUpperCase()));
+    }
+    if (state) {
+        // State codes: uppercase if <= 3 chars, otherwise title case
+        const s = state.trim();
+        parts.push(s.length <= 3 ? s.toUpperCase() : s.replace(/\b\w/g, (c) => c.toUpperCase()));
+    }
+    return parts.join(', ');
+};
+
+// ─── Skeleton loading placeholder ───
+const SkeletonCard = ({ index }: { index: number }) => {
+    const pulseAnim = useRef(new RNAnimated.Value(0.3)).current;
+
+    useEffect(() => {
+        const animation = RNAnimated.loop(
+            RNAnimated.sequence([
+                RNAnimated.timing(pulseAnim, {
+                    toValue: 0.7,
+                    duration: 800,
+                    useNativeDriver: true,
+                }),
+                RNAnimated.timing(pulseAnim, {
+                    toValue: 0.3,
+                    duration: 800,
+                    useNativeDriver: true,
+                }),
+            ])
+        );
+        // Stagger start per card
+        const timeout = setTimeout(() => animation.start(), index * 150);
+        return () => {
+            clearTimeout(timeout);
+            animation.stop();
+        };
+    }, [pulseAnim, index]);
+
+    return (
+        <View style={styles.skeletonCard}>
+            <View style={styles.skeletonTop}>
+                <RNAnimated.View style={[styles.skeletonAvatar, { opacity: pulseAnim }]} />
+                <View style={styles.skeletonInfo}>
+                    <RNAnimated.View style={[styles.skeletonLine, styles.skeletonLineName, { opacity: pulseAnim }]} />
+                    <RNAnimated.View style={[styles.skeletonLine, styles.skeletonLineShort, { opacity: pulseAnim }]} />
+                    <RNAnimated.View style={[styles.skeletonLine, styles.skeletonLineMedium, { opacity: pulseAnim }]} />
+                </View>
+            </View>
+            <RNAnimated.View style={[styles.skeletonLine, styles.skeletonLineFull, { opacity: pulseAnim }]} />
+            <View style={styles.skeletonBottom}>
+                <RNAnimated.View style={[styles.skeletonLine, styles.skeletonLinePrice, { opacity: pulseAnim }]} />
+                <RNAnimated.View style={[styles.skeletonButton, { opacity: pulseAnim }]} />
+            </View>
+        </View>
+    );
+};
+
+const SkeletonList = () => (
+    <View style={styles.skeletonListWrap}>
+        {[0, 1, 2, 3].map((i) => (
+            <SkeletonCard key={i} index={i} />
+        ))}
+    </View>
+);
+
 
 export default function DiscoverScreen({ navigation }: any) {
     const { user } = useAuth();
@@ -163,6 +248,9 @@ export default function DiscoverScreen({ navigation }: any) {
 
     // Filter modal
     const [filterModalVisible, setFilterModalVisible] = useState(false);
+
+    // Search focus state
+    const [searchFocused, setSearchFocused] = useState(false);
 
     // ─── Load sport categories from DB ───
     useEffect(() => {
@@ -353,7 +441,7 @@ export default function DiscoverScreen({ navigation }: any) {
                 const fullName = `${t.users?.first_name || ''} ${t.users?.last_name || ''}`.toLowerCase();
                 const loc = `${t.city || ''} ${t.state || ''}`.toLowerCase();
                 const sports = (t.sports || []).map((s) =>
-                    (sportLabels[normalizeSport(s)] || s.replace(/_/g, ' ')).toLowerCase()
+                    (sportLabels[normalizeSport(s)] || formatSportName(s)).toLowerCase()
                 ).join(' ');
                 if (!fullName.includes(q) && !loc.includes(q) && !sports.includes(q)) return false;
             }
@@ -437,7 +525,7 @@ export default function DiscoverScreen({ navigation }: any) {
                 id: t.id,
                 userId: t.user_id,
                 name: `${t.users?.first_name || ''} ${t.users?.last_name || ''}`.trim(),
-                sport: (t.sports || [])[0]?.replace(/_/g, ' ') || '',
+                sport: formatSportName((t.sports || [])[0] || ''),
                 rating: t.avg_rating,
                 reviewCount: t.review_count,
                 hourlyRate: Number(t.hourly_rate || 0),
@@ -504,151 +592,186 @@ export default function DiscoverScreen({ navigation }: any) {
         const distance = getTrainerDistance(item);
         const yearsExp = item.years_experience || null;
         const bio = item.bio || item.headline || '';
+        const isFounder = !!item.is_founding_50;
+        const isVerified = item.verification_status === 'verified';
+        const locationStr = formatLocation(item.city, item.state);
 
         return (
-            <Pressable
-                style={({ pressed }) => [
-                    styles.trainerCard,
-                    pressed && styles.trainerCardPressed,
-                ]}
-                onPress={() =>
-                    navigation.navigate('TrainerDetail', {
-                        trainerId: item.user_id,
-                        trainer: item,
-                    })
-                }
-            >
-                {/* TOP: Avatar + Info */}
-                <View style={styles.cardTop}>
-                    <Avatar
-                        uri={avatarUrl}
-                        name={trainerFullName}
-                        size={64}
-                        borderColor={Colors.primaryGlow}
-                    />
-                    <View style={styles.cardTopInfo}>
-                        <View style={styles.nameRow}>
-                            <Text style={styles.trainerName} numberOfLines={1}>
-                                {trainerFullName}
-                            </Text>
-                            {item.is_founding_50 && <Founding50Badge size="small" />}
+            <Animated.View entering={FadeInUp.delay(index * 60).duration(400).springify()}>
+                <Pressable
+                    style={({ pressed }) => [
+                        styles.trainerCard,
+                        isFounder && styles.trainerCardFounder,
+                        pressed && styles.trainerCardPressed,
+                    ]}
+                    onPress={() =>
+                        navigation.navigate('TrainerDetail', {
+                            trainerId: item.user_id,
+                            trainer: item,
+                        })
+                    }
+                >
+                    {/* Founding 50 gold accent strip */}
+                    {isFounder && <View style={styles.founderAccentStrip} />}
+
+                    {/* TOP: Avatar + Core Info */}
+                    <View style={styles.cardTop}>
+                        {/* Avatar with ring */}
+                        <View style={[
+                            styles.avatarRing,
+                            isFounder && styles.avatarRingFounder,
+                        ]}>
+                            <Avatar
+                                uri={avatarUrl}
+                                name={trainerFullName}
+                                size={68}
+                                borderColor="transparent"
+                            />
                         </View>
 
-                        {(item.city || item.state) && (
-                            <View style={styles.locationRow}>
-                                <Ionicons name="location-sharp" size={13} color={Colors.textTertiary} />
-                                <Text style={styles.locationText} numberOfLines={1}>
-                                    {item.city}{item.state ? `, ${item.state}` : ''}
+                        <View style={styles.cardTopInfo}>
+                            {/* Name row with verification and founder badge */}
+                            <View style={styles.nameRow}>
+                                <Text style={styles.trainerName} numberOfLines={1}>
+                                    {trainerFullName}
                                 </Text>
+                                {isVerified && (
+                                    <Ionicons name="checkmark-circle" size={18} color="#3B82F6" />
+                                )}
+                                {isFounder && <Founding50Badge size="small" />}
                             </View>
-                        )}
 
-                        <View style={styles.ratingRow}>
-                            <Ionicons name="star" size={14} color={Colors.warning} />
-                            <Text style={styles.ratingValue}>
-                                {item.avg_rating.toFixed(1)}
-                            </Text>
-                            <Text style={styles.reviewCount}>
-                                ({item.review_count} review{item.review_count !== 1 ? 's' : ''})
-                            </Text>
-                        </View>
-
-                        {/* Badge pills */}
-                        <View style={styles.badgePills}>
-                            {item.is_performance_verified && (
-                                <View style={[styles.badgePill, styles.badgePillVerified]}>
-                                    <Ionicons name="checkmark-circle" size={12} color={Colors.primary} />
-                                    <Text style={[styles.badgePillText, { color: Colors.primary }]}>Verified</Text>
-                                </View>
-                            )}
-                            {item.is_top_rated && (
-                                <View style={[styles.badgePill, styles.badgePillTopRated]}>
-                                    <Text style={[styles.badgePillText, { color: '#FF9500' }]}>Top Rated</Text>
-                                </View>
-                            )}
-                            {item.is_new && (
-                                <View style={[styles.badgePill, styles.badgePillNew]}>
-                                    <Text style={[styles.badgePillText, { color: Colors.success }]}>New</Text>
-                                </View>
-                            )}
-                            {(item.sports || []).slice(0, 2).map((sport) => (
-                                <View key={sport} style={styles.badgePill}>
-                                    <Text style={styles.badgePillText}>
-                                        {sportLabels[normalizeSport(sport)] || sport.replace(/_/g, ' ')}
+                            {/* Location */}
+                            {locationStr.length > 0 && (
+                                <View style={styles.locationRow}>
+                                    <Ionicons name="location-sharp" size={12} color={Colors.textTertiary} />
+                                    <Text style={styles.locationText} numberOfLines={1}>
+                                        {locationStr}
                                     </Text>
+                                    {distance != null && (
+                                        <Text style={styles.distanceInline}>
+                                            {distance.toFixed(1)} mi
+                                        </Text>
+                                    )}
                                 </View>
-                            ))}
+                            )}
+
+                            {/* Rating + reviews inline */}
+                            <View style={styles.ratingRow}>
+                                <Ionicons name="star" size={14} color={Colors.warning} />
+                                <Text style={styles.ratingValue}>
+                                    {item.avg_rating.toFixed(1)}
+                                </Text>
+                                <Text style={styles.reviewCount}>
+                                    ({item.review_count})
+                                </Text>
+                                {yearsExp != null && (
+                                    <>
+                                        <View style={styles.metaDot} />
+                                        <Text style={styles.expInline}>
+                                            {yearsExp} yr{yearsExp !== 1 ? 's' : ''} exp
+                                        </Text>
+                                    </>
+                                )}
+                                {item.total_sessions > 0 && (
+                                    <>
+                                        <View style={styles.metaDot} />
+                                        <Text style={styles.expInline}>
+                                            {item.total_sessions} sessions
+                                        </Text>
+                                    </>
+                                )}
+                            </View>
                         </View>
                     </View>
-                </View>
 
-                {/* MIDDLE: Bio + Price + Experience */}
-                <View style={styles.cardMiddle}>
+                    {/* Sport tags */}
+                    <View style={styles.sportTagsRow}>
+                        {(item.sports || []).slice(0, 3).map((sport) => {
+                            const slug = normalizeSport(sport);
+                            return (
+                                <View key={sport} style={styles.sportTag}>
+                                    <Text style={styles.sportTagText}>
+                                        {sportLabels[slug] || formatSportName(sport)}
+                                    </Text>
+                                </View>
+                            );
+                        })}
+                        {/* Status badges */}
+                        {item.is_top_rated && (
+                            <View style={styles.topRatedBadge}>
+                                <Ionicons name="flame" size={10} color="#FF9500" />
+                                <Text style={styles.topRatedText}>Top Rated</Text>
+                            </View>
+                        )}
+                        {item.is_new && (
+                            <View style={styles.newBadge}>
+                                <Text style={styles.newBadgeText}>New</Text>
+                            </View>
+                        )}
+                    </View>
+
+                    {/* Bio */}
                     {bio ? (
                         <Text style={styles.bioText} numberOfLines={2}>
                             {bio}
                         </Text>
                     ) : null}
-                    <View style={styles.priceExpRow}>
-                        <Text style={styles.priceDisplay}>
+
+                    {/* BOTTOM: Price + CTA */}
+                    <View style={styles.cardBottom}>
+                        <View style={styles.priceBlock}>
                             <Text style={styles.priceAmount}>
                                 ${Number(item.hourly_rate || 0).toFixed(0)}
                             </Text>
                             <Text style={styles.priceUnit}>/hr</Text>
-                        </Text>
-                        {yearsExp != null && (
-                            <View style={styles.expBadge}>
-                                <Ionicons name="ribbon-outline" size={13} color={Colors.textSecondary} />
-                                <Text style={styles.expText}>{yearsExp} year{yearsExp !== 1 ? 's' : ''}</Text>
-                            </View>
-                        )}
-                    </View>
-                </View>
+                        </View>
 
-                {/* BOTTOM: Stats row + View Profile button */}
-                <View style={styles.cardBottom}>
-                    <View style={styles.statsRow}>
-                        {distance != null && (
-                            <View style={styles.statItem}>
-                                <Ionicons name="navigate-outline" size={13} color={Colors.textTertiary} />
-                                <Text style={styles.statText}>{distance.toFixed(1)} mi away</Text>
-                            </View>
-                        )}
-                        {item.total_sessions > 0 && (
-                            <View style={styles.statItem}>
-                                <Ionicons name="fitness-outline" size={13} color={Colors.textTertiary} />
-                                <Text style={styles.statText}>{item.total_sessions} sessions</Text>
-                            </View>
-                        )}
-                        {item.is_founding_50 && (
-                            <View style={styles.statItem}>
-                                <Ionicons name="trophy-outline" size={13} color={Colors.warning} />
-                                <Text style={[styles.statText, { color: Colors.warning }]}>Founding 50</Text>
-                            </View>
-                        )}
+                        <TouchableOpacity
+                            style={styles.viewProfileButton}
+                            activeOpacity={0.8}
+                            onPress={() =>
+                                navigation.navigate('TrainerDetail', {
+                                    trainerId: item.user_id,
+                                    trainer: item,
+                                })
+                            }
+                        >
+                            <Text style={styles.viewProfileText}>View Profile</Text>
+                            <Ionicons name="arrow-forward" size={16} color="#FFFFFF" />
+                        </TouchableOpacity>
                     </View>
-
-                    <TouchableOpacity
-                        style={styles.viewProfileButton}
-                        activeOpacity={0.8}
-                        onPress={() =>
-                            navigation.navigate('TrainerDetail', {
-                                trainerId: item.user_id,
-                                trainer: item,
-                            })
-                        }
-                    >
-                        <Text style={styles.viewProfileText}>View Profile</Text>
-                        <Ionicons name="arrow-forward" size={16} color={Colors.textInverse} />
-                    </TouchableOpacity>
-                </View>
-            </Pressable>
+                </Pressable>
+            </Animated.View>
         );
     };
 
-    // ─── Loading state ───
+    // ─── Loading state with skeletons ───
     if (isLoading) {
-        return <LoadingScreen message="Finding trainers..." />;
+        return (
+            <ScreenWrapper scrollable={false} noPadding>
+                <View style={styles.headerArea}>
+                    <View style={styles.headerRow}>
+                        <View>
+                            <Text style={styles.headerTitle}>Discover</Text>
+                            <Text style={styles.headerSubtitle}>Finding trainers near you...</Text>
+                        </View>
+                    </View>
+                </View>
+                <View style={styles.searchBarWrap}>
+                    <View style={styles.searchBar}>
+                        <Ionicons name="search" size={20} color={Colors.textMuted} />
+                        <Text style={{ color: Colors.textMuted, fontSize: FontSize.sm, flex: 1 }}>
+                            Search by sport, name, or location...
+                        </Text>
+                    </View>
+                    <View style={styles.filterToggleButton}>
+                        <Ionicons name="options-outline" size={20} color={Colors.textMuted} />
+                    </View>
+                </View>
+                <SkeletonList />
+            </ScreenWrapper>
+        );
     }
 
     return (
@@ -668,8 +791,8 @@ export default function DiscoverScreen({ navigation }: any) {
                             style={styles.clearButton}
                             activeOpacity={0.7}
                         >
-                            <Ionicons name="refresh-outline" size={18} color={Colors.primary} />
-                            <Text style={styles.clearButtonText}>Clear</Text>
+                            <Ionicons name="refresh-outline" size={16} color={Colors.primary} />
+                            <Text style={styles.clearButtonText}>Clear all</Text>
                         </TouchableOpacity>
                     )}
                 </View>
@@ -677,14 +800,23 @@ export default function DiscoverScreen({ navigation }: any) {
 
             {/* 2. SEARCH BAR */}
             <View style={styles.searchBarWrap}>
-                <View style={styles.searchBar}>
-                    <Ionicons name="search" size={20} color={Colors.textTertiary} />
+                <View style={[
+                    styles.searchBar,
+                    searchFocused && styles.searchBarFocused,
+                ]}>
+                    <Ionicons
+                        name="search"
+                        size={20}
+                        color={searchFocused ? Colors.primary : Colors.textTertiary}
+                    />
                     <TextInput
                         style={styles.searchInput}
                         placeholder="Search by sport, name, or location..."
                         placeholderTextColor={Colors.textMuted}
                         value={searchQuery}
                         onChangeText={setSearchQuery}
+                        onFocus={() => setSearchFocused(true)}
+                        onBlur={() => setSearchFocused(false)}
                         returnKeyType="search"
                     />
                     {searchQuery.length > 0 && (
@@ -721,6 +853,7 @@ export default function DiscoverScreen({ navigation }: any) {
                 showsHorizontalScrollIndicator={false}
                 style={styles.sportScroll}
                 contentContainerStyle={styles.sportScrollContent}
+                decelerationRate="fast"
             >
                 <TouchableOpacity
                     style={[styles.sportPill, sportFilter === 'all' && styles.sportPillActive]}
@@ -747,8 +880,12 @@ export default function DiscoverScreen({ navigation }: any) {
             </ScrollView>
 
             {/* 4. SORT OPTIONS */}
-            <View style={styles.sortRow}>
-                <Text style={styles.sortLabel}>Sort by:</Text>
+            <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.sortScrollOuter}
+                contentContainerStyle={styles.sortScrollContent}
+            >
                 {SORT_OPTIONS.map((opt) => (
                     <TouchableOpacity
                         key={opt.value}
@@ -756,12 +893,17 @@ export default function DiscoverScreen({ navigation }: any) {
                         onPress={() => setSortBy(opt.value)}
                         activeOpacity={0.7}
                     >
+                        <Ionicons
+                            name={opt.icon}
+                            size={13}
+                            color={sortBy === opt.value ? Colors.primary : Colors.textMuted}
+                        />
                         <Text style={[styles.sortPillText, sortBy === opt.value && styles.sortPillTextActive]}>
                             {opt.label}
                         </Text>
                     </TouchableOpacity>
                 ))}
-            </View>
+            </ScrollView>
 
             {/* 5. TRAINER LIST or MAP */}
             {viewMode === 'list' ? (
@@ -778,7 +920,9 @@ export default function DiscoverScreen({ navigation }: any) {
                         /* 6. EMPTY STATE */
                         <View style={styles.emptyWrap}>
                             <View style={styles.emptyIconCircle}>
-                                <Ionicons name="search-outline" size={48} color={Colors.textMuted} />
+                                <View style={styles.emptyIconInner}>
+                                    <Ionicons name="people-outline" size={36} color={Colors.textMuted} />
+                                </View>
                             </View>
                             <Text style={styles.emptyTitle}>No trainers found</Text>
                             <Text style={styles.emptyDescription}>
@@ -786,10 +930,17 @@ export default function DiscoverScreen({ navigation }: any) {
                             </Text>
                             {activeFilterCount > 0 && (
                                 <TouchableOpacity style={styles.emptyCta} onPress={clearAllFilters} activeOpacity={0.8}>
-                                    <Ionicons name="refresh-outline" size={18} color={Colors.textInverse} />
+                                    <Ionicons name="refresh-outline" size={16} color="#FFFFFF" />
                                     <Text style={styles.emptyCtaText}>Clear All Filters</Text>
                                 </TouchableOpacity>
                             )}
+                            <TouchableOpacity
+                                style={styles.emptySecondary}
+                                onPress={onRefresh}
+                                activeOpacity={0.7}
+                            >
+                                <Text style={styles.emptySecondaryText}>Refresh results</Text>
+                            </TouchableOpacity>
                         </View>
                     }
                 />
@@ -807,19 +958,21 @@ export default function DiscoverScreen({ navigation }: any) {
                 </View>
             )}
 
-            {/* List / Map floating toggle */}
-            <View style={styles.viewToggleFloating}>
+            {/* List / Map floating toggle (FAB) */}
+            <View style={styles.fabContainer}>
                 <TouchableOpacity
-                    style={[styles.viewToggleBtn, viewMode === 'list' && styles.viewToggleBtnActive]}
-                    onPress={() => setViewMode('list')}
+                    style={styles.fab}
+                    onPress={() => setViewMode(viewMode === 'list' ? 'map' : 'list')}
+                    activeOpacity={0.85}
                 >
-                    <Ionicons name="list" size={18} color={viewMode === 'list' ? Colors.textInverse : Colors.textSecondary} />
-                </TouchableOpacity>
-                <TouchableOpacity
-                    style={[styles.viewToggleBtn, viewMode === 'map' && styles.viewToggleBtnActive]}
-                    onPress={() => setViewMode('map')}
-                >
-                    <Ionicons name="map" size={18} color={viewMode === 'map' ? Colors.textInverse : Colors.textSecondary} />
+                    <Ionicons
+                        name={viewMode === 'list' ? 'map' : 'list'}
+                        size={22}
+                        color="#FFFFFF"
+                    />
+                    <Text style={styles.fabText}>
+                        {viewMode === 'list' ? 'Map' : 'List'}
+                    </Text>
                 </TouchableOpacity>
             </View>
 
@@ -832,6 +985,9 @@ export default function DiscoverScreen({ navigation }: any) {
             >
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
+                        {/* Modal drag handle */}
+                        <View style={styles.modalDragHandle} />
+
                         {/* Modal Header */}
                         <View style={styles.modalHeader}>
                             <Text style={styles.modalTitle}>Filters</Text>
@@ -839,8 +995,9 @@ export default function DiscoverScreen({ navigation }: any) {
                                 onPress={() => setFilterModalVisible(false)}
                                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                                 accessibilityLabel="Close filters"
+                                style={styles.modalCloseBtn}
                             >
-                                <Ionicons name="close" size={24} color={Colors.text} />
+                                <Ionicons name="close" size={20} color={Colors.textSecondary} />
                             </TouchableOpacity>
                         </View>
 
@@ -1032,8 +1189,8 @@ const styles = StyleSheet.create({
     // ── Header ──
     headerArea: {
         paddingHorizontal: Layout.screenPadding,
-        paddingTop: Spacing.lg,
-        paddingBottom: Spacing.md,
+        paddingTop: Spacing.xl,
+        paddingBottom: Spacing.lg,
     },
     headerRow: {
         flexDirection: 'row',
@@ -1041,24 +1198,26 @@ const styles = StyleSheet.create({
         alignItems: 'flex-start',
     },
     headerTitle: {
-        fontSize: 28,
-        fontWeight: FontWeight.bold,
+        fontSize: FontSize.xxxl,
+        fontWeight: FontWeight.heavy,
         color: Colors.text,
-        letterSpacing: -0.5,
+        letterSpacing: -0.8,
     },
     headerSubtitle: {
         fontSize: FontSize.sm,
         color: Colors.textTertiary,
-        marginTop: 4,
+        marginTop: 6,
     },
     clearButton: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 4,
-        paddingVertical: Spacing.xs,
-        paddingHorizontal: Spacing.md,
+        gap: 5,
+        paddingVertical: Spacing.sm,
+        paddingHorizontal: Spacing.lg,
         borderRadius: BorderRadius.pill,
         backgroundColor: Colors.primaryMuted,
+        borderWidth: 1,
+        borderColor: Colors.borderActive,
     },
     clearButtonText: {
         fontSize: FontSize.xs,
@@ -1071,20 +1230,25 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         paddingHorizontal: Layout.screenPadding,
-        marginBottom: Spacing.md,
+        marginBottom: Spacing.lg,
         gap: Spacing.sm,
     },
     searchBar: {
         flex: 1,
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: Colors.card,
-        borderRadius: 24,
-        borderWidth: 1,
+        backgroundColor: Colors.surface,
+        borderRadius: BorderRadius.xl,
+        borderWidth: 1.5,
         borderColor: Colors.border,
         paddingHorizontal: Spacing.lg,
-        height: 48,
+        height: 52,
         gap: Spacing.sm,
+    },
+    searchBarFocused: {
+        borderColor: Colors.borderFocus,
+        backgroundColor: Colors.surfaceElevated,
+        ...Shadows.glow,
     },
     searchInput: {
         flex: 1,
@@ -1093,26 +1257,28 @@ const styles = StyleSheet.create({
         height: '100%',
     },
     filterToggleButton: {
-        width: 48,
-        height: 48,
-        borderRadius: 24,
-        backgroundColor: Colors.card,
-        borderWidth: 1,
+        width: 52,
+        height: 52,
+        borderRadius: BorderRadius.xl,
+        backgroundColor: Colors.surface,
+        borderWidth: 1.5,
         borderColor: Colors.border,
         justifyContent: 'center',
         alignItems: 'center',
+        alignSelf: 'center',
     },
     filterToggleButtonActive: {
         borderColor: Colors.borderActive,
         backgroundColor: Colors.primaryMuted,
+        ...Shadows.small,
     },
     filterCountBadge: {
         position: 'absolute',
-        top: 4,
-        right: 4,
-        minWidth: 18,
-        height: 18,
-        borderRadius: 9,
+        top: 2,
+        right: 2,
+        minWidth: 20,
+        height: 20,
+        borderRadius: 10,
         backgroundColor: Colors.primary,
         justifyContent: 'center',
         alignItems: 'center',
@@ -1126,97 +1292,107 @@ const styles = StyleSheet.create({
 
     // ── Sport Filter Scroll ──
     sportScroll: {
-        marginBottom: Spacing.md,
+        marginTop: Spacing.md,
+        marginBottom: Spacing.sm,
+        height: 40,
+        flexGrow: 0,
     },
     sportScrollContent: {
         paddingHorizontal: Layout.screenPadding,
-        gap: Spacing.sm,
+        paddingRight: Layout.screenPadding + 20,
+        gap: 8,
         alignItems: 'center',
+        height: 40,
     },
     sportPill: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 6,
-        paddingHorizontal: Spacing.lg,
-        paddingVertical: Spacing.sm,
+        gap: 5,
+        paddingHorizontal: 14,
+        paddingVertical: 8,
         borderRadius: BorderRadius.pill,
-        backgroundColor: Colors.card,
+        backgroundColor: 'rgba(255,255,255,0.05)',
         borderWidth: 1,
-        borderColor: Colors.border,
+        borderColor: 'rgba(255,255,255,0.08)',
     },
     sportPillActive: {
         backgroundColor: Colors.primary,
         borderColor: Colors.primary,
     },
     sportPillEmoji: {
-        fontSize: 14,
+        fontSize: 13,
     },
     sportPillText: {
-        fontSize: FontSize.sm,
-        fontWeight: FontWeight.medium,
-        color: Colors.textMuted,
+        fontSize: 12,
+        fontWeight: FontWeight.semibold,
+        color: Colors.textSecondary,
     },
     sportPillTextActive: {
-        color: Colors.textInverse,
-        fontWeight: FontWeight.semibold,
-    },
-
-    // ── Sort Options ──
-    sortRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: Layout.screenPadding,
-        marginBottom: Spacing.md,
-        gap: Spacing.sm,
-    },
-    sortLabel: {
-        fontSize: FontSize.xs,
-        fontWeight: FontWeight.semibold,
-        color: Colors.textTertiary,
-        textTransform: 'uppercase',
-        letterSpacing: 0.5,
-    },
-    sortPill: {
-        paddingHorizontal: Spacing.md,
-        paddingVertical: 6,
-        borderRadius: BorderRadius.pill,
-        backgroundColor: 'transparent',
-    },
-    sortPillActive: {
-        backgroundColor: Colors.glassLight,
-    },
-    sortPillText: {
-        fontSize: FontSize.xs,
-        fontWeight: FontWeight.medium,
-        color: Colors.textMuted,
-    },
-    sortPillTextActive: {
-        color: Colors.text,
+        color: '#000',
         fontWeight: FontWeight.bold,
     },
 
-    // ── View Toggle (floating) ──
-    viewToggleFloating: {
-        position: 'absolute',
-        bottom: 80,
-        right: Layout.screenPadding,
-        flexDirection: 'row',
-        backgroundColor: Colors.card,
-        borderRadius: BorderRadius.pill,
-        borderWidth: 1,
-        borderColor: Colors.border,
-        padding: 3,
-        ...Shadows.medium,
+    // ── Sort Options ──
+    sortScrollOuter: {
+        marginBottom: Spacing.md,
+        height: 32,
+        flexGrow: 0,
+        marginTop: Spacing.xs,
     },
-    viewToggleBtn: {
-        width: 42,
-        height: 36,
-        borderRadius: BorderRadius.pill,
-        justifyContent: 'center',
+    sortScrollContent: {
+        paddingHorizontal: Layout.screenPadding,
+        gap: 6,
         alignItems: 'center',
+        height: 32,
     },
-    viewToggleBtnActive: {
+    sortPill: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: BorderRadius.pill,
+        backgroundColor: 'transparent',
+        borderWidth: 0,
+        borderColor: 'transparent',
+    },
+    sortPillActive: {
+        backgroundColor: 'rgba(69,208,255,0.08)',
+        borderRadius: BorderRadius.pill,
+    },
+    sortPillText: {
+        fontSize: 11,
+        fontWeight: FontWeight.medium,
+        color: 'rgba(255,255,255,0.35)',
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
+    },
+    sortPillTextActive: {
+        color: Colors.primary,
+        fontWeight: FontWeight.bold,
+    },
+
+    // ── FAB (Floating Action Button) ──
+    fabContainer: {
+        position: 'absolute',
+        bottom: 24,
+        right: Layout.screenPadding,
+        zIndex: 10,
+    },
+    fab: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
         backgroundColor: Colors.primary,
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        borderRadius: BorderRadius.pill,
+        ...Shadows.large,
+    },
+    fabText: {
+        fontSize: FontSize.sm,
+        fontWeight: FontWeight.bold,
+        color: '#FFFFFF',
     },
 
     // ── Map ──
@@ -1229,8 +1405,8 @@ const styles = StyleSheet.create({
     // ── Trainer List ──
     listContent: {
         paddingHorizontal: Layout.screenPadding,
-        paddingBottom: 140,
-        paddingTop: Spacing.xs,
+        paddingBottom: 160,
+        paddingTop: Spacing.sm,
     },
 
     // ── Trainer Card ──
@@ -1239,51 +1415,98 @@ const styles = StyleSheet.create({
         borderRadius: BorderRadius.xl,
         borderWidth: 1,
         borderColor: Colors.border,
-        padding: Spacing.lg,
-        marginBottom: 16,
-        ...Shadows.small,
+        paddingHorizontal: Layout.screenPadding + Spacing.xs,
+        paddingVertical: Layout.screenPadding,
+        marginBottom: Spacing.lg,
+        overflow: 'hidden',
+        ...Shadows.medium,
+    },
+    trainerCardFounder: {
+        borderColor: 'rgba(255, 215, 0, 0.2)',
+        ...Platform.select({
+            ios: {
+                shadowColor: '#FFD700',
+                shadowOffset: { width: 0, height: 0 },
+                shadowOpacity: 0.08,
+                shadowRadius: 6,
+            },
+            android: {
+                elevation: 4,
+            },
+        }),
     },
     trainerCardPressed: {
         transform: [{ scale: 0.98 }],
-        opacity: 0.95,
+        opacity: 0.92,
+    },
+    founderAccentStrip: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        height: 1.5,
+        backgroundColor: 'rgba(255, 215, 0, 0.25)',
+        borderTopLeftRadius: BorderRadius.xl,
+        borderTopRightRadius: BorderRadius.xl,
     },
 
     // Card Top
     cardTop: {
         flexDirection: 'row',
-        gap: Spacing.md,
-        marginBottom: Spacing.md,
+        gap: Spacing.lg,
+        marginBottom: Spacing.lg,
+    },
+    avatarRing: {
+        borderRadius: 40,
+        padding: 2.5,
+        borderWidth: 2,
+        borderColor: Colors.border,
+    },
+    avatarRingFounder: {
+        borderColor: 'rgba(255, 215, 0, 0.3)',
     },
     cardTopInfo: {
         flex: 1,
+        justifyContent: 'center',
     },
     nameRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: Spacing.sm,
+        gap: 6,
+        marginBottom: 4,
     },
     trainerName: {
-        fontSize: FontSize.lg,
+        fontSize: FontSize.xl,
         fontWeight: FontWeight.bold,
         color: Colors.text,
         flexShrink: 1,
+        letterSpacing: -0.3,
     },
     locationRow: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: 4,
-        marginTop: 4,
+        marginBottom: 4,
     },
     locationText: {
         fontSize: FontSize.xs,
         color: Colors.textTertiary,
         flexShrink: 1,
     },
+    distanceInline: {
+        fontSize: FontSize.xxs,
+        color: Colors.textMuted,
+        marginLeft: 4,
+        paddingHorizontal: 6,
+        paddingVertical: 1,
+        backgroundColor: Colors.glass,
+        borderRadius: BorderRadius.pill,
+        overflow: 'hidden',
+    },
     ratingRow: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: Spacing.xs,
-        marginTop: 4,
     },
     ratingValue: {
         fontSize: FontSize.sm,
@@ -1294,136 +1517,146 @@ const styles = StyleSheet.create({
         fontSize: FontSize.xs,
         color: Colors.textTertiary,
     },
+    metaDot: {
+        width: 3,
+        height: 3,
+        borderRadius: 1.5,
+        backgroundColor: Colors.textMuted,
+        marginHorizontal: 2,
+    },
+    expInline: {
+        fontSize: FontSize.xxs,
+        color: Colors.textTertiary,
+        fontWeight: FontWeight.medium,
+    },
 
-    // Badge pills
-    badgePills: {
+    // Sport tags
+    sportTagsRow: {
         flexDirection: 'row',
         flexWrap: 'wrap',
         gap: 6,
-        marginTop: 8,
+        marginBottom: Spacing.md,
     },
-    badgePill: {
+    sportTag: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 4,
+        paddingHorizontal: 10,
+        paddingVertical: 5,
+        borderRadius: BorderRadius.pill,
+        borderWidth: 1,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        borderColor: 'rgba(255,255,255,0.10)',
+    },
+    sportTagText: {
+        fontSize: 11,
+        fontWeight: FontWeight.semibold,
+        color: 'rgba(255,255,255,0.6)',
+    },
+    topRatedBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 3,
         paddingHorizontal: 8,
         paddingVertical: 3,
         borderRadius: BorderRadius.pill,
-        backgroundColor: Colors.glass,
+        backgroundColor: 'rgba(255, 149, 0, 0.1)',
+        borderWidth: 1,
+        borderColor: 'rgba(255, 149, 0, 0.25)',
     },
-    badgePillVerified: {
-        backgroundColor: Colors.primaryMuted,
-    },
-    badgePillTopRated: {
-        backgroundColor: 'rgba(255,149,0,0.1)',
-    },
-    badgePillNew: {
-        backgroundColor: Colors.successLight,
-    },
-    badgePillText: {
+    topRatedText: {
         fontSize: FontSize.xxs,
-        fontWeight: FontWeight.semibold,
-        color: Colors.textSecondary,
+        fontWeight: FontWeight.bold,
+        color: '#FF9500',
+    },
+    newBadge: {
+        paddingHorizontal: 8,
+        paddingVertical: 3,
+        borderRadius: BorderRadius.pill,
+        backgroundColor: Colors.successLight,
+        borderWidth: 1,
+        borderColor: 'rgba(16, 185, 129, 0.25)',
+    },
+    newBadgeText: {
+        fontSize: FontSize.xxs,
+        fontWeight: FontWeight.bold,
+        color: Colors.success,
     },
 
-    // Card Middle
-    cardMiddle: {
-        marginBottom: Spacing.md,
-        paddingTop: Spacing.sm,
-        borderTopWidth: 1,
-        borderTopColor: Colors.border,
-    },
+    // Bio
     bioText: {
         fontSize: FontSize.sm,
         color: Colors.textSecondary,
-        lineHeight: 20,
-        marginBottom: Spacing.sm,
+        lineHeight: 21,
+        marginBottom: Spacing.lg,
     },
-    priceExpRow: {
+
+    // Card Bottom
+    cardBottom: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
+        paddingTop: Spacing.md,
+        borderTopWidth: 1,
+        borderTopColor: Colors.border,
     },
-    priceDisplay: {
-        // Container for price text
+    priceBlock: {
+        flexDirection: 'row',
+        alignItems: 'baseline',
     },
     priceAmount: {
         fontSize: FontSize.xxl,
         fontWeight: FontWeight.heavy,
         color: Colors.primary,
+        letterSpacing: -0.5,
     },
     priceUnit: {
-        fontSize: FontSize.sm,
+        fontSize: FontSize.xs,
         fontWeight: FontWeight.medium,
         color: Colors.primary,
-        opacity: 0.6,
-    },
-    expBadge: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 4,
-        paddingHorizontal: Spacing.md,
-        paddingVertical: Spacing.xs,
-        borderRadius: BorderRadius.pill,
-        backgroundColor: Colors.glass,
-    },
-    expText: {
-        fontSize: FontSize.xs,
-        color: Colors.textSecondary,
-        fontWeight: FontWeight.medium,
-    },
-
-    // Card Bottom
-    cardBottom: {
-        gap: Spacing.md,
-    },
-    statsRow: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        gap: Spacing.lg,
-    },
-    statItem: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 4,
-    },
-    statText: {
-        fontSize: FontSize.xs,
-        color: Colors.textTertiary,
+        opacity: 0.5,
+        marginLeft: 1,
     },
     viewProfileButton: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        gap: Spacing.xs,
+        gap: Spacing.sm,
         backgroundColor: Colors.primary,
         borderRadius: BorderRadius.pill,
-        paddingVertical: Spacing.sm,
-        paddingHorizontal: Spacing.lg,
-        alignSelf: 'flex-start',
+        paddingVertical: Spacing.md,
+        paddingHorizontal: Spacing.xxl,
+        ...Shadows.small,
     },
     viewProfileText: {
         fontSize: FontSize.sm,
-        fontWeight: FontWeight.semibold,
-        color: Colors.textInverse,
+        fontWeight: FontWeight.bold,
+        color: '#FFFFFF',
     },
 
     // ── Empty State ──
     emptyWrap: {
         alignItems: 'center',
-        paddingTop: Spacing.huge,
+        paddingTop: Spacing.huge + Spacing.xxl,
         paddingHorizontal: Spacing.xxxl,
     },
     emptyIconCircle: {
-        width: 96,
-        height: 96,
-        borderRadius: 48,
+        width: 110,
+        height: 110,
+        borderRadius: 55,
         backgroundColor: Colors.glass,
         borderWidth: 1,
         borderColor: Colors.glassBorder,
         justifyContent: 'center',
         alignItems: 'center',
         marginBottom: Spacing.xxl,
+    },
+    emptyIconInner: {
+        width: 72,
+        height: 72,
+        borderRadius: 36,
+        backgroundColor: Colors.glassLight,
+        justifyContent: 'center',
+        alignItems: 'center',
     },
     emptyTitle: {
         fontSize: FontSize.xl,
@@ -1435,7 +1668,7 @@ const styles = StyleSheet.create({
         fontSize: FontSize.sm,
         color: Colors.textTertiary,
         textAlign: 'center',
-        lineHeight: 20,
+        lineHeight: 22,
         marginBottom: Spacing.xxl,
     },
     emptyCta: {
@@ -1446,11 +1679,92 @@ const styles = StyleSheet.create({
         paddingVertical: Spacing.md,
         borderRadius: BorderRadius.pill,
         backgroundColor: Colors.primary,
+        marginBottom: Spacing.md,
+        ...Shadows.small,
     },
     emptyCtaText: {
         fontSize: FontSize.sm,
-        fontWeight: FontWeight.semibold,
-        color: Colors.textInverse,
+        fontWeight: FontWeight.bold,
+        color: '#FFFFFF',
+    },
+    emptySecondary: {
+        paddingVertical: Spacing.sm,
+        paddingHorizontal: Spacing.lg,
+    },
+    emptySecondaryText: {
+        fontSize: FontSize.sm,
+        fontWeight: FontWeight.medium,
+        color: Colors.textTertiary,
+        textDecorationLine: 'underline',
+    },
+
+    // ── Skeleton Loading ──
+    skeletonListWrap: {
+        paddingHorizontal: Layout.screenPadding,
+        paddingTop: Spacing.lg,
+    },
+    skeletonCard: {
+        backgroundColor: Colors.card,
+        borderRadius: BorderRadius.xl,
+        borderWidth: 1,
+        borderColor: Colors.border,
+        padding: Layout.screenPadding,
+        marginBottom: Spacing.lg,
+    },
+    skeletonTop: {
+        flexDirection: 'row',
+        gap: Spacing.lg,
+        marginBottom: Spacing.lg,
+    },
+    skeletonAvatar: {
+        width: 68,
+        height: 68,
+        borderRadius: 34,
+        backgroundColor: Colors.surface,
+    },
+    skeletonInfo: {
+        flex: 1,
+        justifyContent: 'center',
+        gap: 8,
+    },
+    skeletonLine: {
+        borderRadius: 6,
+        backgroundColor: Colors.surface,
+    },
+    skeletonLineName: {
+        width: '65%',
+        height: 18,
+    },
+    skeletonLineShort: {
+        width: '40%',
+        height: 12,
+    },
+    skeletonLineMedium: {
+        width: '55%',
+        height: 12,
+    },
+    skeletonLineFull: {
+        width: '90%',
+        height: 14,
+        marginBottom: Spacing.lg,
+    },
+    skeletonBottom: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingTop: Spacing.md,
+        borderTopWidth: 1,
+        borderTopColor: Colors.border,
+    },
+    skeletonLinePrice: {
+        width: 60,
+        height: 24,
+    },
+    skeletonButton: {
+        width: 130,
+        height: 42,
+        borderRadius: BorderRadius.pill,
+        backgroundColor: Colors.surface,
     },
 
     // ── Modal ──
@@ -1468,12 +1782,20 @@ const styles = StyleSheet.create({
         borderBottomWidth: 0,
         borderColor: Colors.glassBorder,
     },
+    modalDragHandle: {
+        width: 40,
+        height: 4,
+        borderRadius: 2,
+        backgroundColor: Colors.textMuted,
+        alignSelf: 'center',
+        marginTop: Spacing.md,
+    },
     modalHeader: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
         paddingHorizontal: Layout.screenPadding,
-        paddingTop: Spacing.xxl,
+        paddingTop: Spacing.lg,
         paddingBottom: Spacing.lg,
         borderBottomWidth: 1,
         borderBottomColor: Colors.border,
@@ -1482,6 +1804,14 @@ const styles = StyleSheet.create({
         fontSize: FontSize.xl,
         fontWeight: FontWeight.bold,
         color: Colors.text,
+    },
+    modalCloseBtn: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: Colors.glass,
+        justifyContent: 'center',
+        alignItems: 'center',
     },
     modalScroll: {
         paddingHorizontal: Layout.screenPadding,
@@ -1540,7 +1870,7 @@ const styles = StyleSheet.create({
     modalResetBtn: {
         paddingHorizontal: Spacing.xl,
         paddingVertical: Spacing.md,
-        borderRadius: BorderRadius.md,
+        borderRadius: BorderRadius.pill,
         borderWidth: 1,
         borderColor: Colors.border,
         justifyContent: 'center',
@@ -1554,14 +1884,14 @@ const styles = StyleSheet.create({
     modalDoneBtn: {
         flex: 1,
         paddingVertical: Spacing.md,
-        borderRadius: BorderRadius.md,
+        borderRadius: BorderRadius.pill,
         backgroundColor: Colors.primary,
         justifyContent: 'center',
         alignItems: 'center',
     },
     modalDoneText: {
         fontSize: FontSize.md,
-        fontWeight: FontWeight.semibold,
-        color: Colors.textInverse,
+        fontWeight: FontWeight.bold,
+        color: '#FFFFFF',
     },
 });

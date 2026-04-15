@@ -81,7 +81,26 @@ type SentOffer = {
     athlete: { first_name: string; last_name: string } | null;
 };
 
+type Camp = {
+    name: string;
+    hoursPerDay: number;
+    days: number;
+    totalPrice: number;
+};
+
+type SessionDate = {
+    date: string;
+    time: string;
+};
+
 type TabKey = 'packages' | 'send';
+
+const SESSION_TYPES = [
+    { key: 'private', label: 'Private (1-on-1)' },
+    { key: 'semi_private', label: 'Semi-Private' },
+    { key: 'group', label: 'Group' },
+    { key: 'camp', label: 'Camp' },
+];
 
 const EMPTY_FORM: FormState = {
     title: '',
@@ -120,9 +139,13 @@ export default function TrainingOffersScreen({ navigation }: any) {
     const [offerPrice, setOfferPrice] = useState('');
     const [sessionLength, setSessionLength] = useState(60);
     const [selectedSport, setSelectedSport] = useState('');
-    const [proposedDate, setProposedDate] = useState('');
-    const [proposedTime, setProposedTime] = useState('');
+    const [sessionDates, setSessionDates] = useState<SessionDate[]>([{ date: '', time: '' }]);
+    const [sessionType, setSessionType] = useState('private');
     const [isSendingOffer, setIsSendingOffer] = useState(false);
+
+    // Camp state
+    const [camps, setCamps] = useState<Camp[]>([]);
+    const [selectedCamp, setSelectedCamp] = useState<number | null>(null);
 
     // Sent Offers state
     const [sentOffers, setSentOffers] = useState<SentOffer[]>([]);
@@ -136,10 +159,13 @@ export default function TrainingOffersScreen({ navigation }: any) {
         try {
             const { data } = await supabase
                 .from('trainer_profiles')
-                .select('subscription_status')
+                .select('subscription_status, camp_offerings')
                 .eq('user_id', user.id)
                 .single();
             setSubscriptionStatus(data?.subscription_status ?? null);
+            if (data?.camp_offerings && Array.isArray(data.camp_offerings)) {
+                setCamps(data.camp_offerings as Camp[]);
+            }
         } catch (err) {
             console.error('Error fetching subscription status:', err);
         }
@@ -315,11 +341,24 @@ export default function TrainingOffersScreen({ navigation }: any) {
             Alert.alert('Error', 'Trainer profile not found.');
             return;
         }
+
+        const validDates = sessionDates.filter(d => d.date && d.time);
+        if (validDates.length === 0) {
+            Alert.alert('Error', 'Please add at least one date and time for the session.');
+            return;
+        }
+
         setIsSendingOffer(true);
         try {
-            const proposedDates = proposedDate && proposedTime
-                ? { scheduledAt: `${proposedDate}T${proposedTime}:00` }
-                : null;
+            const trainerTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+            const proposedDates = {
+                sessions: validDates.map(d => ({ date: d.date, time: d.time })),
+                session_type: sessionType,
+                timezone: trainerTimezone,
+                scheduledAt: validDates[0].date,
+                ...(selectedCamp !== null && camps[selectedCamp] ? { camp: camps[selectedCamp] } : {}),
+            };
 
             const { error } = await supabase.from('training_offers').insert({
                 trainer_id: trainerProfile.id,
@@ -351,8 +390,9 @@ export default function TrainingOffersScreen({ navigation }: any) {
             setOfferPrice('');
             setSessionLength(60);
             setSelectedSport('');
-            setProposedDate('');
-            setProposedTime('');
+            setSessionDates([{ date: '', time: '' }]);
+            setSessionType('private');
+            setSelectedCamp(null);
 
             await fetchSentOffers();
         } catch (err: any) {
@@ -578,6 +618,84 @@ export default function TrainingOffersScreen({ navigation }: any) {
                             />
 
                             <Input
+                                label="Sport"
+                                icon="football-outline"
+                                value={selectedSport}
+                                onChangeText={setSelectedSport}
+                                placeholder="e.g. Hockey, Basketball, Soccer"
+                                autoCapitalize="words"
+                            />
+
+                            {/* Camp Selection */}
+                            {camps.length > 0 && (
+                                <View style={{ marginBottom: Spacing.lg }}>
+                                    <Text style={styles.fieldLabel}>
+                                        <Ionicons name="repeat-outline" size={12} color={Colors.textSecondary} />
+                                        {'  '}Send a Camp Offer
+                                    </Text>
+                                    {camps.map((camp, idx) => {
+                                        const isSelected = selectedCamp === idx;
+                                        return (
+                                            <TouchableOpacity
+                                                key={idx}
+                                                activeOpacity={0.7}
+                                                onPress={() => {
+                                                    if (isSelected) {
+                                                        setSelectedCamp(null);
+                                                        setSessionType('private');
+                                                        setOfferPrice('');
+                                                    } else {
+                                                        setSelectedCamp(idx);
+                                                        setSessionType('camp');
+                                                        setOfferPrice(camp.totalPrice.toString());
+                                                        if (!offerMessage.trim()) {
+                                                            setOfferMessage(`Join my ${camp.name} camp! ${camp.hoursPerDay} hrs/day for ${camp.days} days.`);
+                                                        }
+                                                    }
+                                                }}
+                                                style={[
+                                                    styles.campCard,
+                                                    isSelected && styles.campCardActive,
+                                                ]}
+                                            >
+                                                <View style={{ flex: 1 }}>
+                                                    <Text style={[styles.campName, isSelected && { color: Colors.text }]}>{camp.name}</Text>
+                                                    <Text style={styles.campMeta}>
+                                                        {camp.hoursPerDay} hrs/day x {camp.days} days
+                                                    </Text>
+                                                </View>
+                                                <Text style={[styles.campPrice, isSelected && { color: Colors.primary }]}>
+                                                    ${camp.totalPrice.toLocaleString()}
+                                                </Text>
+                                            </TouchableOpacity>
+                                        );
+                                    })}
+                                    {selectedCamp !== null && (
+                                        <Text style={styles.campHint}>
+                                            Camp selected -- rate and message auto-filled. You can still edit below.
+                                        </Text>
+                                    )}
+                                </View>
+                            )}
+
+                            {/* Session Type */}
+                            <Text style={styles.fieldLabel}>Session Type</Text>
+                            <View style={styles.chipRow}>
+                                {SESSION_TYPES.map((st) => (
+                                    <TouchableOpacity
+                                        key={st.key}
+                                        style={[styles.chip, sessionType === st.key && styles.chipActive]}
+                                        onPress={() => setSessionType(st.key)}
+                                        activeOpacity={0.7}
+                                    >
+                                        <Text style={[styles.chipText, sessionType === st.key && styles.chipTextActive]}>
+                                            {st.label}
+                                        </Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+
+                            <Input
                                 label="Price (USD) *"
                                 icon="cash-outline"
                                 value={offerPrice}
@@ -603,36 +721,59 @@ export default function TrainingOffersScreen({ navigation }: any) {
                                 ))}
                             </View>
 
-                            <Input
-                                label="Sport"
-                                icon="football-outline"
-                                value={selectedSport}
-                                onChangeText={setSelectedSport}
-                                placeholder="e.g. Hockey, Basketball, Soccer"
-                                autoCapitalize="words"
-                            />
-
-                            <View style={styles.row}>
-                                <View style={{ flex: 1 }}>
-                                    <Input
-                                        label="Proposed Date"
-                                        icon="calendar-outline"
-                                        value={proposedDate}
-                                        onChangeText={setProposedDate}
-                                        placeholder="YYYY-MM-DD"
-                                    />
+                            {/* Session Dates & Times (multiple) */}
+                            <Text style={styles.fieldLabel}>Session Date & Time</Text>
+                            {sessionDates.map((session, idx) => (
+                                <View key={idx} style={[styles.row, { marginBottom: Spacing.sm, alignItems: 'center' }]}>
+                                    <View style={{ flex: 1 }}>
+                                        <Input
+                                            icon="calendar-outline"
+                                            value={session.date}
+                                            onChangeText={(val: string) => {
+                                                const updated = [...sessionDates];
+                                                updated[idx] = { ...updated[idx], date: val };
+                                                setSessionDates(updated);
+                                            }}
+                                            placeholder="YYYY-MM-DD"
+                                        />
+                                    </View>
+                                    <View style={{ width: Spacing.sm }} />
+                                    <View style={{ flex: 1 }}>
+                                        <Input
+                                            icon="time-outline"
+                                            value={session.time}
+                                            onChangeText={(val: string) => {
+                                                const updated = [...sessionDates];
+                                                updated[idx] = { ...updated[idx], time: val };
+                                                setSessionDates(updated);
+                                            }}
+                                            placeholder="HH:MM"
+                                        />
+                                    </View>
+                                    {sessionDates.length > 1 && (
+                                        <TouchableOpacity
+                                            onPress={() => {
+                                                setSessionDates(prev => prev.filter((_, i) => i !== idx));
+                                            }}
+                                            style={styles.removeDateBtn}
+                                            activeOpacity={0.7}
+                                        >
+                                            <Ionicons name="trash-outline" size={16} color={Colors.error} />
+                                        </TouchableOpacity>
+                                    )}
                                 </View>
-                                <View style={{ width: Spacing.md }} />
-                                <View style={{ flex: 1 }}>
-                                    <Input
-                                        label="Proposed Time"
-                                        icon="time-outline"
-                                        value={proposedTime}
-                                        onChangeText={setProposedTime}
-                                        placeholder="HH:MM"
-                                    />
-                                </View>
-                            </View>
+                            ))}
+                            <TouchableOpacity
+                                onPress={() => setSessionDates(prev => [...prev, { date: '', time: '' }])}
+                                style={styles.addDateBtn}
+                                activeOpacity={0.7}
+                            >
+                                <Ionicons name="add-circle-outline" size={16} color={Colors.primary} />
+                                <Text style={styles.addDateText}>Add Another Date & Time</Text>
+                            </TouchableOpacity>
+                            <Text style={styles.timezoneHint}>
+                                Times are in your local timezone ({Intl.DateTimeFormat().resolvedOptions().timeZone})
+                            </Text>
 
                             <Button
                                 title="Send Offer"
@@ -718,7 +859,10 @@ function SentOfferCard({ offer }: { offer: SentOffer }) {
 
     const statusConfig = getStatusConfig(offer.status);
     const sportColor = getSportColor(offer.sport);
-    const dateStr = new Date(offer.created_at).toLocaleDateString();
+    const createdDate = new Date(offer.created_at);
+    const dateStr = createdDate.toLocaleDateString();
+    const timeStr = createdDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZoneName: 'short' });
+    const offerSessionType = offer.proposed_dates?.session_type;
 
     return (
         <Card style={styles.sentCard}>
@@ -730,6 +874,11 @@ function SentOfferCard({ offer }: { offer: SentOffer }) {
                             <View style={[styles.sportDot, { backgroundColor: sportColor }]} />
                             <Text style={styles.sentSportText}>{offer.sport}</Text>
                         </View>
+                    )}
+                    {!!offerSessionType && (
+                        <Text style={styles.sentSessionType}>
+                            {offerSessionType.replace('_', ' ')} session
+                        </Text>
                     )}
                 </View>
                 <Badge
@@ -747,7 +896,7 @@ function SentOfferCard({ offer }: { offer: SentOffer }) {
                     dot
                     size="sm"
                 />
-                <Text style={styles.sentDateText}>{dateStr}</Text>
+                <Text style={styles.sentDateText}>{dateStr} at {timeStr}</Text>
             </View>
         </Card>
     );
@@ -1142,7 +1291,88 @@ const styles = StyleSheet.create({
         fontWeight: FontWeight.bold,
     },
 
+    // Camp cards
+    campCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        backgroundColor: Colors.card,
+        borderWidth: 1,
+        borderColor: Colors.border,
+        borderRadius: BorderRadius.lg,
+        padding: Spacing.lg,
+        marginBottom: Spacing.sm,
+    },
+    campCardActive: {
+        borderColor: Colors.primary,
+        backgroundColor: Colors.primaryGlow,
+    },
+    campName: {
+        fontSize: FontSize.sm,
+        fontWeight: FontWeight.bold,
+        color: Colors.textSecondary,
+    },
+    campMeta: {
+        fontSize: FontSize.xs,
+        color: Colors.textTertiary,
+        marginTop: 2,
+    },
+    campPrice: {
+        fontSize: FontSize.sm,
+        fontWeight: FontWeight.bold,
+        color: Colors.textTertiary,
+    },
+    campHint: {
+        fontSize: FontSize.xs,
+        color: Colors.primary,
+        marginTop: Spacing.xs,
+        opacity: 0.7,
+        fontWeight: FontWeight.bold,
+    },
+
+    // Add/remove date buttons
+    addDateBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: Spacing.xs,
+        paddingVertical: Spacing.md,
+        borderWidth: 1,
+        borderStyle: 'dashed',
+        borderColor: Colors.border,
+        borderRadius: BorderRadius.lg,
+        marginBottom: Spacing.sm,
+    },
+    addDateText: {
+        fontSize: FontSize.xs,
+        fontWeight: FontWeight.bold,
+        color: Colors.primary,
+    },
+    removeDateBtn: {
+        width: 36,
+        height: 36,
+        borderRadius: BorderRadius.sm,
+        backgroundColor: Colors.errorLight,
+        borderWidth: 1,
+        borderColor: Colors.error + '30',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginLeft: Spacing.xs,
+    },
+    timezoneHint: {
+        fontSize: FontSize.xs,
+        color: Colors.textTertiary,
+        marginBottom: Spacing.lg,
+        opacity: 0.6,
+    },
+
     // Sent offers
+    sentSessionType: {
+        fontSize: FontSize.xs,
+        color: Colors.textTertiary,
+        textTransform: 'capitalize',
+        marginTop: 2,
+    },
     sentCard: {
         marginBottom: Spacing.md,
         ...Shadows.small,

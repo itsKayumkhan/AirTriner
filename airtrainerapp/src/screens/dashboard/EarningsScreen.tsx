@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase, BookingRow } from '../../lib/supabase';
 import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows } from '../../theme';
+import { formatSportName } from '../../lib/format';
 import ScreenWrapper from '../../components/ui/ScreenWrapper';
 import ScreenHeader from '../../components/ui/ScreenHeader';
 import Card from '../../components/ui/Card';
@@ -197,7 +198,7 @@ export default function EarningsScreen({ navigation }: any) {
                 const headers = ['Date', 'Sport', 'Duration (min)', 'Amount ($)', 'Status'];
                 const rows = completedBookings.map((b) => [
                     new Date(b.scheduled_at).toLocaleDateString(),
-                    b.sport.replace(/_/g, ' '),
+                    formatSportName(b.sport),
                     String(b.duration_minutes || 60),
                     Number(b.price).toFixed(2),
                     'completed',
@@ -210,7 +211,7 @@ export default function EarningsScreen({ navigation }: any) {
                 const rows = athleteTransactions.map((t) => [
                     new Date(t.created_at).toLocaleDateString(),
                     t.trainer_name || '',
-                    (t.booking?.sport || '').replace(/_/g, ' '),
+                    formatSportName(t.booking?.sport || ''),
                     String(t.booking?.duration_minutes || 60),
                     Number(t.amount).toFixed(2),
                     Number(t.platform_fee || 0).toFixed(2),
@@ -257,20 +258,25 @@ export default function EarningsScreen({ navigation }: any) {
                 rightAction={{ icon: 'download-outline', onPress: handleExportCSV }}
             />
 
-            {/* Hero earnings card at top with big number + trend arrow */}
+            {/* Summary cards */}
             {isTrainer ? (
                 <Animated.View entering={FadeInDown.duration(250)} style={styles.statsGrid}>
-                    {/* Total Earnings - gradient card */}
+                    {/* Total Earned - gradient card */}
                     <LinearGradient
                         colors={[Colors.gradientStart, Colors.gradientEnd]}
                         start={{ x: 0, y: 0 }}
                         end={{ x: 1, y: 1 }}
                         style={styles.gradientStat}
                     >
-                        <Text style={styles.gradientStatLabel}>TOTAL EARNINGS</Text>
+                        <Text style={styles.gradientStatLabel}>TOTAL EARNED</Text>
                         <Text style={styles.gradientStatValue}>${totalEarnings.toFixed(2)}</Text>
                     </LinearGradient>
-                    {/* Escrow card */}
+                    {/* Net Earnings card */}
+                    <Card style={styles.escrowCard}>
+                        <Text style={styles.escrowLabel}>NET EARNINGS</Text>
+                        <Text style={[styles.escrowValue, { color: Colors.primary }]}>${netEarnings.toFixed(2)}</Text>
+                    </Card>
+                    {/* In Escrow card */}
                     <Card style={styles.escrowCard}>
                         <View style={styles.escrowLabelRow}>
                             <Ionicons name="time-outline" size={12} color={Colors.warning} />
@@ -340,7 +346,7 @@ export default function EarningsScreen({ navigation }: any) {
                             <View key={b.id} style={styles.payoutRow}>
                                 <View style={{ flex: 1 }}>
                                     <Text style={styles.payoutSport}>
-                                        {b.sport.replace(/_/g, ' ')} · {b.duration_minutes}min
+                                        {formatSportName(b.sport)} · {b.duration_minutes}min
                                     </Text>
                                     <Text style={styles.payoutAthlete}>{b.athlete_name}</Text>
                                     <Text style={styles.payoutDate}>
@@ -424,7 +430,7 @@ export default function EarningsScreen({ navigation }: any) {
                                         {new Date(b.scheduled_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                                     </Text>
                                     <Text style={styles.historySport}>
-                                        {b.sport.replace(/_/g, ' ')} · {b.duration_minutes} min
+                                        {formatSportName(b.sport)} · {b.duration_minutes} min
                                     </Text>
                                 </View>
                                 <Text style={[styles.historyAmount, { color: Colors.success }]}>
@@ -450,7 +456,7 @@ export default function EarningsScreen({ navigation }: any) {
                                         {new Date(tx.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                                     </Text>
                                     <Text style={styles.historySport}>
-                                        {tx.trainer_name} · {tx.booking?.sport?.replace(/_/g, ' ') || '\u2014'} · {tx.booking?.duration_minutes || '\u2014'}min
+                                        {tx.trainer_name} · {formatSportName(tx.booking?.sport || '') || '\u2014'} · {tx.booking?.duration_minutes || '\u2014'}min
                                     </Text>
                                     <View style={{ marginTop: Spacing.xs }}>
                                         {statusBadge(tx.status)}

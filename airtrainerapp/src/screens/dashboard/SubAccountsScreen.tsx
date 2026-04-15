@@ -19,6 +19,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows } from '../../theme';
+import { formatSportName } from '../../lib/format';
 import { ScreenWrapper, ScreenHeader, Card, Badge, Avatar, EmptyState, LoadingScreen, Button, SectionHeader } from '../../components/ui';
 
 const MAX_SUB_ACCOUNTS = 6;
@@ -52,6 +53,15 @@ type SubAccount = {
     created_at: string;
     updated_at: string;
 };
+
+/** Normalize legacy single-sport to sports array for backwards compat */
+function normalizeSports(profileData: SubAccountProfileData): string[] {
+    return profileData.sports?.length
+        ? profileData.sports
+        : profileData.sport
+            ? [profileData.sport]
+            : [];
+}
 
 function capitalize(s: string): string {
     return s.charAt(0).toUpperCase() + s.slice(1);
@@ -129,7 +139,7 @@ export default function SubAccountsScreen({ navigation }: any) {
         setLastName(pd.last_name || '');
         setAge(pd.age ? String(pd.age) : '');
         // Migrate from legacy single `sport` to `sports` array
-        setSelectedSports(pd.sports || (pd.sport ? [pd.sport] : []));
+        setSelectedSports(normalizeSports(pd));
         setSkillLevel((pd.skill_level as SkillLevel) || 'beginner');
         setNotes(pd.notes || '');
         setFormErrors({});
@@ -155,6 +165,10 @@ export default function SubAccountsScreen({ navigation }: any) {
 
         if (age && (Number(age) < 3 || Number(age) > 99)) {
             errors.age = 'Age must be between 3 and 99';
+        }
+
+        if (selectedSports.length === 0) {
+            errors.sports = 'Please select at least one sport';
         }
 
         setFormErrors(errors);
@@ -350,15 +364,12 @@ export default function SubAccountsScreen({ navigation }: any) {
                                     </View>
                                 </View>
 
-                                {((pd.sports && pd.sports.length > 0) || pd.sport || pd.skill_level) && (
+                                {(normalizeSports(pd).length > 0 || pd.skill_level) && (
                                     <View style={styles.cardMetaRow}>
-                                        {(pd.sports && pd.sports.length > 0
-                                            ? pd.sports
-                                            : pd.sport ? [pd.sport] : []
-                                        ).map((s) => (
+                                        {normalizeSports(pd).map((s) => (
                                             <Badge
                                                 key={s}
-                                                label={s.replace(/_/g, ' ')}
+                                                label={formatSportName(s)}
                                                 color={Colors.primary}
                                                 bgColor={Colors.primaryGlow}
                                             />
@@ -514,6 +525,7 @@ export default function SubAccountsScreen({ navigation }: any) {
                                                 } else if (selectedSports.length < MAX_SPORTS) {
                                                     setSelectedSports((prev) => [...prev, s]);
                                                 }
+                                                setFormErrors((p) => ({ ...p, sports: '' }));
                                             }}
                                             disabled={isDisabled}
                                         >
@@ -524,6 +536,9 @@ export default function SubAccountsScreen({ navigation }: any) {
                                     );
                                 })}
                             </ScrollView>
+                            {formErrors.sports ? (
+                                <Text style={styles.fieldError}>{formErrors.sports}</Text>
+                            ) : null}
 
                             {/* Skill Level */}
                             <Text style={styles.inputLabel}>Skill Level</Text>

@@ -6,6 +6,11 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { Colors, FontSize, FontWeight, BorderRadius, Spacing } from '../theme';
+import {
+    GooglePlacesProvider,
+    getGooglePlacesProvider,
+    type PlacePrediction,
+} from '../lib/location';
 
 export interface LocationValue {
     city: string;
@@ -22,13 +27,15 @@ interface LocationResult {
     lat: number;
     lng: number;
     displayName: string;
+    /** When using the provider, we store the placeId so details are fetched on select */
+    placeId?: string;
 }
 
 interface Props {
     value: LocationValue | null;
     onChange: (v: LocationValue) => void;
     placeholder?: string;
-    /** Google Places API key - when provided, enables Places autocomplete */
+    /** Google Places API key -- defaults to EXPO_PUBLIC_GOOGLE_PLACES_KEY env var */
     googleApiKey?: string;
 }
 
@@ -39,12 +46,23 @@ export default function LocationAutocomplete({
     googleApiKey,
 }: Props) {
     const [query, setQuery] = useState('');
-    const [results, setResults] = useState<LocationResult[]>([]);
+    const [predictions, setPredictions] = useState<PlacePrediction[]>([]);
+    const [fallbackResults, setFallbackResults] = useState<LocationResult[]>([]);
     const [isOpen, setIsOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [isGpsLoading, setIsGpsLoading] = useState(false);
     const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const abortRef = useRef<AbortController | null>(null);
+
+    // Resolve the provider: explicit key > env-var singleton
+    const providerRef = useRef<GooglePlacesProvider | null>(null);
+    if (!providerRef.current) {
+        providerRef.current = googleApiKey
+            ? new GooglePlacesProvider(googleApiKey)
+            : getGooglePlacesProvider();
+    }
+    const provider = providerRef.current;
+    const usePlaces = provider.isAvailable;
 
     // Sync display text with external value
     useEffect(() => {
@@ -54,7 +72,7 @@ export default function LocationAutocomplete({
         }
     }, [value?.city, value?.state]);
 
-    // Cleanup debounce timer and pending requests on unmount
+    // Cleanup on unmount
     useEffect(() => {
         return () => {
             if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -62,68 +80,7 @@ export default function LocationAutocomplete({
         };
     }, []);
 
-    // ── Google Places Autocomplete ──
-    const fetchGooglePlaces = useCallback(
-        async (text: string, signal: AbortSignal) => {
-            if (!googleApiKey) return [];
-            try {
-                const url =
-                    `https://maps.googleapis.com/maps/api/place/autocomplete/json` +
-                    `?input=${encodeURIComponent(text)}` +
-                    `&types=(cities)` +
-                    `&key=${googleApiKey}`;
-                const res = await fetch(url, { signal });
-                const data = await res.json();
-
-                if (data.status !== 'OK' || !data.predictions) return [];
-
-                // Get details for each prediction
-                const items: LocationResult[] = [];
-                for (const pred of data.predictions.slice(0, 5)) {
-                    try {
-                        const detailUrl =
-                            `https://maps.googleapis.com/maps/api/place/details/json` +
-                            `?place_id=${pred.place_id}` +
-                            `&fields=geometry,address_components` +
-                            `&key=${googleApiKey}`;
-                        const detailRes = await fetch(detailUrl, { signal });
-                        const detail = await detailRes.json();
-
-                        if (detail.status === 'OK' && detail.result) {
-                            const components = detail.result.address_components || [];
-                            const city =
-                                components.find((c: any) => c.types.includes('locality'))
-                                    ?.long_name || '';
-                            const state =
-                                components.find((c: any) =>
-                                    c.types.includes('administrative_area_level_1')
-                                )?.short_name || '';
-                            const country =
-                                components.find((c: any) => c.types.includes('country'))
-                                    ?.long_name || '';
-
-                            items.push({
-                                city,
-                                state,
-                                country,
-                                lat: detail.result.geometry.location.lat,
-                                lng: detail.result.geometry.location.lng,
-                                displayName: pred.description,
-                            });
-                        }
-                    } catch {
-                        // skip failed detail fetch
-                    }
-                }
-                return items;
-            } catch {
-                return [];
-            }
-        },
-        [googleApiKey]
-    );
-
-    // ── Fallback: expo-location reverse geocode search ──
+    // -- Fallback: expo-location geocode --
     const fetchExpoLocationResults = useCallback(
         async (text: string): Promise<LocationResult[]> => {
             try {
@@ -158,7 +115,7 @@ export default function LocationAutocomplete({
         []
     );
 
-    // ── Debounced search ──
+    // -- Debounced search (300ms) --
     const handleSearch = useCallback(
         (text: string) => {
             setQuery(text);
@@ -166,7 +123,8 @@ export default function LocationAutocomplete({
             if (abortRef.current) abortRef.current.abort();
 
             if (text.length < 2) {
-                setResults([]);
+                setPredictions([]);
+                setFallbackResults([]);
                 setIsOpen(false);
                 // Fallback: treat as raw city input
                 onChange({ city: text, state: '', country: '', lat: null, lng: null });
@@ -178,29 +136,79 @@ export default function LocationAutocomplete({
                 const controller = new AbortController();
                 abortRef.current = controller;
 
-                let items: LocationResult[];
-                if (googleApiKey) {
-                    items = await fetchGooglePlaces(text, controller.signal);
-                } else {
-                    items = await fetchExpoLocationResults(text);
+                try {
+                    if (usePlaces) {
+                        const preds = await provider.autocomplete(text, {
+                            limit: 5,
+                            signal: controller.signal,
+                        });
+                        if (!controller.signal.aborted) {
+                            setPredictions(preds);
+                            setFallbackResults([]);
+                            setIsOpen(preds.length > 0);
+                        }
+                    } else {
+                        const items = await fetchExpoLocationResults(text);
+                        if (!controller.signal.aborted) {
+                            setFallbackResults(items);
+                            setPredictions([]);
+                            setIsOpen(items.length > 0);
+                        }
+                    }
+                } catch {
+                    // aborted or network error
+                } finally {
+                    if (!controller.signal.aborted) {
+                        setIsLoading(false);
+                    }
                 }
-
-                if (!controller.signal.aborted) {
-                    setResults(items);
-                    setIsOpen(items.length > 0);
-                    setIsLoading(false);
-                }
-            }, 400);
+            }, 300);
         },
-        [googleApiKey, fetchGooglePlaces, fetchExpoLocationResults, onChange]
+        [usePlaces, provider, fetchExpoLocationResults, onChange]
     );
 
-    // ── Select a result ──
-    const selectResult = (r: LocationResult) => {
+    // -- Select a Google Places prediction --
+    const selectPrediction = useCallback(
+        async (pred: PlacePrediction) => {
+            setIsOpen(false);
+            setPredictions([]);
+            setIsLoading(true);
+            Keyboard.dismiss();
+
+            const details = await provider.getPlaceDetails(pred.placeId);
+            setIsLoading(false);
+
+            if (details) {
+                const display = [details.city, details.state].filter(Boolean).join(', ');
+                setQuery(display);
+                onChange({
+                    city: details.city,
+                    state: details.state,
+                    country: details.country,
+                    lat: details.lat,
+                    lng: details.lng,
+                });
+            } else {
+                // Fallback: use the prediction text as city name
+                setQuery(pred.mainText);
+                onChange({
+                    city: pred.mainText,
+                    state: '',
+                    country: '',
+                    lat: null,
+                    lng: null,
+                });
+            }
+        },
+        [provider, onChange]
+    );
+
+    // -- Select a fallback (expo-location) result --
+    const selectFallbackResult = (r: LocationResult) => {
         const display = [r.city, r.state].filter(Boolean).join(', ');
         setQuery(display);
         setIsOpen(false);
-        setResults([]);
+        setFallbackResults([]);
         Keyboard.dismiss();
         onChange({
             city: r.city,
@@ -211,7 +219,7 @@ export default function LocationAutocomplete({
         });
     };
 
-    // ── GPS button ──
+    // -- GPS button --
     const handleGps = async () => {
         setIsGpsLoading(true);
         try {
@@ -246,13 +254,18 @@ export default function LocationAutocomplete({
         }
     };
 
-    // ── Clear ──
+    // -- Clear --
     const handleClear = () => {
         setQuery('');
-        setResults([]);
+        setPredictions([]);
+        setFallbackResults([]);
         setIsOpen(false);
         onChange({ city: '', state: '', country: '', lat: null, lng: null });
     };
+
+    // Render helpers
+    const hasPredictions = usePlaces && predictions.length > 0;
+    const hasFallback = !usePlaces && fallbackResults.length > 0;
 
     return (
         <View style={styles.wrapper}>
@@ -271,7 +284,7 @@ export default function LocationAutocomplete({
                         placeholder={placeholder}
                         placeholderTextColor={Colors.textMuted}
                         onFocus={() => {
-                            if (results.length > 0) setIsOpen(true);
+                            if (predictions.length > 0 || fallbackResults.length > 0) setIsOpen(true);
                         }}
                         returnKeyType="search"
                     />
@@ -303,17 +316,49 @@ export default function LocationAutocomplete({
                 </TouchableOpacity>
             </View>
 
-            {/* Dropdown results */}
-            {isOpen && results.length > 0 && (
+            {/* Dropdown: Google Places predictions */}
+            {isOpen && hasPredictions && (
                 <View style={styles.dropdown}>
                     <FlatList
-                        data={results}
+                        data={predictions}
+                        keyExtractor={(item) => item.placeId}
+                        keyboardShouldPersistTaps="handled"
+                        renderItem={({ item }) => (
+                            <TouchableOpacity
+                                style={styles.resultItem}
+                                onPress={() => selectPrediction(item)}
+                            >
+                                <Ionicons
+                                    name="location"
+                                    size={14}
+                                    color={Colors.primary}
+                                    style={{ marginRight: 8, marginTop: 2 }}
+                                />
+                                <View style={{ flex: 1 }}>
+                                    <Text style={styles.resultCity} numberOfLines={1}>
+                                        {item.mainText}
+                                    </Text>
+                                    <Text style={styles.resultCountry} numberOfLines={1}>
+                                        {item.secondaryText}
+                                    </Text>
+                                </View>
+                            </TouchableOpacity>
+                        )}
+                    />
+                </View>
+            )}
+
+            {/* Dropdown: Fallback expo-location results */}
+            {isOpen && hasFallback && (
+                <View style={styles.dropdown}>
+                    <FlatList
+                        data={fallbackResults}
                         keyExtractor={(_, idx) => String(idx)}
                         keyboardShouldPersistTaps="handled"
                         renderItem={({ item }) => (
                             <TouchableOpacity
                                 style={styles.resultItem}
-                                onPress={() => selectResult(item)}
+                                onPress={() => selectFallbackResult(item)}
                             >
                                 <Ionicons
                                     name="location"
@@ -335,7 +380,7 @@ export default function LocationAutocomplete({
                 </View>
             )}
 
-            {!googleApiKey && (
+            {!usePlaces && (
                 <Text style={styles.hint}>
                     <Ionicons name="information-circle-outline" size={11} color={Colors.textMuted} />{' '}
                     Type a city name and select from suggestions, or use GPS

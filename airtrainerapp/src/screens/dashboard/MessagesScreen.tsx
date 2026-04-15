@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase, MessageRow } from '../../lib/supabase';
 import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Layout } from '../../theme';
+import { formatSportName } from '../../lib/format';
 import {
     ScreenWrapper,
     Avatar,
@@ -286,7 +287,7 @@ export default function MessagesScreen({ navigation }: any) {
                                 {item.lastMessage}
                             </Text>
                             <Badge
-                                label={(item.sport || '').replace(/_/g, ' ')}
+                                label={formatSportName(item.sport || '')}
                                 color={Colors.primary}
                                 size="sm"
                                 style={styles.sportBadge}

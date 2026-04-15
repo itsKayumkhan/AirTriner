@@ -7,6 +7,7 @@ import { Colors, Spacing, BorderRadius, FontSize, FontWeight } from '../../theme
 import ScreenWrapper from '../../components/ui/ScreenWrapper';
 import Input from '../../components/ui/Input';
 import Button from '../../components/ui/Button';
+import LocationAutocomplete, { LocationValue } from '../../components/LocationAutocomplete';
 
 const SPORTS = [
     { name: 'Hockey', emoji: '🏒' }, { name: 'Baseball', emoji: '⚾' },
@@ -51,6 +52,17 @@ export default function RegisterScreen({ navigation }: any) {
     const [skillLevel, setSkillLevel] = useState('beginner');
     const [city, setCity] = useState('');
     const [state, setState] = useState('');
+    const [country, setCountry] = useState('');
+    const [lat, setLat] = useState<number | null>(null);
+    const [lng, setLng] = useState<number | null>(null);
+
+    const handleLocationChange = (loc: LocationValue) => {
+        setCity(loc.city);
+        setState(loc.state);
+        setCountry(loc.country);
+        setLat(loc.lat);
+        setLng(loc.lng);
+    };
 
     const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -352,23 +364,12 @@ export default function RegisterScreen({ navigation }: any) {
                         </Animated.View>
                     )}
 
-                    <Animated.View entering={FadeInDown.duration(250).delay(30)}>
-                        <Input
-                            label="City"
-                            icon="location-outline"
-                            placeholder="Your city"
-                            value={city}
-                            onChangeText={setCity}
-                        />
-                    </Animated.View>
-
-                    <Animated.View entering={FadeInDown.duration(250).delay(120)}>
-                        <Input
-                            label="State/Province"
-                            icon="map-outline"
-                            placeholder="State or Province"
-                            value={state}
-                            onChangeText={setState}
+                    <Animated.View entering={FadeInDown.duration(250).delay(30)} style={{ zIndex: 100 }}>
+                        <Text style={styles.label}>Location</Text>
+                        <LocationAutocomplete
+                            value={{ city, state, country, lat, lng }}
+                            onChange={handleLocationChange}
+                            placeholder="Search your city..."
                         />
                     </Animated.View>
                 </View>

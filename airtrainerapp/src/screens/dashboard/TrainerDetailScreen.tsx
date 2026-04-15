@@ -12,6 +12,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { supabase, ReviewRow, UserRow } from '../../lib/supabase';
 import { createNotification, scheduleSessionReminder } from '../../lib/notifications';
 import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows, Layout } from '../../theme';
+import { formatSportName } from '../../lib/format';
+import { miToKm } from '../../lib/units';
 import {
     ScreenWrapper, ScreenHeader, Card, Avatar, Badge, Button,
     SectionHeader, StatCard, EmptyState, Divider,
@@ -109,6 +111,13 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
     // Availability calendar data
     const [availableDays, setAvailableDays] = useState<Set<number>>(new Set());
 
+    // Calendar green-highlight: date string (YYYY-MM-DD) → available slot count
+    const [availableDates, setAvailableDates] = useState<Map<string, number>>(new Map());
+    const [calendarMonth, setCalendarMonth] = useState(() => {
+        const now = new Date();
+        return { year: now.getFullYear(), month: now.getMonth() };
+    });
+
     // Sub-account state
     const [subAccounts, setSubAccounts] = useState<SubAccount[]>([]);
     const [selectedSubAccount, setSelectedSubAccount] = useState<SubAccount | null>(null);
@@ -123,6 +132,7 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
     useEffect(() => {
         fetchReviews();
         fetchAvailableDays();
+        loadAvailableDates();
     }, []);
 
     const fetchReviews = async () => {
@@ -143,14 +153,119 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
                 .select('day_of_week')
                 .eq('trainer_id', trainerId)
                 .eq('is_blocked', false);
-            if (data) {
-                const days = new Set(data.map((s: any) => s.day_of_week as number));
-                setAvailableDays(days);
+            const days = new Set((data || []).map((s: any) => s.day_of_week as number));
+
+            // Also include days from recurring availability
+            try {
+                const { data: recurData, error: recurErr } = await supabase
+                    .from('availability_recurring')
+                    .select('day_of_week')
+                    .eq('trainer_id', trainerId)
+                    .eq('is_active', true);
+                if (!recurErr && recurData?.length) {
+                    recurData.forEach((r: any) => days.add(r.day_of_week as number));
+                }
+            } catch {
+                // Recurring table may not exist — silently ignore
             }
+
+            setAvailableDays(days);
         } catch {
             // ignore
         }
     };
+
+    // Load available dates for calendar green highlights (next 60 days)
+    const loadAvailableDates = useCallback(async () => {
+        try {
+            const formatDate = (d: Date) => {
+                const yyyy = d.getFullYear();
+                const mm = String(d.getMonth() + 1).padStart(2, '0');
+                const dd = String(d.getDate()).padStart(2, '0');
+                return `${yyyy}-${mm}-${dd}`;
+            };
+
+            // 1. Fetch non-blocked availability_slots for this trainer
+            const { data: slotsData, error: slotsErr } = await supabase
+                .from('availability_slots')
+                .select('day_of_week')
+                .eq('trainer_id', trainerId)
+                .eq('is_blocked', false);
+            if (slotsErr) throw slotsErr;
+
+            // Build map: day_of_week → count of slots
+            const slotsByDow = new Map<number, number>();
+            (slotsData || []).forEach((s: { day_of_week: number }) => {
+                slotsByDow.set(s.day_of_week, (slotsByDow.get(s.day_of_week) || 0) + 1);
+            });
+
+            // 2. Fetch recurring availability
+            const recurringByDow = new Map<number, number>();
+            try {
+                const { data: recurData, error: recurErr } = await supabase
+                    .from('availability_recurring')
+                    .select('day_of_week')
+                    .eq('trainer_id', trainerId)
+                    .eq('is_active', true);
+                if (!recurErr && recurData?.length) {
+                    recurData.forEach((r: { day_of_week: number }) => {
+                        recurringByDow.set(r.day_of_week, (recurringByDow.get(r.day_of_week) || 0) + 1);
+                    });
+                }
+            } catch {
+                // Recurring table may not exist — silently ignore
+            }
+
+            // 3. Expand dates in the 60-day window that have at least one slot
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const dateSlotCounts = new Map<string, number>();
+            for (let i = 0; i < 60; i++) {
+                const d = new Date(today);
+                d.setDate(d.getDate() + i);
+                const dow = d.getDay();
+                const slotsCount = (slotsByDow.get(dow) || 0) + (recurringByDow.get(dow) || 0);
+                if (slotsCount > 0) {
+                    dateSlotCounts.set(formatDate(d), slotsCount);
+                }
+            }
+
+            // 4. Subtract already-booked dates
+            if (dateSlotCounts.size > 0) {
+                const startDate = formatDate(today);
+                const endDate = formatDate(new Date(today.getTime() + 59 * 86400000));
+                const { data: bookingsData } = await supabase
+                    .from('bookings')
+                    .select('scheduled_at')
+                    .eq('trainer_id', trainerId)
+                    .in('status', ['pending', 'confirmed'])
+                    .gte('scheduled_at', `${startDate}T00:00:00`)
+                    .lte('scheduled_at', `${endDate}T23:59:59`);
+
+                if (bookingsData?.length) {
+                    // Count bookings per date
+                    const bookingsPerDate = new Map<string, number>();
+                    bookingsData.forEach((b: { scheduled_at: string }) => {
+                        const bDate = b.scheduled_at.slice(0, 10);
+                        bookingsPerDate.set(bDate, (bookingsPerDate.get(bDate) || 0) + 1);
+                    });
+                    // Subtract booking counts; remove dates where all slots are booked
+                    bookingsPerDate.forEach((bookedCount, dateStr) => {
+                        const totalSlots = dateSlotCounts.get(dateStr) || 0;
+                        if (bookedCount >= totalSlots) {
+                            dateSlotCounts.delete(dateStr);
+                        } else {
+                            dateSlotCounts.set(dateStr, totalSlots - bookedCount);
+                        }
+                    });
+                }
+            }
+
+            setAvailableDates(dateSlotCounts);
+        } catch {
+            setAvailableDates(new Map());
+        }
+    }, [trainerId]);
 
     const fetchPlatformFee = async () => {
         try {
@@ -213,7 +328,35 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
             const slots: AvailabilitySlot[] = slotsRes.data || [];
             const existingBookings: ExistingBooking[] = bookingsRes.data || [];
 
-            if (slots.length === 0) {
+            // Also fetch recurring availability for this day of week
+            let recurringSlots: { start_time: string; end_time: string }[] = [];
+            try {
+                const { data: recurData, error: recurErr } = await supabase
+                    .from('availability_recurring')
+                    .select('start_time, end_time, is_active')
+                    .eq('trainer_id', trainerId)
+                    .eq('day_of_week', dayOfWeek)
+                    .eq('is_active', true);
+
+                if (!recurErr && recurData?.length) {
+                    const activeDur = selectedDuration || 60;
+                    recurData.forEach((r: { start_time: string; end_time: string }) => {
+                        const startMins = parseInt(r.start_time.split(':')[0]) * 60 + parseInt(r.start_time.split(':')[1]);
+                        const endMins = parseInt(r.end_time.split(':')[0]) * 60 + parseInt(r.end_time.split(':')[1]);
+                        for (let t = startMins; t + activeDur <= endMins; t += activeDur) {
+                            const sh = String(Math.floor(t / 60)).padStart(2, '0');
+                            const sm = String(t % 60).padStart(2, '0');
+                            const eh = String(Math.floor((t + activeDur) / 60)).padStart(2, '0');
+                            const em = String((t + activeDur) % 60).padStart(2, '0');
+                            recurringSlots.push({ start_time: `${sh}:${sm}`, end_time: `${eh}:${em}` });
+                        }
+                    });
+                }
+            } catch {
+                // Recurring table may not exist — silently ignore
+            }
+
+            if (slots.length === 0 && recurringSlots.length === 0) {
                 setAvailableSlots([]);
                 setNoAvailability(true);
                 setLoadingSlots(false);
@@ -234,6 +377,16 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
                     if (!allTimeSlots.includes(timeStr)) {
                         allTimeSlots.push(timeStr);
                     }
+                }
+            }
+
+            // Merge recurring slots, deduplicate by start_time
+            const existingStarts = new Set(allTimeSlots);
+            for (const rs of recurringSlots) {
+                const timeStr = rs.start_time.slice(0, 5);
+                if (!existingStarts.has(timeStr)) {
+                    allTimeSlots.push(timeStr);
+                    existingStarts.add(timeStr);
                 }
             }
 
@@ -263,7 +416,7 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
         } finally {
             setLoadingSlots(false);
         }
-    }, [trainerId]);
+    }, [trainerId, selectedDuration]);
 
     useEffect(() => {
         if (showBookingModal && selectedDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
@@ -286,8 +439,13 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
         setBookingNotes('');
         setShowBookingModal(true);
 
+        // Set calendar month to match the default date
+        const defDate = new Date(defaultDate + 'T12:00:00');
+        setCalendarMonth({ year: defDate.getFullYear(), month: defDate.getMonth() });
+
         fetchPlatformFee();
         fetchSubAccounts();
+        loadAvailableDates();
     };
 
     // Price calculations
@@ -463,7 +621,7 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
                     {sports.map((sport: string) => (
                         <Badge
                             key={sport}
-                            label={sport.replace(/_/g, ' ')}
+                            label={formatSportName(sport)}
                             color={Colors.primary}
                             bgColor={Colors.primaryGlow}
                             size="md"
@@ -638,7 +796,9 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
                             <View style={styles.locationCardRow}>
                                 <Ionicons name="navigate" size={18} color={Colors.textSecondary} />
                                 <Text style={styles.locationCardSubtext}>
-                                    Travels up to {trainer.travel_radius_miles} miles
+                                    Travels up to {trainer.country?.toLowerCase().includes('canada') || trainer.country === 'CA'
+                                        ? `${Math.round(miToKm(trainer.travel_radius_miles))} km`
+                                        : `${trainer.travel_radius_miles} mi`}
                                 </Text>
                             </View>
                         </>
@@ -812,18 +972,123 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
                         <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
                             <Text style={styles.modalTitle}>Book Session</Text>
 
-                            {/* Date Input */}
+                            {/* Date Calendar Picker */}
                             <Text style={styles.modalLabel}>Session Date</Text>
-                            <TextInput
-                                style={styles.modalInput}
-                                placeholder="YYYY-MM-DD"
-                                placeholderTextColor={Colors.textMuted}
-                                value={selectedDate}
-                                onChangeText={setSelectedDate}
-                                keyboardType="numbers-and-punctuation"
-                                maxLength={10}
-                                accessibilityLabel="Session date"
-                            />
+                            {(() => {
+                                const { year, month } = calendarMonth;
+                                const monthName = new Date(year, month).toLocaleString('en-US', { month: 'long', year: 'numeric' });
+                                const firstDay = new Date(year, month, 1).getDay();
+                                const daysInMonth = new Date(year, month + 1, 0).getDate();
+                                const today = new Date();
+                                today.setHours(0, 0, 0, 0);
+
+                                const calendarCells: { day: number; dateStr: string; isPast: boolean }[] = [];
+                                for (let i = 0; i < firstDay; i++) {
+                                    calendarCells.push({ day: 0, dateStr: '', isPast: true });
+                                }
+                                for (let d = 1; d <= daysInMonth; d++) {
+                                    const dateObj = new Date(year, month, d);
+                                    const yyyy = dateObj.getFullYear();
+                                    const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
+                                    const dd = String(dateObj.getDate()).padStart(2, '0');
+                                    const dateStr = `${yyyy}-${mm}-${dd}`;
+                                    calendarCells.push({ day: d, dateStr, isPast: dateObj < today });
+                                }
+
+                                const goToPrevMonth = () => {
+                                    setCalendarMonth(prev => {
+                                        if (prev.month === 0) return { year: prev.year - 1, month: 11 };
+                                        return { ...prev, month: prev.month - 1 };
+                                    });
+                                };
+                                const goToNextMonth = () => {
+                                    setCalendarMonth(prev => {
+                                        if (prev.month === 11) return { year: prev.year + 1, month: 0 };
+                                        return { ...prev, month: prev.month + 1 };
+                                    });
+                                };
+
+                                return (
+                                    <View style={styles.calendarContainer}>
+                                        {/* Month navigation */}
+                                        <View style={styles.calendarNavRow}>
+                                            <TouchableOpacity onPress={goToPrevMonth} style={styles.calendarNavBtn} activeOpacity={0.7}>
+                                                <Ionicons name="chevron-back" size={20} color={Colors.textSecondary} />
+                                            </TouchableOpacity>
+                                            <Text style={styles.calendarMonthLabel}>{monthName}</Text>
+                                            <TouchableOpacity onPress={goToNextMonth} style={styles.calendarNavBtn} activeOpacity={0.7}>
+                                                <Ionicons name="chevron-forward" size={20} color={Colors.textSecondary} />
+                                            </TouchableOpacity>
+                                        </View>
+                                        {/* Day-of-week headers */}
+                                        <View style={styles.calendarWeekRow}>
+                                            {DAY_LABELS.map(label => (
+                                                <View key={label} style={styles.calendarDayHeaderCell}>
+                                                    <Text style={styles.calendarDayHeaderText}>{label}</Text>
+                                                </View>
+                                            ))}
+                                        </View>
+                                        {/* Calendar grid */}
+                                        <View style={styles.calendarGrid}>
+                                            {calendarCells.map((cell, idx) => {
+                                                if (cell.day === 0) {
+                                                    return <View key={`empty-${idx}`} style={styles.calendarCell} />;
+                                                }
+                                                const isSelected = selectedDate === cell.dateStr;
+                                                const slotCount = availableDates.get(cell.dateStr) || 0;
+                                                const hasAvailability = slotCount > 0 && !cell.isPast;
+                                                const isToday = cell.dateStr === (() => {
+                                                    const t = new Date();
+                                                    return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
+                                                })();
+
+                                                return (
+                                                    <TouchableOpacity
+                                                        key={cell.dateStr}
+                                                        style={[
+                                                            styles.calendarCell,
+                                                            hasAvailability && styles.calendarCellAvailable,
+                                                            isSelected && styles.calendarCellSelected,
+                                                            cell.isPast && styles.calendarCellPast,
+                                                        ]}
+                                                        onPress={() => {
+                                                            if (!cell.isPast) {
+                                                                setSelectedDate(cell.dateStr);
+                                                            }
+                                                        }}
+                                                        disabled={cell.isPast}
+                                                        activeOpacity={cell.isPast ? 1 : 0.7}
+                                                        accessibilityLabel={`${cell.dateStr}${hasAvailability ? `, ${slotCount} slot${slotCount !== 1 ? 's' : ''} available` : ''}`}
+                                                    >
+                                                        <Text style={[
+                                                            styles.calendarDayText,
+                                                            hasAvailability && styles.calendarDayTextAvailable,
+                                                            isSelected && styles.calendarDayTextSelected,
+                                                            cell.isPast && styles.calendarDayTextPast,
+                                                            isToday && !isSelected && styles.calendarDayTextToday,
+                                                        ]}>
+                                                            {cell.day}
+                                                        </Text>
+                                                        {hasAvailability && !isSelected && (
+                                                            <View style={styles.calendarAvailDot} />
+                                                        )}
+                                                    </TouchableOpacity>
+                                                );
+                                            })}
+                                        </View>
+                                        {/* Legend */}
+                                        <View style={styles.calendarLegendRow}>
+                                            <View style={styles.calendarLegendItem}>
+                                                <View style={[styles.calendarLegendDot, { backgroundColor: '#10b981' }]} />
+                                                <Text style={styles.calendarLegendText}>Available</Text>
+                                            </View>
+                                            <Text style={styles.calendarSelectedDateText}>
+                                                {selectedDate || 'Select a date'}
+                                            </Text>
+                                        </View>
+                                    </View>
+                                );
+                            })()}
 
                             {/* Time Slot Selection */}
                             <Text style={styles.modalLabel}>Time Slot</Text>
@@ -1367,6 +1632,132 @@ const styles = StyleSheet.create({
         color: Colors.textTertiary,
         textAlign: 'center',
         marginTop: Spacing.sm,
+    },
+
+    // ─── Calendar Picker (Booking Modal) ───
+    calendarContainer: {
+        backgroundColor: Colors.background,
+        borderRadius: BorderRadius.lg,
+        borderWidth: 1,
+        borderColor: Colors.border,
+        padding: Spacing.md,
+        marginBottom: Spacing.sm,
+    },
+    calendarNavRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: Spacing.md,
+    },
+    calendarNavBtn: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: Colors.glass,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    calendarMonthLabel: {
+        fontSize: FontSize.md,
+        fontWeight: FontWeight.bold,
+        color: Colors.text,
+    },
+    calendarWeekRow: {
+        flexDirection: 'row',
+        marginBottom: Spacing.xs,
+    },
+    calendarDayHeaderCell: {
+        flex: 1,
+        alignItems: 'center',
+        paddingVertical: Spacing.xs,
+    },
+    calendarDayHeaderText: {
+        fontSize: FontSize.xs,
+        fontWeight: FontWeight.semibold,
+        color: Colors.textMuted,
+        textTransform: 'uppercase',
+    },
+    calendarGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+    },
+    calendarCell: {
+        width: '14.28%',
+        aspectRatio: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        position: 'relative',
+    },
+    calendarCellAvailable: {
+        backgroundColor: 'rgba(16, 185, 129, 0.12)',
+        borderRadius: BorderRadius.sm,
+        borderWidth: 1,
+        borderColor: 'rgba(16, 185, 129, 0.3)',
+    },
+    calendarCellSelected: {
+        backgroundColor: Colors.primary,
+        borderRadius: BorderRadius.sm,
+        borderWidth: 1,
+        borderColor: Colors.primary,
+    },
+    calendarCellPast: {
+        opacity: 0.35,
+    },
+    calendarDayText: {
+        fontSize: FontSize.sm,
+        fontWeight: FontWeight.medium,
+        color: Colors.text,
+    },
+    calendarDayTextAvailable: {
+        color: '#10b981',
+        fontWeight: FontWeight.bold,
+    },
+    calendarDayTextSelected: {
+        color: Colors.textInverse,
+        fontWeight: FontWeight.bold,
+    },
+    calendarDayTextPast: {
+        color: Colors.textTertiary,
+    },
+    calendarDayTextToday: {
+        color: Colors.primary,
+        fontWeight: FontWeight.bold,
+    },
+    calendarAvailDot: {
+        position: 'absolute',
+        bottom: 4,
+        width: 5,
+        height: 5,
+        borderRadius: 2.5,
+        backgroundColor: '#10b981',
+    },
+    calendarLegendRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginTop: Spacing.sm,
+        paddingTop: Spacing.sm,
+        borderTopWidth: 1,
+        borderTopColor: Colors.border,
+    },
+    calendarLegendItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 5,
+    },
+    calendarLegendDot: {
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+    },
+    calendarLegendText: {
+        fontSize: FontSize.xs,
+        color: Colors.textMuted,
+    },
+    calendarSelectedDateText: {
+        fontSize: FontSize.xs,
+        fontWeight: FontWeight.semibold,
+        color: Colors.textSecondary,
     },
 
     // ─── Location Card ───

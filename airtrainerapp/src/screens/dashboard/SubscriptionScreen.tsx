@@ -218,9 +218,12 @@ export default function SubscriptionScreen({ navigation }: any) {
     const daysLeft = profile ? getDaysRemaining(profile) : 0;
     const isActive = profile?.subscription_status === 'active';
     const isTrial = profile?.subscription_status === 'trial';
+    const isTrialActive = isTrial && daysLeft > 0;
     const isExpiredOrCancelled =
         profile?.subscription_status === 'expired' || profile?.subscription_status === 'cancelled';
     const spotsRemaining = f50Count !== null ? 50 - f50Count : null;
+    const isVerified = profile?.verification_status === 'verified';
+    const isPendingVerification = (isActive || isTrialActive) && !isVerified;
 
     return (
         <ScreenWrapper refreshing={refreshing} onRefresh={onRefresh}>
@@ -232,17 +235,34 @@ export default function SubscriptionScreen({ navigation }: any) {
             {/* Founding 50 Banner (already granted) */}
             {profile?.is_founding_50 && <Founding50Card />}
 
+            {/* Verification Pending Banner */}
+            {isPendingVerification && (
+                <Animated.View entering={FadeInDown.duration(250)}>
+                    <View style={styles.verificationBanner}>
+                        <View style={styles.verificationIconWrap}>
+                            <Ionicons name="shield-outline" size={22} color="#f59e0b" />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                            <Text style={styles.verificationTitle}>Pending Admin Verification</Text>
+                            <Text style={styles.verificationText}>
+                                Your subscription is active but your profile is awaiting admin verification. You won't appear in search results until verified. This usually takes 24-48 hours.
+                            </Text>
+                        </View>
+                    </View>
+                </Animated.View>
+            )}
+
             {/* Status Hero Card - Current plan badge prominent at top */}
             <Animated.View entering={FadeInDown.duration(250)}>
             <LinearGradient
-                colors={[Colors.gradientStart, Colors.gradientEnd]}
+                colors={isPendingVerification ? ['#78350f', '#92400e'] : [Colors.gradientStart, Colors.gradientEnd]}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
                 style={styles.heroCard}
             >
                 <View style={styles.heroBadge}>
-                    <Ionicons name={status.icon} size={16} color="#fff" />
-                    <Text style={styles.heroBadgeText}>{status.label}</Text>
+                    <Ionicons name={isPendingVerification ? 'time-outline' : status.icon} size={16} color="#fff" />
+                    <Text style={styles.heroBadgeText}>{status.label}{isActive && !isVerified ? ' (Verification Pending)' : ''}</Text>
                 </View>
 
                 <Text style={styles.heroProductName}>AirTrainr Pro</Text>
@@ -323,7 +343,7 @@ export default function SubscriptionScreen({ navigation }: any) {
             </Card>
 
             {/* Plan Selection & Subscribe CTA */}
-            {(isTrial || isExpiredOrCancelled) && (
+            {(isTrial || isExpiredOrCancelled) && !isPendingVerification && (
                 <>
                     <SectionHeader title="Choose Your Plan" />
 
@@ -525,6 +545,39 @@ function DetailRow({
 }
 
 const styles = StyleSheet.create({
+    // Verification Pending Banner
+    verificationBanner: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        backgroundColor: 'rgba(245, 158, 11, 0.08)',
+        borderWidth: 1,
+        borderColor: 'rgba(245, 158, 11, 0.2)',
+        borderRadius: BorderRadius.lg,
+        padding: Spacing.lg,
+        marginBottom: Spacing.lg,
+        gap: Spacing.md,
+    },
+    verificationIconWrap: {
+        width: 44,
+        height: 44,
+        borderRadius: BorderRadius.md,
+        backgroundColor: 'rgba(245, 158, 11, 0.15)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    verificationTitle: {
+        fontSize: FontSize.sm,
+        fontWeight: FontWeight.black as any,
+        color: '#f59e0b',
+        textTransform: 'uppercase',
+        letterSpacing: 1,
+        marginBottom: 4,
+    },
+    verificationText: {
+        fontSize: FontSize.sm,
+        color: Colors.textSecondary,
+        lineHeight: 20,
+    },
     // Founding 50 (granted badge)
     f50Card: {
         borderRadius: BorderRadius.lg,

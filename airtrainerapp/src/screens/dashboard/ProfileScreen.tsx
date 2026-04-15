@@ -4,6 +4,8 @@ import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useAuth } from '../../contexts/AuthContext';
 import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows } from '../../theme';
+import { formatSportName } from '../../lib/format';
+import { detectCountry, miToKm, radiusUnit } from '../../lib/units';
 import {
     ScreenWrapper, Card, Button, Avatar, Badge,
     ListItem, SectionHeader, Divider,
@@ -264,7 +266,7 @@ export default function ProfileScreen({ navigation }: any) {
                                     return (
                                         <View key={sport} style={[styles.tag, { backgroundColor: color.bg }]}>
                                             <Text style={[styles.tagText, { color: color.text }]}>
-                                                {sport.replace(/_/g, ' ')}
+                                                {formatSportName(sport)}
                                             </Text>
                                         </View>
                                     );
@@ -306,15 +308,22 @@ export default function ProfileScreen({ navigation }: any) {
                             </View>
                         )}
 
-                        {/* Travel radius */}
-                        {ap.travel_radius_miles > 0 && (
-                            <View style={styles.detailRow}>
-                                <Ionicons name="navigate-outline" size={18} color={Colors.primary} />
-                                <Text style={styles.detailText}>
-                                    Travel Radius: <Text style={{ fontWeight: FontWeight.semibold, color: Colors.text }}>{ap.travel_radius_miles} mi</Text>
-                                </Text>
-                            </View>
-                        )}
+                        {/* Travel radius — show km for Canadian postal codes */}
+                        {ap.travel_radius_miles > 0 && (() => {
+                            const country = detectCountry(ap.zip_code || '');
+                            const unit = radiusUnit(country);
+                            const displayValue = country === 'CA'
+                                ? Math.round(miToKm(ap.travel_radius_miles))
+                                : ap.travel_radius_miles;
+                            return (
+                                <View style={styles.detailRow}>
+                                    <Ionicons name="navigate-outline" size={18} color={Colors.primary} />
+                                    <Text style={styles.detailText}>
+                                        Travel Radius: <Text style={{ fontWeight: FontWeight.semibold, color: Colors.text }}>{displayValue} {unit}</Text>
+                                    </Text>
+                                </View>
+                            );
+                        })()}
 
                         {/* Preferred times as tags */}
                         {ap.preferredTrainingTimes && ap.preferredTrainingTimes.length > 0 && (
@@ -324,7 +333,7 @@ export default function ProfileScreen({ navigation }: any) {
                                     {ap.preferredTrainingTimes.map((time: string) => (
                                         <View key={time} style={[styles.tag, { backgroundColor: Colors.infoLight }]}>
                                             <Text style={[styles.tagText, { color: Colors.info }]}>
-                                                {time.replace(/_/g, ' ')}
+                                                {formatSportName(time)}
                                             </Text>
                                         </View>
                                     ))}
@@ -342,7 +351,7 @@ export default function ProfileScreen({ navigation }: any) {
                                         return (
                                             <View key={sport} style={[styles.tag, { backgroundColor: color.bg }]}>
                                                 <Text style={[styles.tagText, { color: color.text }]}>
-                                                    {sport.replace(/_/g, ' ')}
+                                                    {formatSportName(sport)}
                                                 </Text>
                                             </View>
                                         );
@@ -359,7 +368,7 @@ export default function ProfileScreen({ navigation }: any) {
                                     {ap.trainingPreferences.map((pref: string) => (
                                         <View key={pref} style={[styles.tag, { backgroundColor: Colors.successLight }]}>
                                             <Text style={[styles.tagText, { color: Colors.success }]}>
-                                                {pref.replace(/_/g, ' ')}
+                                                {formatSportName(pref)}
                                             </Text>
                                         </View>
                                     ))}
