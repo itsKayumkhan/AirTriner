@@ -96,7 +96,7 @@ export default function ReviewsPage() {
         <div className="max-w-[1000px] w-full pb-12">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
                 <div>
-                    <h1 className="text-2xl font-black text-white mb-1">My Reviews</h1>
+                    <h1 className="text-[32px] font-black font-display italic tracking-wide text-white uppercase mb-1 leading-none drop-shadow-sm">My Reviews</h1>
                     <p className="text-text-main/60 font-medium text-[15px]">See what athletes are saying about your sessions.</p>
                 </div>
                 <button onClick={exportCSV} className="flex items-center gap-2 px-4 py-2 bg-[#272A35] hover:bg-white/10 border border-white/[0.06] rounded-xl text-sm font-bold text-white transition-colors">

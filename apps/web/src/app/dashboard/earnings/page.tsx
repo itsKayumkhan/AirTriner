@@ -232,7 +232,7 @@ export default function EarningsPage() {
         <div>
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
                 <div>
-                    <h1 className="text-2xl font-black font-display tracking-wider mb-1">{isTrainer ? "Earnings" : "Payments"}</h1>
+                    <h1 className="text-[32px] font-black font-display italic tracking-wide text-white uppercase mb-1 leading-none drop-shadow-sm">{isTrainer ? "Earnings" : "Payments"}</h1>
                     <p className="text-text-main/60 text-sm">{isTrainer ? "Track your income from completed sessions." : "Track your payments for completed sessions."}</p>
                 </div>
                 <div className="flex items-center gap-3">

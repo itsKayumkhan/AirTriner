@@ -95,23 +95,14 @@ body {
   max-width: 100vw;
 }
 
-/* Custom Scrollbar */
+/* Hide scrollbars globally — content still scrollable */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  display: none;
 }
 
-::-webkit-scrollbar-track {
-  background: #121212;
-}
-
-::-webkit-scrollbar-thumb {
-  background: #3f3f46;
-  border-radius: 10px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #52525b;
+* {
+  -ms-overflow-style: none;  /* IE/Edge */
+  scrollbar-width: none;     /* Firefox */
 }
 
 ::selection {

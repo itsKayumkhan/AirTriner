@@ -15,7 +15,7 @@ export default function SubscriptionCancelPage() {
                 </div>
 
                 <div>
-                    <h1 className="text-2xl font-black text-text-main uppercase tracking-wide mb-2">
+                    <h1 className="text-[32px] font-black font-display italic tracking-wide text-white uppercase mb-1 leading-none drop-shadow-sm">
                         Checkout Cancelled
                     </h1>
                     <p className="text-text-main/50 text-sm leading-relaxed">

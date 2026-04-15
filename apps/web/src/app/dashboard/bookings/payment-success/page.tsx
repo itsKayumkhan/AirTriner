@@ -30,7 +30,7 @@ export default function BookingPaymentSuccessPage() {
             </div>
 
             {/* Heading */}
-            <h1 className="text-4xl font-black uppercase tracking-widest text-white mb-3">
+            <h1 className="text-[32px] font-black font-display italic tracking-wide text-white uppercase mb-1 leading-none drop-shadow-sm">
                 Payment Successful
             </h1>
             <p className="text-text-main/50 text-base font-medium max-w-sm mb-12">

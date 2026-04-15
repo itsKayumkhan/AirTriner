@@ -318,7 +318,7 @@ export default function BookTrainerPage() {
             const date = new Date(dateStr + "T00:00:00");
             const dayOfWeek = date.getDay();
 
-            // Fetch slots for this day
+            // Fetch per-slot availability for this day
             const { data, error } = await supabase
                 .from("availability_slots")
                 .select("start_time, end_time")
@@ -328,6 +328,45 @@ export default function BookTrainerPage() {
                 .order("start_time");
 
             if (error) throw error;
+
+            // Also fetch recurring availability for this day of week
+            let recurringSlots: { start_time: string; end_time: string }[] = [];
+            try {
+                const { data: recurData, error: recurErr } = await supabase
+                    .from("availability_recurring")
+                    .select("start_time, end_time, is_active")
+                    .eq("trainer_id", slotTrainerId)
+                    .eq("day_of_week", dayOfWeek)
+                    .eq("is_active", true);
+
+                if (!recurErr && recurData?.length) {
+                    const activeDur = duration ?? durationMinutes;
+                    recurData.forEach((r: { start_time: string; end_time: string }) => {
+                        const startMins = parseInt(r.start_time.split(":")[0]) * 60 + parseInt(r.start_time.split(":")[1]);
+                        const endMins = parseInt(r.end_time.split(":")[0]) * 60 + parseInt(r.end_time.split(":")[1]);
+                        for (let t = startMins; t + activeDur <= endMins; t += activeDur) {
+                            const sh = String(Math.floor(t / 60)).padStart(2, "0");
+                            const sm = String(t % 60).padStart(2, "0");
+                            const eh = String(Math.floor((t + activeDur) / 60)).padStart(2, "0");
+                            const em = String((t + activeDur) % 60).padStart(2, "0");
+                            recurringSlots.push({ start_time: `${sh}:${sm}`, end_time: `${eh}:${em}` });
+                        }
+                    });
+                }
+            } catch {
+                // Recurring table may not exist — silently ignore
+            }
+
+            // Merge per-slot + recurring, deduplicate by start_time
+            const allSlots = [...(data || [])];
+            const existingStarts = new Set(allSlots.map(s => s.start_time.slice(0, 5)));
+            recurringSlots.forEach(rs => {
+                if (!existingStarts.has(rs.start_time)) {
+                    allSlots.push(rs);
+                    existingStarts.add(rs.start_time);
+                }
+            });
+            allSlots.sort((a, b) => a.start_time.localeCompare(b.start_time));
 
             // Fetch already-booked times for this trainer on this date
             const dayStart = new Date(dateStr + "T00:00:00").toISOString();
@@ -368,7 +407,7 @@ export default function BookTrainerPage() {
 
             // Filter out booked slots and slots too short for selected duration
             const activeDuration = duration ?? durationMinutes;
-            const availableSlots = (data || []).filter(s => {
+            const availableSlots = allSlots.filter(s => {
                 // Check not booked
                 const slotHH = s.start_time.slice(0, 5); // "09:00"
                 if (bookedStartTimes.has(slotHH)) return false;

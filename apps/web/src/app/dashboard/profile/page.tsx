@@ -370,7 +370,7 @@ export default function ProfilePage() {
             {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
                 <div>
-                    <h1 className="text-2xl font-black tracking-wide text-white mb-1">My Profile</h1>
+                    <h1 className="text-[32px] font-black font-display italic tracking-wide text-white uppercase mb-1 leading-none drop-shadow-sm">My Profile</h1>
                     <p className="text-text-main/50 font-medium text-sm">
                         Manage your personal information and {isTrainer ? "training profile" : "preferences"}
                     </p>

@@ -255,7 +255,7 @@ export default function MessagesPage() {
             {/* Page title — compact */}
             <div className="shrink-0 mb-4 flex items-center justify-between">
                 <div>
-                    <h1 className="text-[28px] font-black uppercase tracking-tight text-white leading-none">Messages</h1>
+                    <h1 className="text-[32px] font-black font-display italic tracking-wide text-white uppercase mb-1 leading-none drop-shadow-sm">Messages</h1>
                     <p className="text-text-main/40 text-xs font-medium mt-1">
                         {conversations.length} conversation{conversations.length !== 1 ? "s" : ""}
                         {conversations.reduce((s, c) => s + c.unreadCount, 0) > 0 &&

@@ -418,7 +418,7 @@ export default function SearchTrainersPage() {
                 {/* Title row */}
                 <div className="flex items-center justify-between">
                     <div>
-                        <h1 className="text-2xl font-black text-text-main tracking-tight">Find a Coach</h1>
+                        <h1 className="text-[32px] font-black font-display italic tracking-wide text-white uppercase mb-1 leading-none drop-shadow-sm">Find a Coach</h1>
                         <p className="text-text-main/35 text-sm mt-0.5">
                             {filteredTrainers.length} coach{filteredTrainers.length !== 1 ? "es" : ""} available
                             {locationFilter ? ` · ${locationFilter}` : ""}

@@ -262,7 +262,7 @@ export default function SubAccountsPage() {
         return (
             <div>
                 <div className="mb-8">
-                    <h1 className="text-2xl font-black font-display tracking-wider mb-1">Sub-Accounts</h1>
+                    <h1 className="text-[32px] font-black font-display italic tracking-wide text-white uppercase mb-1 leading-none drop-shadow-sm">Sub-Accounts</h1>
                     <p className="text-text-main/60 text-sm">Manage profiles for family members</p>
                 </div>
 
@@ -332,7 +332,7 @@ CREATE INDEX ON sub_accounts(parent_user_id);`}</pre>
         return (
             <div>
                 <div className="mb-8">
-                    <h1 className="text-2xl font-black font-display tracking-wider mb-1">Sub-Accounts</h1>
+                    <h1 className="text-[32px] font-black font-display italic tracking-wide text-white uppercase mb-1 leading-none drop-shadow-sm">Sub-Accounts</h1>
                     <p className="text-text-main/60 text-sm">Manage profiles for family members</p>
                 </div>
                 <div className="bg-surface rounded-2xl border border-red-500/20 p-10 text-center">
@@ -356,7 +356,7 @@ CREATE INDEX ON sub_accounts(parent_user_id);`}</pre>
             {/* Page header */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
                 <div>
-                    <h1 className="text-2xl font-black font-display tracking-wider mb-1">Sub-Accounts</h1>
+                    <h1 className="text-[32px] font-black font-display italic tracking-wide text-white uppercase mb-1 leading-none drop-shadow-sm">Sub-Accounts</h1>
                     <p className="text-text-main/60 text-sm">
                         Manage profiles for family members ({accounts.length}/{MAX_SUB_ACCOUNTS} used)
                     </p>

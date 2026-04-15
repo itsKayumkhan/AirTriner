@@ -347,7 +347,7 @@ export default function BookingsPage() {
                     <p className="text-[11px] font-bold tracking-[0.2em] text-primary/60 uppercase mb-2">
                         {isTrainerView ? "Coach Portal" : "Athlete Portal"}
                     </p>
-                    <h1 className="text-[28px] sm:text-[38px] font-black uppercase tracking-tight text-white leading-none">
+                    <h1 className="text-[32px] font-black font-display italic tracking-wide text-white uppercase mb-1 leading-none drop-shadow-sm">
                         {isTrainerView ? "Sessions" : "My Bookings"}
                     </h1>
                     <p className="text-text-main/40 text-sm mt-1.5 font-medium">

@@ -204,7 +204,7 @@ export default function SubscriptionPage() {
 
             {/* Header */}
             <div>
-                <h1 className="text-3xl font-black text-text-main tracking-tight uppercase flex items-center gap-3">
+                <h1 className="text-[32px] font-black font-display italic tracking-wide text-white uppercase mb-1 leading-none drop-shadow-sm flex items-center gap-3">
                     <Crown size={28} className="text-primary" />
                     Subscription
                 </h1>

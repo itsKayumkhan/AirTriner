@@ -114,7 +114,7 @@ export default function DashboardOverview() {
             <div className="flex items-end justify-between gap-4">
                 <div>
                     <p className="text-text-main/30 text-xs font-medium uppercase tracking-widest mb-1.5">{today}</p>
-                    <h1 className="text-2xl sm:text-3xl font-black text-text-main tracking-tight leading-none">
+                    <h1 className="text-[32px] font-black font-display italic tracking-wide text-white uppercase mb-1 leading-none drop-shadow-sm">
                         Good {greeting},&nbsp;<span className="text-primary">{user?.firstName}</span>
                     </h1>
                     <p className="text-text-main/40 text-sm mt-2">
