@@ -31,11 +31,14 @@ const SPORTS_LIST = [
 const SKILL_LEVELS = ['beginner', 'intermediate', 'advanced', 'pro'] as const;
 type SkillLevel = (typeof SKILL_LEVELS)[number];
 
+const MAX_SPORTS = 3;
+
 type SubAccountProfileData = {
     first_name: string;
     last_name: string;
     age?: number;
-    sport?: string;
+    sport?: string;       // kept for backwards compatibility
+    sports?: string[];    // up to 3 sports
     skill_level?: string;
     notes?: string;
 };
@@ -67,7 +70,7 @@ export default function SubAccountsScreen({ navigation }: any) {
     const [firstName, setFirstName] = useState('');
     const [lastName, setLastName] = useState('');
     const [age, setAge] = useState('');
-    const [sport, setSport] = useState('hockey');
+    const [selectedSports, setSelectedSports] = useState<string[]>([]);
     const [skillLevel, setSkillLevel] = useState<SkillLevel>('beginner');
     const [notes, setNotes] = useState('');
     const [formErrors, setFormErrors] = useState<Record<string, string>>({});
@@ -106,7 +109,7 @@ export default function SubAccountsScreen({ navigation }: any) {
         setFirstName('');
         setLastName('');
         setAge('');
-        setSport('hockey');
+        setSelectedSports([]);
         setSkillLevel('beginner');
         setNotes('');
         setFormErrors({});
@@ -125,7 +128,8 @@ export default function SubAccountsScreen({ navigation }: any) {
         setFirstName(pd.first_name || '');
         setLastName(pd.last_name || '');
         setAge(pd.age ? String(pd.age) : '');
-        setSport(pd.sport || 'hockey');
+        // Migrate from legacy single `sport` to `sports` array
+        setSelectedSports(pd.sports || (pd.sport ? [pd.sport] : []));
         setSkillLevel((pd.skill_level as SkillLevel) || 'beginner');
         setNotes(pd.notes || '');
         setFormErrors({});
@@ -166,7 +170,8 @@ export default function SubAccountsScreen({ navigation }: any) {
             first_name: firstName.trim(),
             last_name: lastName.trim(),
             age: age ? Number(age) : undefined,
-            sport,
+            sports: selectedSports,
+            sport: selectedSports[0] || undefined, // backwards compat
             skill_level: skillLevel,
             notes: notes.trim() || undefined,
         };
@@ -345,15 +350,19 @@ export default function SubAccountsScreen({ navigation }: any) {
                                     </View>
                                 </View>
 
-                                {(pd.sport || pd.skill_level) && (
+                                {((pd.sports && pd.sports.length > 0) || pd.sport || pd.skill_level) && (
                                     <View style={styles.cardMetaRow}>
-                                        {pd.sport && (
+                                        {(pd.sports && pd.sports.length > 0
+                                            ? pd.sports
+                                            : pd.sport ? [pd.sport] : []
+                                        ).map((s) => (
                                             <Badge
-                                                label={pd.sport.replace(/_/g, ' ')}
+                                                key={s}
+                                                label={s.replace(/_/g, ' ')}
                                                 color={Colors.primary}
                                                 bgColor={Colors.primaryGlow}
                                             />
-                                        )}
+                                        ))}
                                         {pd.skill_level && (
                                             <Badge
                                                 label={capitalize(pd.skill_level)}
@@ -475,8 +484,13 @@ export default function SubAccountsScreen({ navigation }: any) {
                                 <Text style={styles.fieldError}>{formErrors.age}</Text>
                             ) : null}
 
-                            {/* Primary Sport */}
-                            <Text style={styles.inputLabel}>Primary Sport</Text>
+                            {/* Sports (up to 3) */}
+                            <View style={styles.sportLabelRow}>
+                                <Text style={styles.inputLabel}>Sports</Text>
+                                <Text style={styles.sportCount}>
+                                    {selectedSports.length}/{MAX_SPORTS} selected
+                                </Text>
+                            </View>
                             <ScrollView
                                 horizontal
                                 showsHorizontalScrollIndicator={false}
@@ -484,14 +498,26 @@ export default function SubAccountsScreen({ navigation }: any) {
                                 contentContainerStyle={styles.sportScrollContent}
                             >
                                 {SPORTS_LIST.map((s) => {
-                                    const isActive = sport === s;
+                                    const isActive = selectedSports.includes(s);
+                                    const isDisabled = !isActive && selectedSports.length >= MAX_SPORTS;
                                     return (
                                         <TouchableOpacity
                                             key={s}
-                                            style={[styles.sportChip, isActive && styles.sportChipActive]}
-                                            onPress={() => setSport(s)}
+                                            style={[
+                                                styles.sportChip,
+                                                isActive && styles.sportChipActive,
+                                                isDisabled && styles.sportChipDisabled,
+                                            ]}
+                                            onPress={() => {
+                                                if (isActive) {
+                                                    setSelectedSports((prev) => prev.filter((x) => x !== s));
+                                                } else if (selectedSports.length < MAX_SPORTS) {
+                                                    setSelectedSports((prev) => [...prev, s]);
+                                                }
+                                            }}
+                                            disabled={isDisabled}
                                         >
-                                            <Text style={[styles.sportChipText, isActive && styles.sportChipTextActive]}>
+                                            <Text style={[styles.sportChipText, isActive && styles.sportChipTextActive, isDisabled && styles.sportChipTextDisabled]}>
                                                 {capitalize(s)}
                                             </Text>
                                         </TouchableOpacity>
@@ -839,6 +865,9 @@ const styles = StyleSheet.create({
         backgroundColor: Colors.primaryMuted,
         borderColor: Colors.borderActive,
     },
+    sportChipDisabled: {
+        opacity: 0.35,
+    },
     sportChipText: {
         fontSize: FontSize.sm,
         color: Colors.textSecondary,
@@ -847,6 +876,20 @@ const styles = StyleSheet.create({
     sportChipTextActive: {
         color: Colors.primary,
         fontWeight: FontWeight.semibold,
+    },
+    sportChipTextDisabled: {
+        color: Colors.textMuted,
+    },
+    sportLabelRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: Spacing.xs,
+    },
+    sportCount: {
+        fontSize: FontSize.xs,
+        color: Colors.textTertiary,
+        fontWeight: FontWeight.medium,
     },
 
     // Skill level selector

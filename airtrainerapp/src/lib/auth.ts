@@ -11,9 +11,9 @@ export interface AuthUser {
     athleteProfile?: AthleteProfileRow | null;
 }
 
-function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+function withTimeout<T>(promise: PromiseLike<T>, ms: number, message: string): Promise<T> {
     return Promise.race([
-        promise,
+        Promise.resolve(promise),
         new Promise<T>((_, reject) => setTimeout(() => reject(new Error(message)), ms)),
     ]);
 }
@@ -32,27 +32,46 @@ export async function loginUser(email: string, password: string): Promise<AuthUs
         throw new Error(authError?.message || 'Invalid email or password');
     }
 
-    let { data: user, error } = await withTimeout(
-        supabase.from('users').select('*').eq('id', authData.user.id).single(),
-        8000,
-        'Failed to load user profile. Please try again.'
-    );
+    // Fetch user profile — try by id first, fall back to email.
+    // Each query uses try-catch so a timeout on the first does NOT
+    // prevent the second from running.
+    let user: UserRow | null = null;
 
-    if (error || !user) {
-        const { data: fallbackUser } = await withTimeout(
-            supabase.from('users').select('*').eq('email', cleanEmail).single(),
-            8000,
-            'Failed to load user profile. Please try again.'
+    try {
+        const result = await withTimeout(
+            supabase.from('users').select('*').eq('id', authData.user.id).single(),
+            15000,
+            'Profile fetch timed out'
         );
+        if (result.data && !result.error) {
+            user = result.data as UserRow;
+        }
+    } catch {
+        // Timeout or network error — try fallback below
+    }
 
-        if (fallbackUser) {
-            user = fallbackUser;
-        } else {
-            throw new Error('User profile not found');
+    if (!user) {
+        try {
+            const result = await withTimeout(
+                supabase.from('users').select('*').eq('email', cleanEmail).single(),
+                15000,
+                'Profile fetch timed out'
+            );
+            if (result.data && !result.error) {
+                user = result.data as UserRow;
+            }
+        } catch {
+            // Both queries failed
         }
     }
 
-    const u = user as UserRow;
+    if (!user) {
+        throw new Error(
+            'Could not load your profile. Please check your connection and try again.'
+        );
+    }
+
+    const u = user;
 
     let trainerProfile: TrainerProfileRow | null = null;
     let athleteProfile: AthleteProfileRow | null = null;

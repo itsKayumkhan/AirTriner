@@ -54,6 +54,14 @@ export default function LocationAutocomplete({
         }
     }, [value?.city, value?.state]);
 
+    // Cleanup debounce timer and pending requests on unmount
+    useEffect(() => {
+        return () => {
+            if (debounceRef.current) clearTimeout(debounceRef.current);
+            if (abortRef.current) abortRef.current.abort();
+        };
+    }, []);
+
     // ── Google Places Autocomplete ──
     const fetchGooglePlaces = useCallback(
         async (text: string, signal: AbortSignal) => {
@@ -180,8 +188,8 @@ export default function LocationAutocomplete({
                 if (!controller.signal.aborted) {
                     setResults(items);
                     setIsOpen(items.length > 0);
+                    setIsLoading(false);
                 }
-                setIsLoading(false);
             }, 400);
         },
         [googleApiKey, fetchGooglePlaces, fetchExpoLocationResults, onChange]

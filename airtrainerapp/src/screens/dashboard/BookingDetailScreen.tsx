@@ -118,12 +118,16 @@ export default function BookingDetailScreen({ route, navigation }: any) {
     }, []);
 
     const checkPaymentStatus = useCallback(async (bId: string) => {
-        const { data } = await supabase
-            .from('payment_transactions')
-            .select('id, status')
-            .eq('booking_id', bId)
-            .maybeSingle();
-        setPaymentStatus(data ? 'paid' : 'unpaid');
+        try {
+            const { data } = await supabase
+                .from('payment_transactions')
+                .select('id, status')
+                .eq('booking_id', bId)
+                .maybeSingle();
+            setPaymentStatus(data ? 'paid' : 'unpaid');
+        } catch {
+            setPaymentStatus('unpaid');
+        }
     }, []);
 
     useEffect(() => { fetchBooking(); }, [fetchBooking]);
@@ -472,7 +476,10 @@ export default function BookingDetailScreen({ route, navigation }: any) {
         if (!booking || !user) return;
         setIsPaymentLoading(true);
         try {
-            const apiUrl = Config.appUrl || Config.apiUrl?.replace('/api/v1', '') || '';
+            const apiUrl = Config.appUrl || Config.apiUrl?.replace('/api/v1', '');
+            if (!apiUrl) {
+                throw new Error('Payment service is not configured. Please try again later.');
+            }
             const response = await fetch(`${apiUrl}/api/stripe/create-booking-payment`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },

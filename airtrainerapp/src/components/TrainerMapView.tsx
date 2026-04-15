@@ -37,6 +37,29 @@ export default function TrainerMapView({
     const mapRef = useRef<any>(null);
     const [mapError, setMapError] = React.useState(false);
 
+    // All hooks must be called unconditionally before any early return
+    const validTrainers = useMemo(
+        () => trainers.filter((t) => t.lat && t.lng),
+        [trainers]
+    );
+
+    // Fit map to all trainer markers
+    useEffect(() => {
+        if (!MAPS_AVAILABLE || mapError) return;
+        if (validTrainers.length > 0 && mapRef.current) {
+            const coords = validTrainers.map((t) => ({
+                latitude: t.lat,
+                longitude: t.lng,
+            }));
+            setTimeout(() => {
+                mapRef.current?.fitToCoordinates(coords, {
+                    edgePadding: { top: 80, right: 60, bottom: 80, left: 60 },
+                    animated: true,
+                });
+            }, 500);
+        }
+    }, [validTrainers, mapError]);
+
     // Web fallback or map load error
     if (!MAPS_AVAILABLE || mapError) {
         return (
@@ -51,27 +74,6 @@ export default function TrainerMapView({
             </View>
         );
     }
-
-    const validTrainers = useMemo(
-        () => trainers.filter((t) => t.lat && t.lng),
-        [trainers]
-    );
-
-    // Fit map to all trainer markers
-    useEffect(() => {
-        if (validTrainers.length > 0 && mapRef.current) {
-            const coords = validTrainers.map((t) => ({
-                latitude: t.lat,
-                longitude: t.lng,
-            }));
-            setTimeout(() => {
-                mapRef.current?.fitToCoordinates(coords, {
-                    edgePadding: { top: 80, right: 60, bottom: 80, left: 60 },
-                    animated: true,
-                });
-            }, 500);
-        }
-    }, [validTrainers]);
 
     const renderMarker = (trainer: TrainerPin) => {
         const initials = trainer.name

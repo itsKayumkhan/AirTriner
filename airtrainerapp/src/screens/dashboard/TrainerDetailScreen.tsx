@@ -579,12 +579,18 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
             {/* ─── 5. AVAILABILITY SECTION ─── */}
             <PressableCard delay={400} style={styles.sectionWrap}>
                 <Card>
-                    <Text style={styles.sectionTitle}>Availability</Text>
+                    <View style={styles.availabilityHeader}>
+                        <Text style={styles.sectionTitle}>Availability</Text>
+                        <View style={styles.availLegend}>
+                            <View style={styles.availLegendDot} />
+                            <Text style={styles.availLegendText}>Available</Text>
+                        </View>
+                    </View>
                     <View style={styles.weekStrip}>
                         {DAY_LABELS.map((label, idx) => {
                             const isAvail = availableDays.has(idx);
                             return (
-                                <View key={idx} style={styles.weekDayCol}>
+                                <View key={idx} style={[styles.weekDayCol, isAvail && styles.weekDayColActive]}>
                                     <Text style={[styles.weekDayLabel, isAvail && styles.weekDayLabelActive]}>
                                         {label}
                                     </Text>
@@ -1296,6 +1302,28 @@ const styles = StyleSheet.create({
     },
 
     // ─── Availability ───
+    availabilityHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: Spacing.xs,
+    },
+    availLegend: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 5,
+    },
+    availLegendDot: {
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+        backgroundColor: '#00C853',
+    },
+    availLegendText: {
+        fontSize: FontSize.xs,
+        color: '#00C853',
+        fontWeight: FontWeight.medium,
+    },
     weekStrip: {
         flexDirection: 'row',
         justifyContent: 'space-between',
@@ -1304,6 +1332,11 @@ const styles = StyleSheet.create({
     weekDayCol: {
         alignItems: 'center',
         flex: 1,
+        paddingVertical: Spacing.xs,
+        borderRadius: BorderRadius.sm,
+    },
+    weekDayColActive: {
+        backgroundColor: 'rgba(0,200,83,0.08)',
     },
     weekDayLabel: {
         fontSize: FontSize.xs,
@@ -1312,18 +1345,22 @@ const styles = StyleSheet.create({
         marginBottom: Spacing.sm,
     },
     weekDayLabelActive: {
-        color: Colors.text,
+        color: '#00C853',
         fontWeight: FontWeight.bold,
     },
     weekDayDot: {
-        width: 8,
-        height: 8,
-        borderRadius: 4,
+        width: 10,
+        height: 10,
+        borderRadius: 5,
         backgroundColor: Colors.glass,
     },
     weekDayDotActive: {
-        backgroundColor: Colors.primary,
-        ...Shadows.glow,
+        backgroundColor: '#00C853',
+        shadowColor: '#00C853',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.6,
+        shadowRadius: 6,
+        elevation: 4,
     },
     noAvailText: {
         fontSize: FontSize.sm,
