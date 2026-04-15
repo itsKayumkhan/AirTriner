@@ -146,8 +146,10 @@ export default function EarningsPage() {
     const isTrainer = user?.role === "trainer";
 
     const downloadCSV = () => {
-        // Build CSV rows from all payment transactions
-        const headers = ['Date', 'Athlete', 'Sport', 'Duration (min)', 'Amount ($)', 'Platform Fee ($)', 'Net Payout ($)', 'Status']
+        // Build CSV rows — different headers for trainer vs athlete
+        const headers = isTrainer
+            ? ['Date', 'Athlete', 'Sport', 'Duration (min)', 'Amount ($)', 'Net Payout ($)', 'Status']
+            : ['Date', 'Trainer', 'Sport', 'Duration (min)', 'Amount ($)', 'Platform Fee ($)', 'Net Payout ($)', 'Status'];
 
         let rows: string[][]
         if (isTrainer) {
@@ -157,7 +159,6 @@ export default function EarningsPage() {
                 formatSportName(b.sport),
                 String(b.duration_minutes || 60),
                 Number(b.price).toFixed(2),
-                '0.00',
                 Number(b.price).toFixed(2),
                 'completed',
             ])
@@ -260,14 +261,10 @@ export default function EarningsPage() {
 
             {/* Summary Cards */}
             {isTrainer ? (
-                <div className="grid gap-5 mb-8 grid-cols-2 md:grid-cols-4">
+                <div className="grid gap-5 mb-8 grid-cols-2 md:grid-cols-3">
                     <div className="bg-surface rounded-2xl p-7 border border-white/5">
                         <div className="text-xs text-text-main/50 mb-2 uppercase tracking-wider font-bold">Total Earned</div>
                         <div className="text-3xl font-black font-display text-green-500">${totalEarnings.toFixed(2)}</div>
-                    </div>
-                    <div className="bg-surface rounded-2xl p-7 border border-white/5">
-                        <div className="text-xs text-text-main/50 mb-2 uppercase tracking-wider font-bold">Platform Fees</div>
-                        <div className="text-3xl font-black font-display text-orange-500">-${totalFees.toFixed(2)}</div>
                     </div>
                     <div className="bg-surface rounded-2xl p-7 border border-white/5">
                         <div className="text-xs text-text-main/50 mb-2 uppercase tracking-wider font-bold">Net Earnings</div>

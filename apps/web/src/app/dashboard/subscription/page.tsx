@@ -21,6 +21,7 @@ type TrainerProfile = {
     subscription_expires_at: string | null;
     trial_started_at: string | null;
     is_founding_50: boolean;
+    verification_status: string | null;
 };
 
 const PRO_FEATURES = [
@@ -58,7 +59,7 @@ export default function SubscriptionPage() {
             const [profileRes, countRes] = await Promise.all([
                 supabase
                     .from("trainer_profiles")
-                    .select("id, subscription_status, subscription_expires_at, trial_started_at, is_founding_50")
+                    .select("id, subscription_status, subscription_expires_at, trial_started_at, is_founding_50, verification_status")
                     .eq("user_id", session.id)
                     .single(),
                 supabase
@@ -104,7 +105,9 @@ export default function SubscriptionPage() {
 
     const isFoundingPending = profile?.is_founding_50 && !isActive;
     const spotsLeft = Math.max(0, FOUNDING_50_MAX - founding50Count);
-    const canApplyFounding50 = spotsLeft > 0 && !profile?.is_founding_50 && !isActive;
+    const isVerified = profile?.verification_status === "verified";
+    const isPendingVerification = (isActive || isTrialActive) && !isVerified;
+    const canApplyFounding50 = spotsLeft > 0 && !profile?.is_founding_50 && !isActive && !isPendingVerification;
 
     // -----------------------------------------------
     // Subscribe via Stripe Checkout
@@ -237,19 +240,23 @@ export default function SubscriptionPage() {
             )}
 
             {isActive && expiry && (
-                <div className="bg-primary/5 border border-primary/20 rounded-[20px] p-6 flex items-center gap-5">
-                    <div className="w-14 h-14 rounded-2xl bg-primary/15 flex items-center justify-center shrink-0">
-                        <CheckCircle size={24} className="text-primary" />
+                <div className={`rounded-[20px] p-6 flex items-center gap-5 ${isVerified ? "bg-primary/5 border border-primary/20" : "bg-amber-500/5 border border-amber-500/20"}`}>
+                    <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 ${isVerified ? "bg-primary/15" : "bg-amber-500/15"}`}>
+                        {isVerified ? <CheckCircle size={24} className="text-primary" /> : <Clock size={24} className="text-amber-400" />}
                     </div>
                     <div className="flex-1">
-                        <p className="font-black text-primary uppercase tracking-wider text-sm mb-1">
+                        <p className={`font-black uppercase tracking-wider text-sm mb-1 ${isVerified ? "text-primary" : "text-amber-400"}`}>
                             {profile?.is_founding_50 ? "Founding 50 — Active" : "Pro Subscription — Active"}
+                            {!isVerified && " (Verification Pending)"}
                         </p>
                         <p className="text-text-main/60 text-sm">
-                            Your subscription renews on {expiry.date}
-                            {expiry.daysLeft <= 14 && (
-                                <span className="ml-2 text-yellow-400 font-bold">({expiry.daysLeft} days left)</span>
-                            )}
+                            {isVerified
+                                ? <>Your subscription renews on {expiry.date}
+                                    {expiry.daysLeft <= 14 && (
+                                        <span className="ml-2 text-yellow-400 font-bold">({expiry.daysLeft} days left)</span>
+                                    )}</>
+                                : <>Your subscription is active. Awaiting admin verification to go live. Renews on {expiry.date}.</>
+                            }
                         </p>
                     </div>
                     {profile?.is_founding_50 && (
@@ -294,8 +301,25 @@ export default function SubscriptionPage() {
                 </div>
             )}
 
-            {/* Pricing Cards — show if not active */}
-            {!isActive && (
+            {/* Verification Pending Banner */}
+            {isPendingVerification && (
+                <div className="bg-amber-500/5 border border-amber-500/20 rounded-[20px] p-6 flex items-center gap-5">
+                    <div className="w-14 h-14 rounded-2xl bg-amber-500/15 flex items-center justify-center shrink-0">
+                        <Shield size={24} className="text-amber-400" />
+                    </div>
+                    <div className="flex-1">
+                        <p className="font-black text-amber-400 uppercase tracking-wider text-sm mb-1">
+                            Pending Admin Verification
+                        </p>
+                        <p className="text-text-main/60 text-sm">
+                            Your subscription is active but your profile is awaiting admin verification. You won&apos;t appear in search results or receive bookings until verified. This usually takes 24-48 hours.
+                        </p>
+                    </div>
+                </div>
+            )}
+
+            {/* Pricing Cards — show if not active AND not awaiting verification */}
+            {!isActive && !isPendingVerification && (
                 <div>
                     <h2 className="text-[11px] font-black uppercase tracking-widest text-text-main/40 mb-5">
                         Choose Your Plan

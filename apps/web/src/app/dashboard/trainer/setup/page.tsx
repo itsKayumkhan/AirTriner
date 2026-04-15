@@ -31,6 +31,7 @@ import {
     ChevronUp,
     Image as ImageIcon
 } from "lucide-react";
+import { toast } from "@/components/ui/Toast";
 
 const FALLBACK_SPORTS: { id: string; name: string; slug: string }[] = [
     { id: "hockey", name: "Hockey", slug: "hockey" },
@@ -75,6 +76,8 @@ export default function TrainerEditProfilePage() {
         travelRadius: "20",
         targetSkillLevels: ["beginner", "intermediate", "advanced", "pro"] as ("beginner"|"intermediate"|"advanced"|"pro")[],
         preferredTrainingTimes: ["morning", "afternoon", "evening"] as ("morning"|"afternoon"|"evening")[],
+        phone: "",
+        zipCode: "",
     });
 
     const [sessionLengths, setSessionLengths] = useState<number[]>([60]);
@@ -141,9 +144,10 @@ export default function TrainerEditProfilePage() {
 
         const fetchData = async () => {
             // Fetch Platform Settings & Latest Profile in parallel
-            const [settingsRes, profileRes] = await Promise.all([
+            const [settingsRes, profileRes, userRes] = await Promise.all([
                 supabase.from("platform_settings").select("require_trainer_verification").maybeSingle(),
-                supabase.from("trainer_profiles").select("*").eq("user_id", session.id).single()
+                supabase.from("trainer_profiles").select("*").eq("user_id", session.id).single(),
+                supabase.from("users").select("phone").eq("id", session.id).single()
             ]);
             
             if (settingsRes.data) {
@@ -176,6 +180,8 @@ export default function TrainerEditProfilePage() {
                     travelRadius: latestProfile.travel_radius_miles?.toString() || "20",
                     targetSkillLevels: latestProfile.target_skill_levels || ["beginner", "intermediate", "advanced", "pro"],
                     preferredTrainingTimes: latestProfile.preferredTrainingTimes || ["morning", "afternoon", "evening"],
+                    phone: userRes.data?.phone || "",
+                    zipCode: latestProfile.zip_code || "",
                 }));
                 if (latestProfile.session_lengths?.length) setSessionLengths(latestProfile.session_lengths);
                 if (latestProfile.training_locations?.length) setTrainingLocations(latestProfile.training_locations);
@@ -225,6 +231,7 @@ export default function TrainerEditProfilePage() {
                 certifications: formData.certifications,
                 city: formData.city || null,
                 state: formData.state || null,
+                zip_code: formData.zipCode || null,
                 travel_radius_miles: parseInt(formData.travelRadius) || 20,
                 target_skill_levels: formData.targetSkillLevels,
                 "preferredTrainingTimes": formData.preferredTrainingTimes,
@@ -235,7 +242,7 @@ export default function TrainerEditProfilePage() {
 
             const [profileRes, userRes] = await Promise.all([
                 supabase.from("trainer_profiles").update(updateData).eq("user_id", user.id),
-                supabase.from("users").update({ first_name: formData.firstName, last_name: formData.lastName }).eq("id", user.id)
+                supabase.from("users").update({ first_name: formData.firstName, last_name: formData.lastName, phone: formData.phone || null }).eq("id", user.id)
             ]);
 
             if (profileRes.error) throw profileRes.error;
@@ -416,12 +423,14 @@ export default function TrainerEditProfilePage() {
             setProfileImageStatus("pending");
             setProfileImageRejectionReason(null);
             setPopup({ type: "success", message: "Photo uploaded — pending admin approval." });
+            toast.success("Photo uploaded!");
         } catch (err: unknown) {
             console.error("Profile image upload error:", err);
             const message = err instanceof Error && err.message?.includes("not found")
                 ? "Storage bucket not configured yet. Please contact an administrator."
                 : "Failed to upload profile image. Please try again.";
             setPopup({ type: "error", message });
+            toast.error(message);
         } finally {
             setImageUploading(false);
             if (profileImageInputRef.current) profileImageInputRef.current.value = "";
@@ -564,10 +573,19 @@ export default function TrainerEditProfilePage() {
                         {profileImageUrl ? (
                             <div className="w-28 h-28 rounded-2xl overflow-hidden border-2 border-white/10 relative">
                                 <img src={profileImageUrl} alt="Profile" className="w-full h-full object-cover" />
+                                {imageUploading && (
+                                    <div className="absolute inset-0 bg-black/60 flex items-center justify-center rounded-2xl">
+                                        <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                    </div>
+                                )}
                             </div>
                         ) : (
-                            <div className="w-28 h-28 rounded-2xl border-2 border-dashed border-white/10 flex items-center justify-center bg-[#12141A]">
-                                <ImageIcon size={32} className="text-text-main/20" />
+                            <div className="w-28 h-28 rounded-2xl border-2 border-dashed border-white/10 flex items-center justify-center bg-[#12141A] relative">
+                                {imageUploading ? (
+                                    <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                ) : (
+                                    <ImageIcon size={32} className="text-text-main/20" />
+                                )}
                             </div>
                         )}
                     </div>
@@ -600,11 +618,12 @@ export default function TrainerEditProfilePage() {
                         {/* Upload zone */}
                         {(profileImageStatus === "none" || profileImageStatus === "rejected") && (
                             <div
-                                onClick={() => profileImageInputRef.current?.click()}
+                                onClick={() => !imageUploading && profileImageInputRef.current?.click()}
                                 onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
                                 onDrop={(e) => {
                                     e.preventDefault();
                                     e.stopPropagation();
+                                    if (imageUploading) return;
                                     if (e.dataTransfer.files?.length && profileImageInputRef.current) {
                                         const dt = new DataTransfer();
                                         dt.items.add(e.dataTransfer.files[0]);
@@ -612,11 +631,20 @@ export default function TrainerEditProfilePage() {
                                         profileImageInputRef.current.dispatchEvent(new Event("change", { bubbles: true }));
                                     }
                                 }}
-                                className="flex flex-col items-center justify-center py-6 px-4 border border-dashed border-white/10 rounded-xl cursor-pointer hover:border-primary/30 hover:bg-primary/5 transition-all text-center"
+                                className={`flex flex-col items-center justify-center py-6 px-4 border border-dashed border-white/10 rounded-xl transition-all text-center ${imageUploading ? "opacity-50 cursor-not-allowed" : "cursor-pointer hover:border-primary/30 hover:bg-primary/5"}`}
                             >
-                                <Upload size={20} className="text-text-main/30 mb-2" />
-                                <p className="text-text-main/50 text-xs font-medium">Drag & drop or click to upload</p>
-                                <p className="text-text-main/30 text-[10px] mt-1">PNG, JPEG, or WebP — max 5 MB</p>
+                                {imageUploading ? (
+                                    <>
+                                        <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin mb-2" />
+                                        <p className="text-text-main/50 text-xs font-medium">Uploading...</p>
+                                    </>
+                                ) : (
+                                    <>
+                                        <Upload size={20} className="text-text-main/30 mb-2" />
+                                        <p className="text-text-main/50 text-xs font-medium">Drag & drop or click to upload</p>
+                                        <p className="text-text-main/30 text-[10px] mt-1">PNG, JPEG, or WebP — max 5 MB</p>
+                                    </>
+                                )}
                             </div>
                         )}
 
@@ -677,6 +705,24 @@ export default function TrainerEditProfilePage() {
                             <input
                                 value={formData.lastName}
                                 onChange={(e) => setFormData((p) => ({ ...p, lastName: e.target.value }))}
+                                className="w-full bg-[#12141A] border border-white/5 rounded-2xl px-5 py-3.5 text-white text-sm outline-none focus:border-primary/50 transition-colors"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">Email</label>
+                            <input
+                                value={user?.email || ""}
+                                readOnly
+                                className="w-full bg-[#12141A] border border-white/5 rounded-2xl px-5 py-3.5 text-white/50 text-sm outline-none cursor-not-allowed"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">Phone Number</label>
+                            <input
+                                type="tel"
+                                value={formData.phone}
+                                onChange={(e) => setFormData((p) => ({ ...p, phone: e.target.value }))}
+                                placeholder="(555) 123-4567"
                                 className="w-full bg-[#12141A] border border-white/5 rounded-2xl px-5 py-3.5 text-white text-sm outline-none focus:border-primary/50 transition-colors"
                             />
                         </div>
@@ -830,6 +876,16 @@ export default function TrainerEditProfilePage() {
                                         }
                                     }}
                                     placeholder="Start typing a city..."
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">ZIP / Postal Code</label>
+                                <input
+                                    type="text"
+                                    value={formData.zipCode}
+                                    onChange={(e) => setFormData((p) => ({ ...p, zipCode: e.target.value }))}
+                                    placeholder="e.g. 90210"
+                                    className="w-full bg-[#12141A] border border-white/5 rounded-2xl px-5 py-3.5 text-white text-sm outline-none focus:border-primary/50 transition-colors"
                                 />
                             </div>
                             <div>

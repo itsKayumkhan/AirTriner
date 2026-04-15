@@ -1,9 +1,10 @@
 "use client";
 
-import { AlertTriangle, CheckCircle, User, ShieldAlert, MapPin, Clock, Eye, Save } from "lucide-react";
+import { AlertTriangle, CheckCircle, User, ShieldAlert, MapPin, Clock, Eye, Save, Camera } from "lucide-react";
 import { useEffect, useState, useRef } from "react";
 import { getSession, setSession, clearSession, AuthUser } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
+import { uploadToCloudinary } from "@/lib/cloudinary";
 import { useRouter } from "next/navigation";
 import LocationAutocomplete, { type LocationValue } from "@/components/forms/LocationAutocomplete";
 import { detectCountry, radiusUnit, formatRadius, kmToMi, miToKm } from "@/lib/units";
@@ -38,6 +39,9 @@ export default function ProfilePage() {
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
     const [isDirty, setIsDirty] = useState(false);
     const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+    const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+    const [avatarUploading, setAvatarUploading] = useState(false);
+    const avatarInputRef = useRef<HTMLInputElement>(null);
     const initialFormRef = useRef<typeof form | null>(null);
     const [form, setForm] = useState({
         firstName: "",
@@ -98,6 +102,7 @@ export default function ProfilePage() {
 
     const loadProfile = async (u: AuthUser) => {
         const { data: userData } = await supabase.from("users").select("*").eq("id", u.id).single();
+        if (userData?.avatar_url) setAvatarUrl(userData.avatar_url);
         let loaded: typeof form;
 
         if (u.role === "trainer" && u.trainerProfile) {
@@ -110,6 +115,9 @@ export default function ProfilePage() {
             const ts = tp?.total_sessions || 0;
             const isPerfVerified = ts >= 3 && dc === 0 && Number(tp?.completion_rate) >= 95 && Number(tp?.reliability_score) >= 95;
             setStatusData({ isPerformanceVerified: isPerfVerified, isPro: ts > 0 && !isPerfVerified, totalSessions: ts, disputeCount: dc });
+            const loadedZip = (tp as any)?.zip_code || "";
+            const loadedCountry = (tp as any)?.country || detectCountry(loadedZip);
+            const storedMiles = Number(tp?.travel_radius_miles || 25);
             loaded = {
                 firstName: userData?.first_name || "",
                 lastName: userData?.last_name || "",
@@ -125,13 +133,19 @@ export default function ProfilePage() {
                 addressLine1: tp?.city || "",
                 city: tp?.city || "",
                 state: tp?.state || "",
-                zipCode: "",
-                country: "",
+                zipCode: loadedZip,
+                country: loadedCountry,
                 latitude: tp?.latitude ?? null,
                 longitude: tp?.longitude ?? null,
-                travelRadius: String(tp?.travel_radius_miles || 25),
+                travelRadius: String(storedMiles),
                 preferredTimes: (tp as any)?.preferredTrainingTimes || [],
             };
+            // Hydrate display radius: if CA, show km equivalent
+            if (loadedCountry === "CA") {
+                setDisplayRadius(String(Math.round(miToKm(storedMiles))));
+            } else {
+                setDisplayRadius(String(storedMiles));
+            }
         } else {
             const { data: ap } = await supabase.from("athlete_profiles").select("*").eq("user_id", u.id).single();
             const loadedZip = ap?.zip_code || "";
@@ -143,7 +157,7 @@ export default function ProfilePage() {
                 phone: userData?.phone || "",
                 dateOfBirth: userData?.date_of_birth || "",
                 sex: userData?.sex || "",
-                bio: "",
+                bio: (ap as any)?.bio || "",
                 headline: "",
                 hourlyRate: "",
                 yearsExperience: "",
@@ -249,17 +263,19 @@ export default function ProfilePage() {
         }
         setSaving(true);
         try {
-            const { error: userError } = await supabase.from("users").update({
+            const userUpdate: Record<string, unknown> = {
                 first_name: form.firstName,
                 last_name: form.lastName,
                 phone: form.phone || null,
                 date_of_birth: form.dateOfBirth || null,
                 sex: form.sex || null,
-            }).eq("id", user.id);
+            };
+            if (avatarUrl) userUpdate.avatar_url = avatarUrl;
+            const { error: userError } = await supabase.from("users").update(userUpdate).eq("id", user.id);
             if (userError) throw userError;
 
             if (user.role === "trainer") {
-                const profileUpdate = {
+                const profileUpdate: Record<string, unknown> = {
                     user_id: user.id,
                     bio: form.bio || null,
                     headline: form.headline || null,
@@ -268,13 +284,23 @@ export default function ProfilePage() {
                     sports: form.sports,
                     preferredTrainingTimes: form.preferredTimes,
                     travel_radius_miles: Number(form.travelRadius),
+                    city: form.city || null,
+                    state: form.state || null,
+                    zip_code: form.zipCode || null,
                 };
+                // Persist location fields if provided
+                if (form.country || form.latitude != null || form.longitude != null) {
+                    profileUpdate.country = form.country || null;
+                    profileUpdate.latitude = form.latitude;
+                    profileUpdate.longitude = form.longitude;
+                }
                 const { error: pError } = await supabase.from("trainer_profiles").upsert(profileUpdate, { onConflict: 'user_id' });
                 if (pError) throw pError;
             } else {
                 // Storage is always in miles; form.travelRadius is already in miles
                 const profileUpdate: Record<string, unknown> = {
                     user_id: user.id,
+                    bio: form.bio || null,
                     sports: form.sports,
                     skill_level: form.skillLevel,
                     address_line1: form.addressLine1 || null,
@@ -349,6 +375,46 @@ export default function ProfilePage() {
         }
     };
 
+    const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file || !user) return;
+
+        // Validate file type
+        const allowedTypes = ["image/png", "image/jpeg", "image/webp"];
+        if (!allowedTypes.includes(file.type)) {
+            toast.error("Please upload a PNG, JPEG, or WebP image.");
+            return;
+        }
+        // Validate file size (5MB)
+        if (file.size > 5 * 1024 * 1024) {
+            toast.error("Image must be under 5MB.");
+            return;
+        }
+
+        setAvatarUploading(true);
+        try {
+            const result = await uploadToCloudinary(file, "airtrainer/avatars", { resourceType: "image" });
+            const url = result.url;
+
+            const { error } = await supabase.from("users").update({ avatar_url: url }).eq("id", user.id);
+            if (error) throw error;
+
+            setAvatarUrl(url);
+            // Update session
+            const updated = { ...user, avatarUrl: url } as AuthUser;
+            setSession(updated);
+            setUser(updated);
+            toast.success("Profile photo updated!");
+        } catch (err: any) {
+            console.error("Avatar upload failed:", err);
+            toast.error(err.message || "Failed to upload photo. Please try again.");
+        } finally {
+            setAvatarUploading(false);
+            // Reset input so the same file can be re-selected
+            if (avatarInputRef.current) avatarInputRef.current.value = "";
+        }
+    };
+
     const inputCls = (field?: string) =>
         `w-full bg-white/[0.03] border rounded-xl px-4 py-3 text-white text-sm outline-none transition-colors ${
             field && fieldErrors[field]
@@ -399,10 +465,52 @@ export default function ProfilePage() {
             {/* Profile Header Card */}
             <div className="bg-surface border border-white/[0.06] rounded-2xl p-6 mb-4">
                 <div className="flex gap-5 items-center flex-wrap">
-                    <div className="w-20 h-20 rounded-full bg-white/[0.08] border border-white/[0.10] flex items-center justify-center font-black text-2xl text-text-main uppercase shrink-0">
-                        {form.firstName?.[0]}{form.lastName?.[0]}
-                    </div>
+                    <input
+                        ref={avatarInputRef}
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        className="hidden"
+                        onChange={handleAvatarUpload}
+                    />
+                    <button
+                        type="button"
+                        onClick={() => avatarInputRef.current?.click()}
+                        disabled={avatarUploading}
+                        className="relative w-20 h-20 rounded-full shrink-0 group focus:outline-none focus:ring-2 focus:ring-primary/50 focus:ring-offset-2 focus:ring-offset-surface"
+                        title="Click to change profile photo"
+                    >
+                        {avatarUrl ? (
+                            <img src={avatarUrl} alt="Profile" className="w-20 h-20 rounded-full object-cover border border-white/[0.10]" />
+                        ) : (
+                            <div className="w-20 h-20 rounded-full bg-white/[0.08] border border-white/[0.10] flex items-center justify-center font-black text-2xl text-text-main uppercase">
+                                {form.firstName?.[0]}{form.lastName?.[0]}
+                            </div>
+                        )}
+                        <div className={`absolute inset-0 rounded-full bg-black/50 flex items-center justify-center transition-opacity ${avatarUploading ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}>
+                            {avatarUploading ? (
+                                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                            ) : (
+                                <Camera size={18} className="text-white" />
+                            )}
+                        </div>
+                        {/* Always-visible pencil badge */}
+                        <div className="absolute bottom-0 right-0 w-7 h-7 rounded-full bg-primary text-bg border-2 border-surface flex items-center justify-center shadow-lg">
+                            {avatarUploading ? (
+                                <div className="w-3 h-3 border-2 border-bg/30 border-t-bg rounded-full animate-spin" />
+                            ) : (
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+                                    <path d="M12 20h9" />
+                                    <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+                                </svg>
+                            )}
+                        </div>
+                    </button>
                     <div className="flex-1 min-w-[180px]">
+                        {avatarUploading && (
+                            <p className="text-[11px] font-black uppercase tracking-widest text-primary mb-1 flex items-center gap-2">
+                                <span className="w-2 h-2 rounded-full bg-primary animate-pulse" /> Uploading photo...
+                            </p>
+                        )}
                         <h2 className="text-xl font-black text-white mb-0.5">
                             {form.firstName} {form.lastName}
                         </h2>
@@ -493,9 +601,24 @@ export default function ProfilePage() {
                 </div>
             </div>
 
-            {/* Location Info (Athlete Only) */}
+            {/* About Me (Athlete Only — trainers have bio in "Training Profile" section below) */}
             {!isTrainer && (
                 <div className="bg-surface border border-white/[0.06] rounded-2xl p-6 mb-4">
+                    <div className="flex items-center gap-2.5 mb-5">
+                        <User size={16} className="text-text-main/40" strokeWidth={2.5} />
+                        <h3 className="text-[11px] font-black text-text-main/50 tracking-[0.15em] uppercase">About Me</h3>
+                    </div>
+                    <textarea
+                        value={form.bio}
+                        onChange={(e) => updateForm({ bio: e.target.value })}
+                        placeholder="Tell trainers a bit about yourself, your goals, and what you're looking for..."
+                        className={inputCls() + " h-28 resize-none"}
+                    />
+                </div>
+            )}
+
+            {/* Location Info */}
+            <div className="bg-surface border border-white/[0.06] rounded-2xl p-6 mb-4">
                     <div className="flex items-center gap-2.5 mb-5">
                         <MapPin size={16} className="text-text-main/40" strokeWidth={2.5} />
                         <h3 className="text-[11px] font-black text-text-main/50 tracking-[0.15em] uppercase">Location Details</h3>
@@ -589,7 +712,6 @@ export default function ProfilePage() {
                         })()}
                     </div>
                 </div>
-            )}
 
             {/* Training Preferences (Athlete Only) */}
             {!isTrainer && (
