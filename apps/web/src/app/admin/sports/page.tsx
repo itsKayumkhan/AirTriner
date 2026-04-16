@@ -119,7 +119,7 @@ export default function AdminSportsPage() {
                     finalImageUrl = await uploadImage(imageFile);
                 } catch (err: any) {
                     console.error("Image upload failed:", err);
-                    alert(`Image upload failed: ${err.message || 'Unknown error'}. Please ensure a public bucket named 'sport-images' exists in Supabase.`);
+                    showAlert("error", "Upload Failed", `Image upload failed: ${err.message || 'Unknown error'}.`);
                     setFormLoading(false);
                     setUploading(false);
                     return;
@@ -142,9 +142,10 @@ export default function AdminSportsPage() {
             
             await loadSports();
             closeModal();
+            showAlert("success", isEditing ? "Updated" : "Created", `Sport "${name}" has been ${isEditing ? "updated" : "created"} successfully.`);
         } catch (err: any) {
             console.error("Failed to save sport:", err);
-            alert(`Error saving sport: ${err.message || 'Unknown error'}`);
+            showAlert("error", "Save Failed", `Error saving sport: ${err.message || 'Unknown error'}`);
         } finally {
             setFormLoading(false);
         }

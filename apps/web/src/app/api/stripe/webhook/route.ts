@@ -1,10 +1,11 @@
 // ============================================
 // Stripe Webhook Handler
-// Handles: subscription lifecycle events
+// Handles: subscription lifecycle events + booking payment receipts
 // ============================================
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
+import { sendAthleteReceipt, sendTrainerReceipt, type BookingReceiptData } from '@/lib/email';
 
 export async function POST(req: NextRequest) {
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -110,6 +111,103 @@ export async function POST(req: NextRequest) {
                         });
 
                         console.log(`[webhook] Booking payment recorded: ${bookingId} ($${amount})`);
+
+                        // ── Send email receipts to athlete & trainer ──
+                        try {
+                            // Fetch booking details for the receipt
+                            const { data: booking } = await supabaseAdmin
+                                .from('bookings')
+                                .select(`
+                                    sport, duration_minutes, scheduled_at,
+                                    price, platform_fee, total_paid
+                                `)
+                                .eq('id', bookingId)
+                                .single();
+
+                            // Fetch athlete info
+                            const { data: athlete } = await supabaseAdmin
+                                .from('users')
+                                .select('first_name, last_name, email')
+                                .eq('id', athleteId)
+                                .single();
+
+                            // Fetch trainer info
+                            const { data: trainer } = await supabaseAdmin
+                                .from('users')
+                                .select('first_name, last_name, email')
+                                .eq('id', trainerId)
+                                .single();
+
+                            if (booking && athlete && trainer) {
+                                const receiptData: BookingReceiptData = {
+                                    athleteEmail: athlete.email,
+                                    athleteName: `${athlete.first_name} ${athlete.last_name}`,
+                                    trainerEmail: trainer.email,
+                                    trainerName: `${trainer.first_name} ${trainer.last_name}`,
+                                    sport: booking.sport,
+                                    scheduledAt: booking.scheduled_at,
+                                    durationMinutes: booking.duration_minutes,
+                                    sessionFee: Number(booking.price),
+                                    platformFee: Number(booking.platform_fee),
+                                    totalPaid: Number(booking.total_paid),
+                                    trainerPayout: Number(trainerPayout),
+                                    bookingId,
+                                };
+
+                                // Send emails (fire-and-forget, don't block webhook response)
+                                sendAthleteReceipt(receiptData).catch(e =>
+                                    console.error('[webhook] Athlete receipt email failed:', e)
+                                );
+                                sendTrainerReceipt(receiptData).catch(e =>
+                                    console.error('[webhook] Trainer receipt email failed:', e)
+                                );
+
+                                // Store receipts in DB for later viewing
+                                const receiptRows = [
+                                    {
+                                        booking_id: bookingId,
+                                        recipient_id: athleteId,
+                                        recipient_role: 'athlete',
+                                        recipient_email: athlete.email,
+                                        session_fee: Number(booking.price),
+                                        platform_fee: Number(booking.platform_fee),
+                                        total_amount: Number(booking.total_paid),
+                                        trainer_payout: Number(trainerPayout),
+                                        sport: booking.sport,
+                                        scheduled_at: booking.scheduled_at,
+                                        email_sent: true,
+                                    },
+                                    {
+                                        booking_id: bookingId,
+                                        recipient_id: trainerId,
+                                        recipient_role: 'trainer',
+                                        recipient_email: trainer.email,
+                                        session_fee: Number(booking.price),
+                                        platform_fee: Number(booking.platform_fee),
+                                        total_amount: Number(booking.total_paid),
+                                        trainer_payout: Number(trainerPayout),
+                                        sport: booking.sport,
+                                        scheduled_at: booking.scheduled_at,
+                                        email_sent: true,
+                                    },
+                                ];
+
+                                const { error: receiptError } = await supabaseAdmin
+                                    .from('receipts')
+                                    .insert(receiptRows);
+
+                                if (receiptError) {
+                                    console.error('[webhook] Failed to store receipts:', receiptError);
+                                } else {
+                                    console.log(`[webhook] Receipts stored for booking: ${bookingId}`);
+                                }
+                            } else {
+                                console.warn('[webhook] Could not fetch booking/user details for receipt emails');
+                            }
+                        } catch (receiptErr) {
+                            // Receipt emails are non-critical — don't fail the webhook
+                            console.error('[webhook] Receipt processing error:', receiptErr);
+                        }
                     }
                     break;
                 }

@@ -10,9 +10,8 @@
 
 import type { LocationProvider, LocationResult } from "./index";
 
-const AUTOCOMPLETE_URL =
-  "https://places.googleapis.com/v1/places:autocomplete";
-const DETAILS_URL = "https://places.googleapis.com/v1/places";
+const AUTOCOMPLETE_URL = "https://maps.googleapis.com/maps/api/place/autocomplete/json";
+const DETAILS_URL = "https://maps.googleapis.com/maps/api/place/details/json";
 const GEOCODE_URL = "https://maps.googleapis.com/maps/api/geocode/json";
 
 interface PlacePrediction {
@@ -152,7 +151,6 @@ export class GooglePlacesProvider implements LocationProvider {
       const params = new URLSearchParams({
         address: query,
         key: this.key,
-        result_type: "locality|sublocality|administrative_area_level_3",
       });
 
       const res = await fetch(`${GEOCODE_URL}?${params.toString()}`, {
@@ -177,6 +175,7 @@ export class GooglePlacesProvider implements LocationProvider {
         let city = "";
         let state = "";
         let country = "";
+        let zipCode = "";
 
         for (const c of comps) {
           if (c.types.includes("locality")) city = c.long_name;
@@ -189,6 +188,7 @@ export class GooglePlacesProvider implements LocationProvider {
           else if (c.types.includes("administrative_area_level_1"))
             state = c.short_name;
           else if (c.types.includes("country")) country = c.short_name;
+          else if (c.types.includes("postal_code")) zipCode = c.long_name;
         }
 
         // If city still empty, use first part of formatted address
@@ -203,6 +203,7 @@ export class GooglePlacesProvider implements LocationProvider {
           lat: r.geometry.location.lat,
           lng: r.geometry.location.lng,
           displayName: r.formatted_address,
+          zipCode: zipCode || undefined,
         };
       });
     } catch (err: unknown) {
@@ -281,6 +282,7 @@ export class GooglePlacesProvider implements LocationProvider {
       let city = "";
       let state = "";
       let country = "";
+      let zipCode = "";
 
       for (const c of comps) {
         if (c.types.includes("locality")) city = c.long_name;
@@ -293,6 +295,7 @@ export class GooglePlacesProvider implements LocationProvider {
         else if (c.types.includes("administrative_area_level_1"))
           state = c.short_name;
         else if (c.types.includes("country")) country = c.short_name;
+        else if (c.types.includes("postal_code")) zipCode = c.long_name;
       }
 
       if (!city && r.formatted_address) {
@@ -306,6 +309,7 @@ export class GooglePlacesProvider implements LocationProvider {
         lat: r.geometry.location.lat,
         lng: r.geometry.location.lng,
         displayName: r.formatted_address,
+        zipCode: zipCode || undefined,
       };
     } catch (err: unknown) {
       if (!_warnedOnce) {

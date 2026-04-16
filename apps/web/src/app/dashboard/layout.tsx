@@ -24,6 +24,7 @@ import {
     Send,
     Crown,
     AlertTriangle,
+    Mail,
 } from "lucide-react";
 import { IconButton } from "@/components/ui/Buttons";
 import { AuthContext } from "@/context/AuthContext";
@@ -131,6 +132,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         { divider: true, id: "div1" },
         { label: "Messages", href: "/dashboard/messages", icon: MessageSquare, useMsgContext: true },
         { label: "Notifications", href: "/dashboard/notifications", icon: Bell, useNotifContext: true },
+        { divider: true, id: "div2" },
+        { label: "Contact Us", href: "/dashboard/contact", icon: Mail },
     ];
 
     return (

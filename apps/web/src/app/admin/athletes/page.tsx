@@ -20,6 +20,8 @@ interface Athlete {
     lng?: number | null;
     city?: string | null;
     state?: string | null;
+    country?: string | null;
+    zip_code?: string | null;
 }
 
 interface AthleteDetail {
@@ -95,7 +97,7 @@ export default function AdminAthletesPage() {
                     // Fetch athlete profiles for location data
                     const { data: profilesData } = await supabase
                         .from("athlete_profiles")
-                        .select("user_id, latitude, longitude, city, state")
+                        .select("user_id, latitude, longitude, city, state, country, zip_code")
                         .in("user_id", userIds);
                     const profilesMap = new Map((profilesData || []).map((p: any) => [p.user_id, p]));
 
@@ -118,6 +120,8 @@ export default function AdminAthletesPage() {
                             lng: profile?.longitude,
                             city: profile?.city,
                             state: profile?.state,
+                            country: profile?.country,
+                            zip_code: profile?.zip_code,
                         };
                     }));
                 } else {
@@ -240,6 +244,7 @@ export default function AdminAthletesPage() {
                 }))}
                 title="Athlete Locations"
                 subtitle="Track where athletes are concentrated and where to target marketing"
+                onPinClick={(pin) => openDetailModal(pin.id)}
             />
 
             {/* Filters */}
@@ -334,8 +339,8 @@ export default function AdminAthletesPage() {
                                     </td>
                                     <td className="px-6 py-5">
                                         <div className="text-text-main/80 font-medium text-xs tracking-wide flex items-center gap-1">
-                                            {a.city || a.state ? (
-                                                <><MapPin size={11} className="text-primary/60" /> {[a.city, a.state].filter(Boolean).join(", ")}</>
+                                            {a.city || a.state || a.country ? (
+                                                <><MapPin size={11} className="text-primary/60" /> {[a.city, a.state, a.country].filter(Boolean).join(", ")}</>
                                             ) : (
                                                 <span className="text-text-main/30">—</span>
                                             )}
@@ -485,10 +490,10 @@ export default function AdminAthletesPage() {
                                     </div>
 
                                     {/* Location */}
-                                    {(profile?.city || profile?.state) && (
+                                    {(profile?.city || profile?.state || profile?.country) && (
                                         <div className="flex items-center gap-2 text-text-main/60 text-sm font-medium bg-white/5 border border-white/[0.04] rounded-xl px-4 py-3">
                                             <MapPin size={14} className="text-primary" />
-                                            {[profile?.city, profile?.state].filter(Boolean).join(", ")}
+                                            {[profile?.city, profile?.state, profile?.country].filter(Boolean).join(", ")}
                                         </div>
                                     )}
 

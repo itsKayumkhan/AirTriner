@@ -52,7 +52,7 @@ export default function TrainingOffersPage() {
     const [isCanceling, setIsCanceling] = useState(false);
 
     // Camps
-    const [camps, setCamps] = useState<Array<{ name: string; hoursPerDay: number; days: number; totalPrice: number }>>([]);
+    const [camps, setCamps] = useState<Array<{ name: string; hoursPerDay: number; days: number; totalPrice: number; location: string; startTime: string; endTime: string; dates: string[]; maxSpots: number; spotsRemaining: number }>>([]);
     const [selectedCamp, setSelectedCamp] = useState<number | null>(null);
 
     const [offerData, setOfferData] = useState({
@@ -220,10 +220,17 @@ export default function TrainingOffersPage() {
                 },
             });
 
+            // Note: spots are NOT decremented on send — only when athlete ACCEPTS the offer
+            // This prevents double-counting when offer is sent but not yet accepted
+            if (selectedCamp !== null) {
+                setSelectedCamp(null);
+            }
+
             // Reset
             setShowNewOffer(false);
             setOfferError("");
             setSelectedAthlete(null);
+            setSelectedCamp(null);
             setOfferData({ message: "", sessionType: "private", rate: "", introDiscount: false, discountPercent: "20", sessionDates: [{ date: "", time: "" }], sport: "" });
 
             // Reload
@@ -562,41 +569,61 @@ export default function TrainingOffersPage() {
                                         <div className="space-y-2">
                                             {camps.map((camp, idx) => {
                                                 const isSelected = selectedCamp === idx;
+                                                const isFull = camp.maxSpots > 0 && (camp.spotsRemaining ?? camp.maxSpots) <= 0;
                                                 return (
                                                     <button
                                                         key={idx}
+                                                        disabled={isFull}
                                                         onClick={(e) => {
                                                             e.preventDefault();
+                                                            if (isFull) return;
                                                             if (isSelected) {
                                                                 setSelectedCamp(null);
                                                                 setOfferData(prev => ({ ...prev, sessionType: "private", rate: "", message: prev.message }));
                                                             } else {
                                                                 setSelectedCamp(idx);
+                                                                const locationMsg = camp.location ? ` at ${camp.location}` : "";
+                                                                const timeMsg = camp.startTime && camp.endTime ? ` (${camp.startTime} - ${camp.endTime})` : "";
+                                                                const datesMsg = camp.dates && camp.dates.length > 0 ? ` Dates: ${camp.dates.slice(0, 3).join(", ")}${camp.dates.length > 3 ? "..." : ""}` : "";
                                                                 setOfferData(prev => ({
                                                                     ...prev,
                                                                     sessionType: "camp",
                                                                     rate: camp.totalPrice.toString(),
-                                                                    message: prev.message || `Join my ${camp.name} camp! ${camp.hoursPerDay} hrs/day for ${camp.days} days.`,
+                                                                    message: prev.message || `Join my ${camp.name} camp${locationMsg}! ${camp.hoursPerDay} hrs/day for ${camp.days} days${timeMsg}.${datesMsg}`,
                                                                 }));
                                                             }
                                                         }}
-                                                        className={`w-full text-left p-3.5 rounded-xl border transition-all flex items-center justify-between ${
-                                                            isSelected
-                                                                ? "border-primary bg-primary/5 shadow-[0_0_15px_rgba(69,208,255,0.1)]"
-                                                                : "border-white/5 bg-[#12141A] hover:border-white/10"
+                                                        className={`w-full text-left p-3.5 rounded-xl border transition-all ${
+                                                            isFull
+                                                                ? "border-red-500/20 bg-red-500/5 opacity-60 cursor-not-allowed"
+                                                                : isSelected
+                                                                    ? "border-primary bg-primary/5 shadow-[0_0_15px_rgba(69,208,255,0.1)]"
+                                                                    : "border-white/5 bg-[#12141A] hover:border-white/10"
                                                         }`}
                                                     >
-                                                        <div>
-                                                            <p className={`text-sm font-bold ${isSelected ? "text-white" : "text-white/80"}`}>
-                                                                {camp.name}
-                                                            </p>
-                                                            <p className="text-[11px] text-text-main/40 mt-0.5">
-                                                                {camp.hoursPerDay} hrs/day &times; {camp.days} days
-                                                            </p>
+                                                        <div className="flex items-center justify-between">
+                                                            <div>
+                                                                <p className={`text-sm font-bold ${isFull ? "text-red-400" : isSelected ? "text-white" : "text-white/80"}`}>
+                                                                    {camp.name} {isFull && <span className="text-red-500 text-[10px] uppercase font-black tracking-wider ml-1">Camp Full</span>}
+                                                                </p>
+                                                                <p className="text-[11px] text-text-main/40 mt-0.5">
+                                                                    {camp.hoursPerDay} hrs/day &times; {camp.days} days
+                                                                </p>
+                                                                {camp.location && <p className="text-[10px] text-text-main/30 mt-0.5 flex items-center gap-1"><MapPin size={9} /> {camp.location}</p>}
+                                                                {camp.startTime && camp.endTime && <p className="text-[10px] text-text-main/30 mt-0.5 flex items-center gap-1"><Clock size={9} /> {camp.startTime} - {camp.endTime}</p>}
+                                                                {camp.dates && camp.dates.length > 0 && <p className="text-[10px] text-text-main/30 mt-0.5">{camp.dates.slice(0, 2).join(", ")}{camp.dates.length > 2 ? ` +${camp.dates.length - 2} more` : ""}</p>}
+                                                            </div>
+                                                            <div className="text-right shrink-0 ml-3">
+                                                                <span className={`text-sm font-black block ${isSelected ? "text-primary" : "text-text-main/50"}`}>
+                                                                    ${camp.totalPrice.toLocaleString()}
+                                                                </span>
+                                                                {camp.maxSpots > 0 && (
+                                                                    <span className={`text-[10px] font-bold block mt-0.5 ${isFull ? "text-red-400" : "text-text-main/30"}`}>
+                                                                        {camp.spotsRemaining ?? camp.maxSpots}/{camp.maxSpots} spots
+                                                                    </span>
+                                                                )}
+                                                            </div>
                                                         </div>
-                                                        <span className={`text-sm font-black ${isSelected ? "text-primary" : "text-text-main/50"}`}>
-                                                            ${camp.totalPrice.toLocaleString()}
-                                                        </span>
                                                     </button>
                                                 );
                                             })}

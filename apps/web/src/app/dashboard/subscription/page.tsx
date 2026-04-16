@@ -318,8 +318,8 @@ export default function SubscriptionPage() {
                 </div>
             )}
 
-            {/* Pricing Cards — show if not active AND not awaiting verification */}
-            {!isActive && !isPendingVerification && (
+            {/* Pricing Cards — show when subscription is not active (trial/expired/cancelled can subscribe) */}
+            {!isActive && (
                 <div>
                     <h2 className="text-[11px] font-black uppercase tracking-widest text-text-main/40 mb-5">
                         Choose Your Plan

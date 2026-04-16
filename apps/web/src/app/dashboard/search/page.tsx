@@ -383,6 +383,13 @@ export default function SearchTrainersPage() {
             case "rating": result.sort((a, b) => b.avg_rating - a.avg_rating); break;
         }
 
+        // Founding 50 trainers always appear at the top, preserving sort order within each group
+        result.sort((a, b) => {
+            const aFounder = a.is_founding_50 ? 1 : 0;
+            const bFounder = b.is_founding_50 ? 1 : 0;
+            return bFounder - aFounder;
+        });
+
         return result;
     }, [trainers, sportFilter, maxRate, minRating, locationFilter, sortBy, skillFilter, timeFilter, nameFilter, durationFilter]);
 

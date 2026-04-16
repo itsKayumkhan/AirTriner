@@ -32,6 +32,7 @@ import {
     Image as ImageIcon
 } from "lucide-react";
 import { toast } from "@/components/ui/Toast";
+import { detectCountry, radiusUnit, miToKm, kmToMi } from "@/lib/units";
 
 const FALLBACK_SPORTS: { id: string; name: string; slug: string }[] = [
     { id: "hockey", name: "Hockey", slug: "hockey" },
@@ -60,6 +61,7 @@ export default function TrainerEditProfilePage() {
     const [saving, setSaving] = useState(false);
     const [uploading, setUploading] = useState(false);
     const [popup, setPopup] = useState<{ type: "success" | "error"; message: string } | null>(null);
+    const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
     const [formData, setFormData] = useState({
         firstName: "",
@@ -78,7 +80,10 @@ export default function TrainerEditProfilePage() {
         preferredTrainingTimes: ["morning", "afternoon", "evening"] as ("morning"|"afternoon"|"evening")[],
         phone: "",
         zipCode: "",
+        country: "",
     });
+
+    const [displayRadius, setDisplayRadius] = useState("20");
 
     const [sessionLengths, setSessionLengths] = useState<number[]>([60]);
     const [trainingLocations, setTrainingLocations] = useState<string[]>([]);
@@ -90,11 +95,12 @@ export default function TrainerEditProfilePage() {
     const [customDuration, setCustomDuration] = useState("");
 
     // Multi-day camp offerings (Change 1)
-    const [campOfferings, setCampOfferings] = useState<Array<{ name: string; hoursPerDay: number; days: number; totalPrice: number }>>([]);
+    const [campOfferings, setCampOfferings] = useState<Array<{ name: string; hoursPerDay: number; days: number; totalPrice: number; location: string; startTime: string; endTime: string; dates: string[]; maxSpots: number; spotsRemaining: number }>>([]);
     const [showCampSection, setShowCampSection] = useState(false);
     const [showCampForm, setShowCampForm] = useState(false);
     const [editingCampIndex, setEditingCampIndex] = useState<number | null>(null);
-    const [campForm, setCampForm] = useState({ name: "", hoursPerDay: "", days: "", totalPrice: "" });
+    const [campForm, setCampForm] = useState({ name: "", hoursPerDay: "", days: "", totalPrice: "", location: "", startTime: "", endTime: "", maxSpots: "", startDate: "", endDate: "" });
+    const [campDates, setCampDates] = useState<string[]>([""]);
 
     // Profile image upload with admin approval (Change 3)
     const [profileImageUrl, setProfileImageUrl] = useState<string | null>(null);
@@ -183,6 +189,15 @@ export default function TrainerEditProfilePage() {
                     phone: userRes.data?.phone || "",
                     zipCode: latestProfile.zip_code || "",
                 }));
+                // Show radius in km when Canadian postal code detected
+                const storedMiles = latestProfile.travel_radius_miles || 20;
+                const loadedZip = latestProfile.zip_code || "";
+                const loadedCountry = detectCountry(loadedZip);
+                if (loadedCountry === "CA") {
+                    setDisplayRadius(String(Math.round(miToKm(storedMiles))));
+                } else {
+                    setDisplayRadius(String(storedMiles));
+                }
                 if (latestProfile.session_lengths?.length) setSessionLengths(latestProfile.session_lengths);
                 if (latestProfile.training_locations?.length) setTrainingLocations(latestProfile.training_locations);
                 if (latestProfile.verification_documents?.length) setVerificationDocs(latestProfile.verification_documents);
@@ -208,16 +223,34 @@ export default function TrainerEditProfilePage() {
         if (!user) return;
 
         // Validate required fields
-        const missing: string[] = [];
-        if (!formData.firstName.trim()) missing.push("First Name");
-        if (!formData.lastName.trim()) missing.push("Last Name");
-        if (!formData.sports || formData.sports.length === 0) missing.push("Sports (select at least one)");
-        if (!formData.hourlyRate || parseFloat(formData.hourlyRate) <= 0) missing.push("Hourly Rate");
-        if (!formData.yearsExperience) missing.push("Years Experience");
-        if (!formData.city?.trim()) missing.push("City");
+        const errors: Record<string, string> = {};
 
-        if (missing.length > 0) {
-            setPopup({ type: "error", message: `Please fill in: ${missing.join(", ")}` });
+        if (!formData.firstName.trim()) errors.firstName = "First name is required";
+        else if (formData.firstName.trim().length < 2) errors.firstName = "Must be at least 2 characters";
+
+        if (!formData.lastName.trim()) errors.lastName = "Last name is required";
+        else if (formData.lastName.trim().length < 2) errors.lastName = "Must be at least 2 characters";
+
+        if (formData.phone && !/^\+?[\d\s\-()\/.]{10,}$/.test(formData.phone))
+            errors.phone = "Enter a valid phone number (10+ digits)";
+
+        if (!formData.sports || formData.sports.length === 0) errors.sports = "Select at least one sport";
+        if (!formData.hourlyRate || parseFloat(formData.hourlyRate) <= 0) errors.hourlyRate = "Hourly rate is required";
+        if (!formData.yearsExperience) errors.yearsExperience = "Years of experience is required";
+        if (!formData.city?.trim()) errors.city = "City is required";
+        if (formData.zipCode.trim()) {
+            const zipCountry = detectCountry(formData.zipCode);
+            if (zipCountry === "OTHER") {
+                errors.zipCode = "Enter a valid US ZIP (e.g. 90210) or Canadian postal code (e.g. K0L 1B0)";
+            } else if (formData.country && formData.country !== zipCountry) {
+                const countryName = formData.country === "CA" ? "Canada" : formData.country === "US" ? "the US" : formData.country;
+                errors.zipCode = `Your city is in ${countryName} — postal code doesn't match`;
+            }
+        }
+
+        setFieldErrors(errors);
+        if (Object.keys(errors).length > 0) {
+            setPopup({ type: "error", message: "Please fix the highlighted fields before saving." });
             return;
         }
 
@@ -232,7 +265,9 @@ export default function TrainerEditProfilePage() {
                 city: formData.city || null,
                 state: formData.state || null,
                 zip_code: formData.zipCode || null,
-                travel_radius_miles: parseInt(formData.travelRadius) || 20,
+                travel_radius_miles: detectCountry(formData.zipCode) === "CA"
+                    ? Math.round(kmToMi(parseInt(displayRadius) || 20))
+                    : parseInt(displayRadius) || 20,
                 target_skill_levels: formData.targetSkillLevels,
                 "preferredTrainingTimes": formData.preferredTrainingTimes,
                 session_lengths: sessionLengths.length > 0 ? sessionLengths : [60],
@@ -419,6 +454,20 @@ export default function TrainerEditProfilePage() {
 
             if (updateError) throw updateError;
 
+            // Also update users.avatar_url so the image shows across the app
+            // (search results, trainer cards, nav bar, etc. all read avatar_url)
+            const { error: avatarError } = await supabase
+                .from("users")
+                .update({ avatar_url: imageUrl })
+                .eq("id", user.id);
+
+            if (avatarError) console.error("Failed to sync avatar_url:", avatarError);
+
+            // Update local session so UI reflects immediately
+            const updatedUser = { ...user, avatarUrl: imageUrl };
+            setUser(updatedUser);
+            setSession(updatedUser as AuthUser);
+
             setProfileImageUrl(imageUrl);
             setProfileImageStatus("pending");
             setProfileImageRejectionReason(null);
@@ -442,13 +491,46 @@ export default function TrainerEditProfilePage() {
         const hoursPerDay = parseFloat(campForm.hoursPerDay);
         const days = parseInt(campForm.days);
         const totalPrice = parseFloat(campForm.totalPrice);
+        const location = campForm.location.trim();
+        const startTime = campForm.startTime.trim();
+        // Auto-calculate endTime from startTime + hoursPerDay
+        let endTime = "";
+        if (startTime && hoursPerDay) {
+            const [h, m] = startTime.split(":").map(Number);
+            const totalMins = h * 60 + m + hoursPerDay * 60;
+            const eH = Math.floor(totalMins / 60) % 24;
+            const eM = Math.round(totalMins % 60);
+            endTime = `${String(eH).padStart(2, "0")}:${String(eM).padStart(2, "0")}`;
+        }
+        const maxSpots = parseInt(campForm.maxSpots);
+        const startDate = campForm.startDate.trim();
+        // Auto-calculate endDate from startDate + days
+        let endDate = "";
+        if (startDate && days) {
+            const sd = new Date(startDate + "T00:00:00");
+            sd.setDate(sd.getDate() + days - 1);
+            endDate = sd.toISOString().split("T")[0];
+        }
+        const dates = startDate ? [startDate, ...(endDate ? [endDate] : [])] : [];
 
         if (!name || !hoursPerDay || hoursPerDay <= 0 || !days || days <= 0 || !totalPrice || totalPrice <= 0) {
             setPopup({ type: "error", message: "Please fill in all camp fields with valid values." });
             return;
         }
 
-        const camp = { name, hoursPerDay, days, totalPrice };
+        if (!maxSpots || maxSpots <= 0) {
+            setPopup({ type: "error", message: "Please enter a valid number of spots." });
+            return;
+        }
+
+        if (!startDate) {
+            setPopup({ type: "error", message: "Please select a start date for the camp." });
+            return;
+        }
+
+
+        const existingSpotsRemaining = editingCampIndex !== null ? campOfferings[editingCampIndex].spotsRemaining : maxSpots;
+        const camp = { name, hoursPerDay, days, totalPrice, location, startTime, endTime, dates, maxSpots, spotsRemaining: editingCampIndex !== null ? Math.min(existingSpotsRemaining, maxSpots) : maxSpots };
 
         if (editingCampIndex !== null) {
             setCampOfferings(prev => prev.map((c, i) => i === editingCampIndex ? camp : c));
@@ -456,7 +538,7 @@ export default function TrainerEditProfilePage() {
         } else {
             setCampOfferings(prev => [...prev, camp]);
         }
-        setCampForm({ name: "", hoursPerDay: "", days: "", totalPrice: "" });
+        setCampForm({ name: "", hoursPerDay: "", days: "", totalPrice: "", location: "", startTime: "", endTime: "", maxSpots: "", startDate: "", endDate: "" }); setCampDates([""]);
         setShowCampForm(false);
     };
 
@@ -467,6 +549,12 @@ export default function TrainerEditProfilePage() {
             hoursPerDay: camp.hoursPerDay.toString(),
             days: camp.days.toString(),
             totalPrice: camp.totalPrice.toString(),
+            location: camp.location || "",
+            startTime: camp.startTime || "",
+            endTime: camp.endTime || "",
+            maxSpots: camp.maxSpots?.toString() || "",
+            startDate: camp.dates?.[0] || "",
+            endDate: camp.dates?.[1] || "",
         });
         setEditingCampIndex(index);
         setShowCampForm(true);
@@ -693,20 +781,22 @@ export default function TrainerEditProfilePage() {
                 <div className="bg-[#1A1C23] border border-white/5 rounded-[20px] p-6 lg:p-8 shadow-md">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
-                            <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">First Name</label>
+                            <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">First Name <span className="text-red-400">*</span></label>
                             <input
                                 value={formData.firstName}
-                                onChange={(e) => setFormData((p) => ({ ...p, firstName: e.target.value }))}
-                                className="w-full bg-[#12141A] border border-white/5 rounded-2xl px-5 py-3.5 text-white text-sm outline-none focus:border-primary/50 transition-colors"
+                                onChange={(e) => { setFormData((p) => ({ ...p, firstName: e.target.value })); setFieldErrors((p) => { const n = { ...p }; delete n.firstName; return n; }); }}
+                                className={`w-full bg-[#12141A] border rounded-2xl px-5 py-3.5 text-white text-sm outline-none transition-colors ${fieldErrors.firstName ? "border-red-500/50 focus:border-red-500/70" : "border-white/5 focus:border-primary/50"}`}
                             />
+                            {fieldErrors.firstName && <p className="mt-1.5 text-[11px] text-red-400 font-semibold flex items-center gap-1"><AlertTriangle size={11} /> {fieldErrors.firstName}</p>}
                         </div>
                         <div>
-                            <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">Last Name</label>
+                            <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">Last Name <span className="text-red-400">*</span></label>
                             <input
                                 value={formData.lastName}
-                                onChange={(e) => setFormData((p) => ({ ...p, lastName: e.target.value }))}
-                                className="w-full bg-[#12141A] border border-white/5 rounded-2xl px-5 py-3.5 text-white text-sm outline-none focus:border-primary/50 transition-colors"
+                                onChange={(e) => { setFormData((p) => ({ ...p, lastName: e.target.value })); setFieldErrors((p) => { const n = { ...p }; delete n.lastName; return n; }); }}
+                                className={`w-full bg-[#12141A] border rounded-2xl px-5 py-3.5 text-white text-sm outline-none transition-colors ${fieldErrors.lastName ? "border-red-500/50 focus:border-red-500/70" : "border-white/5 focus:border-primary/50"}`}
                             />
+                            {fieldErrors.lastName && <p className="mt-1.5 text-[11px] text-red-400 font-semibold flex items-center gap-1"><AlertTriangle size={11} /> {fieldErrors.lastName}</p>}
                         </div>
                         <div>
                             <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">Email</label>
@@ -721,10 +811,11 @@ export default function TrainerEditProfilePage() {
                             <input
                                 type="tel"
                                 value={formData.phone}
-                                onChange={(e) => setFormData((p) => ({ ...p, phone: e.target.value }))}
+                                onChange={(e) => { setFormData((p) => ({ ...p, phone: e.target.value })); setFieldErrors((p) => { const n = { ...p }; delete n.phone; return n; }); }}
                                 placeholder="(555) 123-4567"
-                                className="w-full bg-[#12141A] border border-white/5 rounded-2xl px-5 py-3.5 text-white text-sm outline-none focus:border-primary/50 transition-colors"
+                                className={`w-full bg-[#12141A] border rounded-2xl px-5 py-3.5 text-white text-sm outline-none transition-colors ${fieldErrors.phone ? "border-red-500/50 focus:border-red-500/70" : "border-white/5 focus:border-primary/50"}`}
                             />
+                            {fieldErrors.phone && <p className="mt-1.5 text-[11px] text-red-400 font-semibold flex items-center gap-1"><AlertTriangle size={11} /> {fieldErrors.phone}</p>}
                         </div>
                     </div>
                 </div>
@@ -868,10 +959,24 @@ export default function TrainerEditProfilePage() {
                                     value={formData.city ? { city: formData.city, state: formData.state || "", country: "", lat: null, lng: null } : null}
                                     onChange={(loc: LocationValue) => {
                                         if (loc) {
+                                            const newZip = loc.zipCode || formData.zipCode;
+                                            const newCountry = loc.country ? detectCountry(newZip) : detectCountry(formData.zipCode);
+                                            const prevCountry = detectCountry(formData.zipCode);
+                                            // Auto-switch radius km/mi when country changes
+                                            if (loc.country && newCountry !== prevCountry) {
+                                                const currentVal = parseInt(displayRadius) || 20;
+                                                if (newCountry === "CA") {
+                                                    setDisplayRadius(String(Math.round(miToKm(currentVal))));
+                                                } else if (prevCountry === "CA") {
+                                                    setDisplayRadius(String(Math.round(kmToMi(currentVal))));
+                                                }
+                                            }
                                             setFormData((p) => ({
                                                 ...p,
                                                 city: loc.city,
                                                 state: loc.state,
+                                                country: loc.country || p.country,
+                                                ...(loc.zipCode ? { zipCode: loc.zipCode } : {}),
                                             }));
                                         }
                                     }}
@@ -883,17 +988,49 @@ export default function TrainerEditProfilePage() {
                                 <input
                                     type="text"
                                     value={formData.zipCode}
-                                    onChange={(e) => setFormData((p) => ({ ...p, zipCode: e.target.value }))}
-                                    placeholder="e.g. 90210"
-                                    className="w-full bg-[#12141A] border border-white/5 rounded-2xl px-5 py-3.5 text-white text-sm outline-none focus:border-primary/50 transition-colors"
+                                    onChange={(e) => {
+                                        const zip = e.target.value;
+                                        const newCountry = detectCountry(zip);
+                                        const prevCountry = detectCountry(formData.zipCode);
+                                        if (newCountry !== prevCountry) {
+                                            const currentVal = parseInt(displayRadius) || 20;
+                                            if (newCountry === "CA") {
+                                                setDisplayRadius(String(Math.round(miToKm(currentVal))));
+                                            } else if (prevCountry === "CA") {
+                                                setDisplayRadius(String(Math.round(kmToMi(currentVal))));
+                                            }
+                                        }
+                                        setFormData((p) => ({ ...p, zipCode: zip }));
+                                        setFieldErrors((p) => { const n = { ...p }; delete n.zipCode; return n; });
+                                    }}
+                                    placeholder="e.g. 90210 or K0L 1B0"
+                                    className={`w-full bg-[#12141A] border rounded-2xl px-5 py-3.5 text-white text-sm outline-none transition-colors ${
+                                        (() => {
+                                            if (!formData.zipCode.trim()) return false;
+                                            const zc = detectCountry(formData.zipCode);
+                                            if (zc === "OTHER") return true;
+                                            return formData.country && formData.country !== zc;
+                                        })()
+                                            ? "border-red-500/50 focus:border-red-500"
+                                            : "border-white/5 focus:border-primary/50"
+                                    }`}
                                 />
+                                {formData.zipCode.trim() && (() => {
+                                    const zipC = detectCountry(formData.zipCode);
+                                    if (zipC === "OTHER") return <p className="text-[11px] text-red-400 font-bold mt-2">Enter a valid US ZIP (e.g. 90210) or Canadian postal code (e.g. K0L 1B0)</p>;
+                                    if (formData.country && formData.country !== zipC) {
+                                        const cn = formData.country === "CA" ? "Canada" : formData.country === "US" ? "the US" : formData.country;
+                                        return <p className="text-[11px] text-red-400 font-bold mt-2">Your city is in {cn} — postal code doesn&apos;t match</p>;
+                                    }
+                                    return null;
+                                })()}
                             </div>
                             <div>
-                                <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">Travel Radius (Miles)</label>
+                                <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">Travel Radius ({radiusUnit(detectCountry(formData.zipCode)) === "km" ? "Kilometers" : "Miles"})</label>
                                 <input
                                     type="number"
-                                    value={formData.travelRadius}
-                                    onChange={(e) => setFormData((p) => ({ ...p, travelRadius: e.target.value }))}
+                                    value={displayRadius}
+                                    onChange={(e) => setDisplayRadius(e.target.value)}
                                     min="1"
                                     max="100"
                                     className="w-full bg-[#12141A] border border-white/5 rounded-2xl px-5 py-3.5 text-white text-sm outline-none focus:border-primary/50 transition-colors"
@@ -1197,34 +1334,111 @@ export default function TrainerEditProfilePage() {
                                     )}
 
                                     {/* Existing camps list */}
-                                    {campOfferings.map((camp, idx) => (
-                                        <div key={idx} className="flex items-center justify-between p-4 bg-[#12141A] border border-white/5 rounded-xl">
-                                            <div className="min-w-0">
-                                                <p className="text-white text-sm font-bold truncate">{camp.name}</p>
-                                                <p className="text-text-main/50 text-xs mt-0.5">
-                                                    {camp.hoursPerDay} hrs/day &times; {camp.days} days &mdash; ${camp.totalPrice.toLocaleString()}
-                                                </p>
+                                    {campOfferings.map((camp, idx) => {
+                                        const spotsLeft = camp.spotsRemaining ?? camp.maxSpots;
+                                        const spotsPercent = camp.maxSpots > 0 ? (spotsLeft / camp.maxSpots) * 100 : 100;
+                                        const isFull = spotsLeft <= 0;
+                                        // Auto-calculate end time for display
+                                        let endTimeDisplay = camp.endTime || "";
+                                        if (camp.startTime && camp.hoursPerDay && !camp.endTime) {
+                                            const [sh, sm] = camp.startTime.split(":").map(Number);
+                                            const total = sh * 60 + sm + camp.hoursPerDay * 60;
+                                            const eH = Math.floor(total / 60) % 24;
+                                            const eM = Math.round(total % 60);
+                                            endTimeDisplay = `${String(eH).padStart(2, "0")}:${String(eM).padStart(2, "0")}`;
+                                        }
+                                        // Format time to 12h
+                                        const to12h = (t: string) => {
+                                            if (!t) return "";
+                                            const [h, m] = t.split(":").map(Number);
+                                            const ampm = h >= 12 ? "PM" : "AM";
+                                            return `${h % 12 || 12}:${String(m).padStart(2, "0")} ${ampm}`;
+                                        };
+                                        // Format dates
+                                        const formatDate = (d: string) => {
+                                            const dt = new Date(d + "T00:00:00");
+                                            return dt.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+                                        };
+                                        const startDateStr = camp.dates?.[0] ? formatDate(camp.dates[0]) : "";
+                                        const endDateStr = camp.dates?.[1] ? formatDate(camp.dates[1]) : "";
+
+                                        return (
+                                            <div key={idx} className={`relative rounded-2xl border overflow-hidden transition-all ${isFull ? "border-red-500/20 bg-red-500/[0.02]" : "border-white/5 bg-[#12141A]"}`}>
+                                                {/* Top accent bar */}
+                                                <div className={`h-1 w-full ${isFull ? "bg-red-500/30" : "bg-primary/20"}`} />
+
+                                                <div className="p-5">
+                                                    {/* Header row */}
+                                                    <div className="flex items-start justify-between mb-4">
+                                                        <div>
+                                                            <h4 className="text-white font-black text-[15px] tracking-wide">{camp.name}</h4>
+                                                            <p className="text-primary font-black text-lg mt-0.5">${camp.totalPrice.toLocaleString()}</p>
+                                                        </div>
+                                                        <div className="flex items-center gap-1.5">
+                                                            <button type="button" onClick={() => handleEditCamp(idx)} className="w-8 h-8 rounded-lg bg-white/5 border border-white/5 text-text-main/40 flex items-center justify-center hover:text-primary hover:bg-primary/10 hover:border-primary/20 transition-all">
+                                                                <Pencil size={13} />
+                                                            </button>
+                                                            <button type="button" onClick={() => handleRemoveCamp(idx)} className="w-8 h-8 rounded-lg bg-white/5 border border-white/5 text-text-main/30 flex items-center justify-center hover:text-red-400 hover:bg-red-500/10 hover:border-red-500/20 transition-all">
+                                                                <Trash2 size={13} />
+                                                            </button>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Info grid */}
+                                                    <div className="grid grid-cols-2 gap-3 mb-4">
+                                                        <div className="bg-white/[0.03] rounded-xl px-3 py-2.5 border border-white/[0.04]">
+                                                            <p className="text-[9px] font-bold text-text-main/30 uppercase tracking-widest mb-1">Duration</p>
+                                                            <p className="text-white text-xs font-bold">{camp.hoursPerDay} hrs/day &times; {camp.days} days</p>
+                                                        </div>
+                                                        {camp.startTime && (
+                                                            <div className="bg-white/[0.03] rounded-xl px-3 py-2.5 border border-white/[0.04]">
+                                                                <p className="text-[9px] font-bold text-text-main/30 uppercase tracking-widest mb-1">Time</p>
+                                                                <p className="text-white text-xs font-bold flex items-center gap-1">
+                                                                    <Clock size={10} className="text-primary/50" />
+                                                                    {to12h(camp.startTime)}{endTimeDisplay ? ` – ${to12h(endTimeDisplay)}` : ""}
+                                                                </p>
+                                                            </div>
+                                                        )}
+                                                        {camp.location && (
+                                                            <div className="bg-white/[0.03] rounded-xl px-3 py-2.5 border border-white/[0.04]">
+                                                                <p className="text-[9px] font-bold text-text-main/30 uppercase tracking-widest mb-1">Location</p>
+                                                                <p className="text-white text-xs font-bold flex items-center gap-1 truncate">
+                                                                    <MapPin size={10} className="text-primary/50 shrink-0" />
+                                                                    {camp.location}
+                                                                </p>
+                                                            </div>
+                                                        )}
+                                                        {startDateStr && (
+                                                            <div className="bg-white/[0.03] rounded-xl px-3 py-2.5 border border-white/[0.04]">
+                                                                <p className="text-[9px] font-bold text-text-main/30 uppercase tracking-widest mb-1">Dates</p>
+                                                                <p className="text-white text-xs font-bold">
+                                                                    {startDateStr}{endDateStr ? ` → ${endDateStr}` : ""}
+                                                                </p>
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    {/* Spots progress bar */}
+                                                    {camp.maxSpots > 0 && (
+                                                        <div>
+                                                            <div className="flex items-center justify-between mb-1.5">
+                                                                <span className="text-[10px] font-bold text-text-main/40 uppercase tracking-widest">Spots</span>
+                                                                <span className={`text-[11px] font-black ${isFull ? "text-red-400" : spotsPercent < 30 ? "text-amber-400" : "text-emerald-400"}`}>
+                                                                    {isFull ? "SOLD OUT" : `${spotsLeft}/${camp.maxSpots} available`}
+                                                                </span>
+                                                            </div>
+                                                            <div className="w-full h-1.5 rounded-full bg-white/5 overflow-hidden">
+                                                                <div
+                                                                    className={`h-full rounded-full transition-all ${isFull ? "bg-red-500/50" : spotsPercent < 30 ? "bg-amber-500" : "bg-emerald-500"}`}
+                                                                    style={{ width: `${Math.max(2, spotsPercent)}%` }}
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </div>
-                                            <div className="flex items-center gap-2 shrink-0 ml-3">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleEditCamp(idx)}
-                                                    className="p-2 rounded-lg text-text-main/40 hover:text-primary hover:bg-primary/10 transition-all"
-                                                    title="Edit camp"
-                                                >
-                                                    <Pencil size={14} />
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleRemoveCamp(idx)}
-                                                    className="p-2 rounded-lg text-text-main/30 hover:text-red-400 hover:bg-red-500/10 transition-all"
-                                                    title="Remove camp"
-                                                >
-                                                    <Trash2 size={14} />
-                                                </button>
-                                            </div>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
 
                                     {/* Inline camp form */}
                                     {showCampForm && (
@@ -1273,6 +1487,72 @@ export default function TrainerEditProfilePage() {
                                                         className="w-full bg-[#1A1C23] border border-white/5 rounded-xl px-4 py-2.5 text-white text-sm outline-none focus:border-primary/50 transition-colors placeholder:text-text-main/30"
                                                     />
                                                 </div>
+                                                <div className="sm:col-span-2">
+                                                    <label className="block text-[10px] font-bold text-text-main/50 uppercase tracking-wider mb-1.5">Location</label>
+                                                    <LocationAutocomplete
+                                                        value={campForm.location ? { city: campForm.location, state: "", country: "", lat: null, lng: null } : null}
+                                                        onChange={(loc: LocationValue) => {
+                                                            setCampForm(p => ({ ...p, location: loc ? `${loc.city}${loc.state ? `, ${loc.state}` : ""}` : "" }));
+                                                        }}
+                                                        placeholder="e.g. XYZ Arena, Toronto"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-[10px] font-bold text-text-main/50 uppercase tracking-wider mb-1.5">Start Time</label>
+                                                    <input
+                                                        type="time"
+                                                        value={campForm.startTime}
+                                                        onChange={(e) => setCampForm(p => ({ ...p, startTime: e.target.value }))}
+                                                        className="w-full bg-[#1A1C23] border border-white/5 rounded-xl px-4 py-2.5 text-white text-sm outline-none focus:border-primary/50 transition-colors"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-[10px] font-bold text-text-main/50 uppercase tracking-wider mb-1.5">End Time</label>
+                                                    <div className="w-full bg-[#1A1C23] border border-white/5 rounded-xl px-4 py-2.5 text-sm text-text-main/50">
+                                                        {campForm.startTime && campForm.hoursPerDay ? (() => {
+                                                            const [h, m] = campForm.startTime.split(":").map(Number);
+                                                            const totalMins = h * 60 + m + parseFloat(campForm.hoursPerDay) * 60;
+                                                            const endH = Math.floor(totalMins / 60) % 24;
+                                                            const endM = Math.round(totalMins % 60);
+                                                            const ampm = endH >= 12 ? "PM" : "AM";
+                                                            const h12 = endH % 12 || 12;
+                                                            return `${h12}:${String(endM).padStart(2, "0")} ${ampm} (auto-calculated)`;
+                                                        })() : "Set start time & hours/day"}
+                                                    </div>
+                                                </div>
+                                                {/* Camp Start Date */}
+                                                <div>
+                                                    <label className="block text-[10px] font-bold text-text-main/50 uppercase tracking-wider mb-1.5">Start Date</label>
+                                                    <input
+                                                        type="date"
+                                                        value={campForm.startDate}
+                                                        min={new Date().toISOString().split("T")[0]}
+                                                        onChange={(e) => setCampForm(p => ({ ...p, startDate: e.target.value }))}
+                                                        className="w-full bg-[#1A1C23] border border-white/5 rounded-xl px-4 py-2.5 text-white text-sm outline-none focus:border-primary/50 transition-colors"
+                                                    />
+                                                </div>
+                                                {/* Auto-calculated End Date */}
+                                                <div>
+                                                    <label className="block text-[10px] font-bold text-text-main/50 uppercase tracking-wider mb-1.5">End Date</label>
+                                                    <div className="w-full bg-[#1A1C23] border border-white/5 rounded-xl px-4 py-2.5 text-sm text-text-main/50">
+                                                        {campForm.startDate && campForm.days ? (() => {
+                                                            const sd = new Date(campForm.startDate + "T00:00:00");
+                                                            sd.setDate(sd.getDate() + parseInt(campForm.days) - 1);
+                                                            return sd.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" }) + " (auto)";
+                                                        })() : "Set start date & days"}
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-[10px] font-bold text-text-main/50 uppercase tracking-wider mb-1.5">Max Spots</label>
+                                                    <input
+                                                        type="number"
+                                                        min="1"
+                                                        value={campForm.maxSpots}
+                                                        onChange={(e) => setCampForm(p => ({ ...p, maxSpots: e.target.value }))}
+                                                        placeholder="e.g. 20"
+                                                        className="w-full bg-[#1A1C23] border border-white/5 rounded-xl px-4 py-2.5 text-white text-sm outline-none focus:border-primary/50 transition-colors placeholder:text-text-main/30"
+                                                    />
+                                                </div>
                                             </div>
                                             <div className="flex items-center gap-2 pt-1">
                                                 <button
@@ -1284,7 +1564,7 @@ export default function TrainerEditProfilePage() {
                                                 </button>
                                                 <button
                                                     type="button"
-                                                    onClick={() => { setShowCampForm(false); setEditingCampIndex(null); setCampForm({ name: "", hoursPerDay: "", days: "", totalPrice: "" }); }}
+                                                    onClick={() => { setShowCampForm(false); setEditingCampIndex(null); setCampForm({ name: "", hoursPerDay: "", days: "", totalPrice: "", location: "", startTime: "", endTime: "", maxSpots: "", startDate: "", endDate: "" }); setCampDates([""]); }}
                                                     className="px-4 py-2 rounded-xl text-text-main/50 text-xs font-bold hover:text-white transition-all"
                                                 >
                                                     Cancel
@@ -1296,7 +1576,7 @@ export default function TrainerEditProfilePage() {
                                     {!showCampForm && (
                                         <button
                                             type="button"
-                                            onClick={() => { setShowCampForm(true); setEditingCampIndex(null); setCampForm({ name: "", hoursPerDay: "", days: "", totalPrice: "" }); }}
+                                            onClick={() => { setShowCampForm(true); setEditingCampIndex(null); setCampForm({ name: "", hoursPerDay: "", days: "", totalPrice: "", location: "", startTime: "", endTime: "", maxSpots: "", startDate: "", endDate: "" }); setCampDates([""]); }}
                                             className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/4 border border-white/10 text-text-main/60 text-xs font-bold hover:border-primary/30 hover:text-primary transition-all"
                                         >
                                             <Plus size={14} /> Add Camp

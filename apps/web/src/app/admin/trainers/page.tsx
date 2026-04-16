@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Download, Plus, FileText, CheckCircle, Search, XCircle, ChevronLeft, ChevronRight, UserCheck, Clock, Award, ExternalLink, ShieldCheck, ShieldX, X, Mail, Phone, MapPin, Calendar, CreditCard, Loader2, Activity, DollarSign, ImageIcon, Eye, Check } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
@@ -19,6 +20,7 @@ type DocsModalState = {
 };
 
 export default function AdminTrainersPage() {
+    const router = useRouter();
     const [searchQuery, setSearchQuery] = useState("");
     const [activeTab, setActiveTab] = useState("Pending");
     const [trainers, setTrainers] = useState<any[]>([]);
@@ -350,6 +352,7 @@ export default function AdminTrainersPage() {
                 }))}
                 title="Trainer Locations"
                 subtitle="Track where trainers are concentrated and where coverage is lacking"
+                onPinClick={(pin) => router.push(`/dashboard/trainers/${pin.id}`)}
             />
 
             {/* Search & Tabs */}

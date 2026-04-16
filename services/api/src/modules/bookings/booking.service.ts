@@ -431,7 +431,7 @@ export class BookingService {
                 bookingId: booking.id,
                 amount: booking.totalPaid,
                 platformFee: booking.platformFee,
-                trainerPayout: Number(booking.price) - Number(booking.platformFee),
+                trainerPayout: Number(booking.price),
                 status: 'held',
                 holdUntil: new Date(Date.now() + holdHours * 60 * 60 * 1000),
             },

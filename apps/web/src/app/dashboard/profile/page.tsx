@@ -210,8 +210,8 @@ export default function ProfilePage() {
         if (!form.lastName.trim()) errors.lastName = "Last name is required";
         else if (form.lastName.trim().length < 2) errors.lastName = "Must be at least 2 characters";
 
-        if (form.phone && !/^\+?[\d\s\-()\/.]{7,15}$/.test(form.phone))
-            errors.phone = "Enter a valid phone number";
+        if (form.phone && !/^\+?[\d\s\-()\/.]{10,}$/.test(form.phone))
+            errors.phone = "Enter a valid phone number (10+ digits)";
 
         if (form.dateOfBirth) {
             const dob = new Date(form.dateOfBirth);
@@ -219,6 +219,16 @@ export default function ProfilePage() {
             if (isNaN(dob.getTime())) errors.dateOfBirth = "Invalid date";
             else if (age < 5) errors.dateOfBirth = "Age must be at least 5 years";
             else if (age > 120) errors.dateOfBirth = "Invalid date of birth";
+        }
+
+        if (form.zipCode) {
+            const zipCountry = detectCountry(form.zipCode);
+            if (zipCountry === "OTHER") {
+                errors.zipCode = "Enter a valid US ZIP (e.g. 90210) or Canadian postal code (e.g. K0L 1B0)";
+            } else if (form.country && form.country !== zipCountry) {
+                const countryName = form.country === "CA" ? "Canada" : form.country === "US" ? "the US" : form.country;
+                errors.zipCode = `Your city is in ${countryName} — postal code doesn't match`;
+            }
         }
 
         if (user?.role === "trainer") {
@@ -242,12 +252,6 @@ export default function ProfilePage() {
 
         if (user?.role === "athlete") {
             if (form.sports.length === 0) errors.sports = "Select at least one sport";
-            if (form.zipCode) {
-                const isUsZip = /^\d{5}(-\d{4})?$/.test(form.zipCode.trim());
-                const isCaPostal = /^[A-Za-z]\d[A-Za-z][ -]?\d[A-Za-z]\d$/.test(form.zipCode.trim());
-                if (!isUsZip && !isCaPostal)
-                    errors.zipCode = "Enter a valid US ZIP or Canadian postal code";
-            }
         }
 
         setFieldErrors(errors);
@@ -644,6 +648,7 @@ export default function ProfilePage() {
                                             country: loc.country || form.country,
                                             latitude: loc.lat,
                                             longitude: loc.lng,
+                                            ...(loc.zipCode ? { zipCode: loc.zipCode } : {}),
                                         });
                                     } else {
                                         updateForm({ city: "", state: "", country: "", latitude: null, longitude: null });

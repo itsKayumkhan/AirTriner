@@ -154,7 +154,7 @@ export default function EarningsPage() {
         let rows: string[][]
         if (isTrainer) {
             rows = completedBookings.map((b) => [
-                new Date(b.scheduled_at).toLocaleDateString(),
+                new Date(b.scheduled_at).toISOString().slice(0, 10),
                 '',
                 formatSportName(b.sport),
                 String(b.duration_minutes || 60),
@@ -164,7 +164,7 @@ export default function EarningsPage() {
             ])
         } else {
             rows = athleteTransactions.map((t) => [
-                new Date(t.created_at).toLocaleDateString(),
+                new Date(t.created_at).toISOString().slice(0, 10),
                 t.trainer_name || '',
                 formatSportName(t.booking?.sport || ''),
                 String(t.booking?.duration_minutes || 60),

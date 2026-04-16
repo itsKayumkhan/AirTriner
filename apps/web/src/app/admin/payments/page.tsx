@@ -227,10 +227,11 @@ export default function AdminPaymentsPage() {
 
     const handleExportCSV = () => {
         const csvHeaders = ["Transaction ID", "Customer", "Trainer", "Date", "Amount", "Platform Fee", "Trainer Payout", "Status"];
+        const quoteCell = (val: string) => `"${String(val).replace(/"/g, '""')}"`;
         const csvRows = transactions.map(t =>
-            [t.displayId, t.customer, t.trainer, t.date, t.amount, t.platformFee, t.trainerPayout, t.status].join(",")
+            [t.displayId, t.customer, t.trainer, t.date, t.amount, t.platformFee, t.trainerPayout, t.status].map(quoteCell).join(",")
         );
-        const csvContent = [csvHeaders.join(","), ...csvRows].join("\n");
+        const csvContent = [csvHeaders.map(quoteCell).join(","), ...csvRows].join("\n");
         const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
         const link = document.createElement("a");
         link.href = URL.createObjectURL(blob);

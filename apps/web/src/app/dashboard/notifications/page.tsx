@@ -118,6 +118,53 @@ export default function NotificationsPage() {
                     });
 
                 if (bookingError) throw bookingError;
+
+                // Camp spots management with race condition protection
+                const proposedCamp = proposed?.camp;
+                if (proposedCamp && proposedCamp.name && offer.trainer_id) {
+                    // Retry loop for optimistic concurrency control
+                    let retries = 3;
+                    while (retries > 0) {
+                        // 1. Fetch latest camp data (fresh read every attempt)
+                        const { data: trainerProfile } = await supabase
+                            .from("trainer_profiles")
+                            .select("camp_offerings")
+                            .eq("user_id", offer.trainer_id)
+                            .maybeSingle();
+
+                        if (!trainerProfile?.camp_offerings || !Array.isArray(trainerProfile.camp_offerings)) break;
+
+                        const campIndex = trainerProfile.camp_offerings.findIndex((c: any) => c.name === proposedCamp.name);
+                        if (campIndex === -1) break;
+
+                        const currentCamp = trainerProfile.camp_offerings[campIndex] as any;
+                        const currentSpots = currentCamp.spotsRemaining ?? currentCamp.maxSpots ?? 0;
+
+                        // 2. Check if camp is full BEFORE decrementing
+                        if (currentSpots <= 0) {
+                            // Camp is full -- reject the offer instead of accepting
+                            await supabase.from("training_offers").update({ status: "declined" }).eq("id", offerId);
+                            throw new Error("This camp is now full. The offer has been automatically declined.");
+                        }
+
+                        // 3. Decrement and save
+                        const updatedCamps = trainerProfile.camp_offerings.map((c: any, i: number) => {
+                            if (i === campIndex) {
+                                return { ...c, spotsRemaining: currentSpots - 1 };
+                            }
+                            return c;
+                        });
+
+                        const { error: updateError } = await supabase
+                            .from("trainer_profiles")
+                            .update({ camp_offerings: updatedCamps })
+                            .eq("user_id", offer.trainer_id);
+
+                        if (!updateError) break; // Success
+                        retries--;
+                        if (retries === 0) console.error("Failed to update camp spots after retries");
+                    }
+                }
             }
 
             // 3. Update the training offer status

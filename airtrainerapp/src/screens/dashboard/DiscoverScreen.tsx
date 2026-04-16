@@ -514,6 +514,13 @@ export default function DiscoverScreen({ navigation }: any) {
                 break;
         }
 
+        // Founding 50 trainers always appear at the top, preserving sort order within each group
+        result.sort((a, b) => {
+            const aFounder = a.is_founding_50 ? 1 : 0;
+            const bFounder = b.is_founding_50 ? 1 : 0;
+            return bFounder - aFounder;
+        });
+
         return result;
     }, [trainers, searchQuery, sportFilter, locationFilter, maxRate, minRating, skillFilter, timeFilter, durationFilter, sortBy, sportLabels, user]);
 

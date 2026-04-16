@@ -27,9 +27,10 @@ interface LocationMapProps {
     pins: LocationPin[];
     title?: string;
     subtitle?: string;
+    onPinClick?: (pin: LocationPin) => void;
 }
 
-export default function LocationMap({ pins, title = "Location Heatmap", subtitle }: LocationMapProps) {
+export default function LocationMap({ pins, title = "Location Heatmap", subtitle, onPinClick }: LocationMapProps) {
     const mapRef = useRef<HTMLDivElement>(null);
     const leafletMap = useRef<any>(null);
     const markersGroup = useRef<any>(null);
@@ -110,7 +111,7 @@ export default function LocationMap({ pins, title = "Location Heatmap", subtitle
                     </div>`,
                     iconSize: [10, 10], iconAnchor: [5, 5],
                 });
-                L.marker([p.lat, p.lng], { icon }).addTo(group).bindPopup(
+                const marker = L.marker([p.lat, p.lng], { icon }).addTo(group).bindPopup(
                     `<div style="font-family:'Segoe UI',system-ui,sans-serif;padding:6px 2px;min-width:160px;">
                         <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
                             <div style="width:28px;height:28px;border-radius:8px;background:${color}18;display:flex;align-items:center;justify-content:center;">
@@ -122,10 +123,17 @@ export default function LocationMap({ pins, title = "Location Heatmap", subtitle
                             </div>
                         </div>
                         ${p.sport ? `<div style="font-size:11px;color:#94a3b8;margin-bottom:2px;">Sport: <span style="color:#e2e8f0;">${p.sport}</span></div>` : ""}
-                        ${p.city ? `<div style="font-size:11px;color:#94a3b8;">Location: <span style="color:#e2e8f0;">${p.city}${p.state ? `, ${p.state}` : ""}</span></div>` : ""}
+                        ${p.city ? `<div style="font-size:11px;color:#94a3b8;margin-bottom:4px;">Location: <span style="color:#e2e8f0;">${p.city}${p.state ? `, ${p.state}` : ""}</span></div>` : ""}
+                        ${onPinClick ? `<button data-pin-id="${p.id}" class="loc-map-view-btn" style="margin-top:8px;width:100%;padding:6px 12px;border-radius:8px;background:${color};color:#0A0D14;font-size:11px;font-weight:700;border:none;cursor:pointer;letter-spacing:0.5px;transition:opacity 0.2s;" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">View Profile</button>` : ""}
                     </div>`,
                     { className: "dark-popup", closeButton: false }
                 );
+                if (onPinClick) {
+                    marker.on("popupopen", () => {
+                        const btn = document.querySelector(`button[data-pin-id="${p.id}"]`);
+                        if (btn) btn.addEventListener("click", () => onPinClick(p));
+                    });
+                }
             });
             if (valid.length > 0) map.fitBounds(L.latLngBounds(valid.map((p: any) => [p.lat, p.lng])), { padding: [60, 60], maxZoom: 6 });
         } else {
@@ -179,7 +187,7 @@ export default function LocationMap({ pins, title = "Location Heatmap", subtitle
             });
             if (heatZones.length > 0) map.fitBounds(L.latLngBounds(heatZones.map((z: any) => [z.lat, z.lng])), { padding: [60, 60], maxZoom: 6 });
         }
-    }, [view, pins, mapReady, heatZones, maxCount]);
+    }, [view, pins, mapReady, heatZones, maxCount, onPinClick]);
 
 
     const getZoneColor = (count: number) => {

@@ -14,6 +14,7 @@ export type LocationResult = {
   lat: number;
   lng: number;
   displayName: string;
+  zipCode?: string;
 };
 
 /** Minimal interface every location provider must satisfy. */

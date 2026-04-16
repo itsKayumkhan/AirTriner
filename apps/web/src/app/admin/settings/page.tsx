@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { getSession, AuthUser } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
-import { Settings, Save, RefreshCw, Shield, Bell, Globe, CreditCard, Users, Calendar, AlertOctagon } from "lucide-react";
+import { Settings, Save, RefreshCw, Shield, Bell, Globe, CreditCard, Users, Calendar, AlertOctagon, TrendingUp } from "lucide-react";
 import PopupModal from "@/components/common/PopupModal";
 
 interface PlatformSettings {
@@ -15,7 +15,26 @@ interface PlatformSettings {
     dispute_resolution_days: number;
     support_email: string;
     maintenance_mode: boolean;
+    allowed_countries: string[];
 }
+
+const ALL_COUNTRIES = [
+    { code: "US", name: "United States", flag: "🇺🇸" },
+    { code: "CA", name: "Canada", flag: "🇨🇦" },
+    { code: "GB", name: "United Kingdom", flag: "🇬🇧" },
+    { code: "AU", name: "Australia", flag: "🇦🇺" },
+    { code: "IN", name: "India", flag: "🇮🇳" },
+    { code: "DE", name: "Germany", flag: "🇩🇪" },
+    { code: "FR", name: "France", flag: "🇫🇷" },
+    { code: "BR", name: "Brazil", flag: "🇧🇷" },
+    { code: "MX", name: "Mexico", flag: "🇲🇽" },
+    { code: "JP", name: "Japan", flag: "🇯🇵" },
+    { code: "NZ", name: "New Zealand", flag: "🇳🇿" },
+    { code: "IE", name: "Ireland", flag: "🇮🇪" },
+    { code: "ZA", name: "South Africa", flag: "🇿🇦" },
+    { code: "AE", name: "UAE", flag: "🇦🇪" },
+    { code: "SG", name: "Singapore", flag: "🇸🇬" },
+];
 
 export default function AdminSettingsPage() {
     const [user, setUser] = useState<AuthUser | null>(null);
@@ -31,6 +50,7 @@ export default function AdminSettingsPage() {
         dispute_resolution_days: 7,
         support_email: "support@airtrainer.com",
         maintenance_mode: false,
+        allowed_countries: ["US", "CA"],
     });
     const [popup, setPopup] = useState<{
         type: "success" | "error" | "confirm" | "warning" | "info";
@@ -38,6 +58,8 @@ export default function AdminSettingsPage() {
         message: string;
         onConfirm?: () => void;
     } | null>(null);
+
+    const [locationLeads, setLocationLeads] = useState<{ country: string; count: number }[]>([]);
 
     const showAlert = (type: "success" | "error" | "info", title: string, message: string) => {
         setPopup({ type, title, message });
@@ -77,9 +99,26 @@ export default function AdminSettingsPage() {
                     dispute_resolution_days: data.dispute_resolution_days,
                     support_email: data.support_email,
                     maintenance_mode: data.maintenance_mode,
+                    allowed_countries: data.allowed_countries || ["US", "CA"],
                 };
                 setSettings(loaded);
                 setOriginalSettings(loaded);
+            }
+            // Load location leads
+            const { data: leads } = await supabase
+                .from("location_leads")
+                .select("searched_country");
+            if (leads?.length) {
+                const counts: Record<string, number> = {};
+                leads.forEach((l: { searched_country: string }) => {
+                    const c = l.searched_country || "Unknown";
+                    counts[c] = (counts[c] || 0) + 1;
+                });
+                setLocationLeads(
+                    Object.entries(counts)
+                        .map(([country, count]) => ({ country, count }))
+                        .sort((a, b) => b.count - a.count)
+                );
             }
         } catch (err) {
             console.error("Failed to load settings:", err);
@@ -365,6 +404,97 @@ export default function AdminSettingsPage() {
                     </div>
                 </div>
             </div>
+
+            {/* Allowed Countries */}
+            <div className="bg-gradient-to-br from-surface to-surface/50 border border-white/5 rounded-[24px] p-8 shadow-2xl relative overflow-hidden">
+                <div className="flex items-center gap-4 mb-8">
+                    <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20 text-emerald-500">
+                        <Globe size={24} />
+                    </div>
+                    <div>
+                        <h3 className="text-xl font-black text-text-main uppercase tracking-widest">Country Access</h3>
+                        <p className="text-xs font-semibold uppercase tracking-widest text-text-main/40 mt-1">Where AirTrainr operates</p>
+                    </div>
+                </div>
+                <p className="text-xs text-text-main/50 font-medium mb-5">
+                    Select which countries trainers and athletes can register from. Only users from allowed countries will appear in search results.
+                </p>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                    {ALL_COUNTRIES.map((c) => {
+                        const isActive = settings.allowed_countries.includes(c.code);
+                        return (
+                            <button
+                                key={c.code}
+                                type="button"
+                                onClick={() => {
+                                    if (isActive) {
+                                        if (settings.allowed_countries.length <= 1) return; // Keep at least 1
+                                        handleSettingChange("allowed_countries", settings.allowed_countries.filter(cc => cc !== c.code));
+                                    } else {
+                                        handleSettingChange("allowed_countries", [...settings.allowed_countries, c.code]);
+                                    }
+                                }}
+                                className={`flex items-center gap-2.5 px-4 py-3 rounded-xl border text-left transition-all ${
+                                    isActive
+                                        ? "bg-emerald-500/10 border-emerald-500/30 text-white"
+                                        : "bg-[#12141A] border-white/5 text-text-main/40 hover:border-white/10 hover:text-text-main/60"
+                                }`}
+                            >
+                                <span className="text-lg">{c.flag}</span>
+                                <div>
+                                    <p className={`text-xs font-bold ${isActive ? "text-white" : "text-text-main/50"}`}>{c.code}</p>
+                                    <p className={`text-[10px] ${isActive ? "text-emerald-400/70" : "text-text-main/30"}`}>{c.name}</p>
+                                </div>
+                                {isActive && (
+                                    <div className="ml-auto w-4 h-4 rounded-full bg-emerald-500 flex items-center justify-center">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" className="w-2.5 h-2.5"><polyline points="20 6 9 17 4 12" /></svg>
+                                    </div>
+                                )}
+                            </button>
+                        );
+                    })}
+                </div>
+                <p className="text-[10px] text-text-main/30 mt-4 font-medium">
+                    {settings.allowed_countries.length} {settings.allowed_countries.length === 1 ? "country" : "countries"} active. At least 1 required.
+                </p>
+            </div>
+
+            {/* Location Demand / Leads */}
+            {locationLeads.length > 0 && (
+                <div className="bg-gradient-to-br from-surface to-surface/50 border border-white/5 rounded-[24px] p-8 shadow-2xl">
+                    <div className="flex items-center gap-4 mb-6">
+                        <div className="w-12 h-12 rounded-2xl bg-amber-500/10 flex items-center justify-center border border-amber-500/20 text-amber-500">
+                            <TrendingUp size={24} />
+                        </div>
+                        <div>
+                            <h3 className="text-xl font-black text-text-main uppercase tracking-widest">Location Demand</h3>
+                            <p className="text-xs font-semibold uppercase tracking-widest text-text-main/40 mt-1">Users searching from unavailable regions</p>
+                        </div>
+                    </div>
+                    <p className="text-xs text-text-main/50 font-medium mb-5">
+                        These are countries where users tried to register but AirTrainr isn&apos;t available yet. Consider enabling them above.
+                    </p>
+                    <div className="space-y-2">
+                        {locationLeads.map((lead) => (
+                            <div key={lead.country} className="flex items-center justify-between p-3 bg-[#12141A] border border-white/5 rounded-xl">
+                                <div className="flex items-center gap-3">
+                                    <span className="text-sm font-bold text-white">{lead.country}</span>
+                                    {!settings.allowed_countries.includes(lead.country) && (
+                                        <span className="text-[9px] font-black uppercase tracking-widest text-amber-400/60 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/10">Not Enabled</span>
+                                    )}
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <span className="text-sm font-black text-primary">{lead.count}</span>
+                                    <span className="text-[10px] text-text-main/40 font-bold uppercase">requests</span>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                    <p className="text-[10px] text-text-main/30 mt-4">
+                        Total: {locationLeads.reduce((s, l) => s + l.count, 0)} requests from {locationLeads.length} {locationLeads.length === 1 ? "country" : "countries"}
+                    </p>
+                </div>
+            )}
 
             <PopupModal
                 isOpen={!!popup}
