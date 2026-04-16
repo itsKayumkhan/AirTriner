@@ -212,6 +212,34 @@ export default function NotificationsScreen({ navigation }: any) {
             const feePercent = settings?.platform_fee_percentage || 3;
             const platformFee = offer.price * (feePercent / 100);
 
+            // Camp spots management with race condition protection
+            const proposedCamp = offer.proposed_dates?.camp;
+            if (proposedCamp && proposedCamp.name && offer.trainer_id) {
+                let retries = 3;
+                while (retries > 0) {
+                    const { data: trainerProfile } = await supabase
+                        .from('trainer_profiles').select('camp_offerings')
+                        .eq('user_id', offer.trainer_id).maybeSingle();
+                    if (!trainerProfile?.camp_offerings) break;
+                    const campIndex = trainerProfile.camp_offerings.findIndex((c: any) => c.name === proposedCamp.name);
+                    if (campIndex === -1) break;
+                    const currentSpots = trainerProfile.camp_offerings[campIndex].spotsRemaining ?? trainerProfile.camp_offerings[campIndex].maxSpots ?? 0;
+                    if (currentSpots <= 0) {
+                        await supabase.from('training_offers').update({ status: 'declined' }).eq('id', offer.id);
+                        Alert.alert('Camp Full', 'This camp is now full. The offer has been automatically declined.');
+                        setActionLoading(false);
+                        return;
+                    }
+                    const updatedCamps = trainerProfile.camp_offerings.map((c: any, i: number) =>
+                        i === campIndex ? { ...c, spotsRemaining: currentSpots - 1 } : c
+                    );
+                    const { error } = await supabase.from('trainer_profiles')
+                        .update({ camp_offerings: updatedCamps }).eq('user_id', offer.trainer_id);
+                    if (!error) break;
+                    retries--;
+                }
+            }
+
             await supabase.from('training_offers').update({ status: 'accepted' }).eq('id', offer.id);
 
             await supabase.from('bookings').insert({

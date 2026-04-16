@@ -11,6 +11,7 @@ import {
     getGooglePlacesProvider,
     type PlacePrediction,
 } from '../lib/location';
+import { supabase } from '../lib/supabase';
 
 export interface LocationValue {
     city: string;
@@ -51,6 +52,11 @@ export default function LocationAutocomplete({
     const [isOpen, setIsOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [isGpsLoading, setIsGpsLoading] = useState(false);
+    const [allowedCountries, setAllowedCountries] = useState<string[]>(["US", "CA"]);
+    const [notAvailable, setNotAvailable] = useState(false);
+    const [blockedName, setBlockedName] = useState('');
+    const [leadSaved, setLeadSaved] = useState(false);
+    const [blockedCountry, setBlockedCountry] = useState('');
     const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const abortRef = useRef<AbortController | null>(null);
 
@@ -63,6 +69,14 @@ export default function LocationAutocomplete({
     }
     const provider = providerRef.current;
     const usePlaces = provider.isAvailable;
+
+    // Fetch allowed countries from platform settings
+    useEffect(() => {
+        supabase.from("platform_settings").select("allowed_countries").maybeSingle()
+            .then(({ data }) => {
+                if (data?.allowed_countries?.length) setAllowedCountries(data.allowed_countries);
+            }).catch(() => {});
+    }, []);
 
     // Sync display text with external value
     useEffect(() => {
@@ -179,6 +193,16 @@ export default function LocationAutocomplete({
             setIsLoading(false);
 
             if (details) {
+                // Check if country is allowed
+                if (details.country && !allowedCountries.includes(details.country.toUpperCase())) {
+                    setNotAvailable(true);
+                    setBlockedName(details.city || pred.mainText);
+                    setBlockedCountry(details.country || 'Unknown');
+                    setLeadSaved(false);
+                    setIsLoading(false);
+                    return;
+                }
+
                 const display = [details.city, details.state].filter(Boolean).join(', ');
                 setQuery(display);
                 onChange({
@@ -200,11 +224,23 @@ export default function LocationAutocomplete({
                 });
             }
         },
-        [provider, onChange]
+        [provider, onChange, allowedCountries]
     );
 
     // -- Select a fallback (expo-location) result --
     const selectFallbackResult = (r: LocationResult) => {
+        // Check if country is allowed
+        if (r.country && !allowedCountries.includes(r.country.toUpperCase())) {
+            setNotAvailable(true);
+            setBlockedName(r.city || r.displayName);
+            setBlockedCountry(r.country || 'Unknown');
+            setLeadSaved(false);
+            setIsOpen(false);
+            setFallbackResults([]);
+            Keyboard.dismiss();
+            return;
+        }
+
         const display = [r.city, r.state].filter(Boolean).join(', ');
         setQuery(display);
         setIsOpen(false);
@@ -254,12 +290,37 @@ export default function LocationAutocomplete({
         }
     };
 
+    // -- Lead capture for blocked locations --
+    const handleNotifyMe = async () => {
+        try {
+            await supabase.from("location_leads").insert({
+                searched_city: blockedName,
+                searched_country: blockedCountry,
+            });
+            setLeadSaved(true);
+        } catch {
+            // silent fail
+        }
+    };
+
+    // -- Dismiss not-available banner --
+    const dismissNotAvailable = () => {
+        setNotAvailable(false);
+        setBlockedName('');
+        setBlockedCountry('');
+        setLeadSaved(false);
+    };
+
     // -- Clear --
     const handleClear = () => {
         setQuery('');
         setPredictions([]);
         setFallbackResults([]);
         setIsOpen(false);
+        setNotAvailable(false);
+        setBlockedName('');
+        setBlockedCountry('');
+        setLeadSaved(false);
         onChange({ city: '', state: '', country: '', lat: null, lng: null });
     };
 
@@ -380,6 +441,33 @@ export default function LocationAutocomplete({
                 </View>
             )}
 
+            {/* Not available in your area banner */}
+            {notAvailable && (
+                <View style={styles.notAvailableBanner}>
+                    <View style={styles.notAvailableHeader}>
+                        <Ionicons name="warning-outline" size={20} color="#B45309" />
+                        <Text style={styles.notAvailableTitle}>Not available in your area yet</Text>
+                        <TouchableOpacity onPress={dismissNotAvailable} style={{ marginLeft: 'auto' }}>
+                            <Ionicons name="close" size={18} color="#92400E" />
+                        </TouchableOpacity>
+                    </View>
+                    <Text style={styles.notAvailableSubtitle}>
+                        AirTrainr is currently available in {allowedCountries.join(', ')}. We're expanding soon!
+                    </Text>
+                    {leadSaved ? (
+                        <View style={styles.leadSavedRow}>
+                            <Ionicons name="checkmark-circle" size={16} color="#16A34A" />
+                            <Text style={styles.leadSavedText}>We'll notify you!</Text>
+                        </View>
+                    ) : (
+                        <TouchableOpacity style={styles.notifyButton} onPress={handleNotifyMe}>
+                            <Ionicons name="notifications-outline" size={14} color="#FFF" />
+                            <Text style={styles.notifyButtonText}>Notify me</Text>
+                        </TouchableOpacity>
+                    )}
+                </View>
+            )}
+
             {!usePlaces && (
                 <Text style={styles.hint}>
                     <Ionicons name="information-circle-outline" size={11} color={Colors.textMuted} />{' '}
@@ -463,5 +551,56 @@ const styles = StyleSheet.create({
         color: Colors.textMuted,
         marginTop: 4,
         paddingHorizontal: 2,
+    },
+    notAvailableBanner: {
+        marginTop: 8,
+        backgroundColor: '#FFFBEB',
+        borderRadius: BorderRadius.md,
+        borderWidth: 1,
+        borderColor: '#F59E0B',
+        padding: Spacing.md,
+    },
+    notAvailableHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        marginBottom: 4,
+    },
+    notAvailableTitle: {
+        fontSize: FontSize.sm,
+        fontWeight: FontWeight.semibold,
+        color: '#92400E',
+    },
+    notAvailableSubtitle: {
+        fontSize: FontSize.xs,
+        color: '#B45309',
+        marginBottom: Spacing.sm,
+        lineHeight: 18,
+    },
+    notifyButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 6,
+        backgroundColor: '#F59E0B',
+        borderRadius: BorderRadius.md,
+        paddingVertical: 8,
+        paddingHorizontal: 16,
+        alignSelf: 'flex-start',
+    },
+    notifyButtonText: {
+        color: '#FFF',
+        fontSize: FontSize.sm,
+        fontWeight: FontWeight.semibold,
+    },
+    leadSavedRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+    },
+    leadSavedText: {
+        fontSize: FontSize.sm,
+        color: '#16A34A',
+        fontWeight: FontWeight.semibold,
     },
 });

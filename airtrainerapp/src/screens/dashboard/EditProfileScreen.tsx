@@ -338,8 +338,19 @@ export default function EditProfileScreen({ navigation }: any) {
     const validate = (): boolean => {
         const errors: Record<string, string> = {};
         if (!firstName.trim()) errors.firstName = 'First name is required';
+        else if (firstName.trim().length < 2) errors.firstName = 'First name must be at least 2 characters';
         if (!lastName.trim()) errors.lastName = 'Last name is required';
-        if (phone && !/^\+?[\d\s\-()\/.]{7,15}$/.test(phone)) errors.phone = 'Enter a valid phone number';
+        else if (lastName.trim().length < 2) errors.lastName = 'Last name must be at least 2 characters';
+        if (phone && !/^\+?[\d\s\-()]{10,}$/.test(phone)) errors.phone = 'Phone must be at least 10 digits';
+        if (zipCode.trim()) {
+            const zipCountry = detectCountry(zipCode);
+            if (zipCountry === 'OTHER') {
+                errors.zipCode = 'Enter a valid US ZIP or Canadian postal code';
+            } else if (country && country.toUpperCase() !== zipCountry) {
+                const countryName = country.toUpperCase() === 'CA' ? 'Canada' : country.toUpperCase() === 'US' ? 'the US' : country;
+                errors.zipCode = `Your city is in ${countryName} — postal code doesn't match`;
+            }
+        }
         if (isTrainer) {
             if (!headline.trim()) errors.headline = 'Headline is required';
             if (selectedSports.length === 0) errors.sports = 'Select at least one sport';
@@ -607,6 +618,7 @@ export default function EditProfileScreen({ navigation }: any) {
                                     onChangeText={setZipCode}
                                     placeholder="12345 or A1A 1A1"
                                     autoCapitalize="characters"
+                                    error={fieldErrors.zipCode}
                                 />
                             </View>
                             <View style={{ flex: 1 }}>

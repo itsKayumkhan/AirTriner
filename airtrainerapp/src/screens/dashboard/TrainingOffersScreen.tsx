@@ -86,6 +86,12 @@ type Camp = {
     hoursPerDay: number;
     days: number;
     totalPrice: number;
+    location: string;
+    startTime: string;
+    endTime: string;
+    dates: string[];
+    maxSpots: number;
+    spotsRemaining: number;
 };
 
 type SessionDate = {
@@ -635,11 +641,44 @@ export default function TrainingOffersScreen({ navigation }: any) {
                                     </Text>
                                     {camps.map((camp, idx) => {
                                         const isSelected = selectedCamp === idx;
+                                        const isFull = (camp.spotsRemaining ?? 0) <= 0;
+                                        const spotsRatio = (camp.maxSpots ?? 0) > 0 ? (camp.spotsRemaining ?? 0) / camp.maxSpots : 1;
+                                        const spotsColor = isFull ? '#EF4444' : spotsRatio < 0.3 ? '#F59E0B' : '#22C55E';
+
+                                        // Auto-calculate end time from startTime + hoursPerDay
+                                        const formatTime12h = (timeStr: string) => {
+                                            if (!timeStr) return '';
+                                            const [h, m] = timeStr.split(':').map(Number);
+                                            const ampm = h >= 12 ? 'PM' : 'AM';
+                                            const hour12 = h % 12 || 12;
+                                            return `${hour12}:${String(m).padStart(2, '0')} ${ampm}`;
+                                        };
+                                        const calcEndTime = () => {
+                                            if (camp.endTime) return formatTime12h(camp.endTime);
+                                            if (!camp.startTime || !camp.hoursPerDay) return '';
+                                            const [h, m] = camp.startTime.split(':').map(Number);
+                                            const endH = h + camp.hoursPerDay;
+                                            return formatTime12h(`${endH}:${String(m).padStart(2, '0')}`);
+                                        };
+
+                                        // Format date range
+                                        const formatDateRange = () => {
+                                            if (!camp.dates || camp.dates.length === 0) return '';
+                                            const fmt = (d: string) => {
+                                                const dt = new Date(d);
+                                                return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                                            };
+                                            if (camp.dates.length === 1) return fmt(camp.dates[0]);
+                                            return `${fmt(camp.dates[0])} → ${fmt(camp.dates[camp.dates.length - 1])}`;
+                                        };
+
                                         return (
                                             <TouchableOpacity
                                                 key={idx}
-                                                activeOpacity={0.7}
+                                                activeOpacity={isFull ? 1 : 0.7}
+                                                disabled={isFull}
                                                 onPress={() => {
+                                                    if (isFull) return;
                                                     if (isSelected) {
                                                         setSelectedCamp(null);
                                                         setSessionType('private');
@@ -656,13 +695,50 @@ export default function TrainingOffersScreen({ navigation }: any) {
                                                 style={[
                                                     styles.campCard,
                                                     isSelected && styles.campCardActive,
+                                                    isFull && { opacity: 0.5 },
                                                 ]}
                                             >
                                                 <View style={{ flex: 1 }}>
-                                                    <Text style={[styles.campName, isSelected && { color: Colors.text }]}>{camp.name}</Text>
+                                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                                        <Text style={[styles.campName, isSelected && { color: Colors.text }]}>{camp.name}</Text>
+                                                        {isFull && (
+                                                            <View style={{ backgroundColor: '#EF4444', borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 }}>
+                                                                <Text style={{ color: '#fff', fontSize: 10, fontWeight: '700' }}>Camp Full</Text>
+                                                            </View>
+                                                        )}
+                                                    </View>
                                                     <Text style={styles.campMeta}>
                                                         {camp.hoursPerDay} hrs/day x {camp.days} days
                                                     </Text>
+                                                    {camp.location ? (
+                                                        <Text style={[styles.campMeta, { marginTop: 2 }]}>
+                                                            <Ionicons name="location-outline" size={10} color={Colors.textTertiary} />
+                                                            {'  '}{camp.location}
+                                                        </Text>
+                                                    ) : null}
+                                                    {camp.startTime ? (
+                                                        <Text style={[styles.campMeta, { marginTop: 2 }]}>
+                                                            <Ionicons name="time-outline" size={10} color={Colors.textTertiary} />
+                                                            {'  '}{formatTime12h(camp.startTime)} - {calcEndTime()}
+                                                        </Text>
+                                                    ) : null}
+                                                    {camp.dates && camp.dates.length > 0 ? (
+                                                        <Text style={[styles.campMeta, { marginTop: 2 }]}>
+                                                            <Ionicons name="calendar-outline" size={10} color={Colors.textTertiary} />
+                                                            {'  '}{formatDateRange()}
+                                                        </Text>
+                                                    ) : null}
+                                                    {/* Spots indicator */}
+                                                    {(camp.maxSpots ?? 0) > 0 && (
+                                                        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4, gap: 6 }}>
+                                                            <View style={{ flex: 1, height: 4, backgroundColor: Colors.border, borderRadius: 2, overflow: 'hidden' }}>
+                                                                <View style={{ width: `${Math.max(spotsRatio * 100, 0)}%`, height: '100%', backgroundColor: spotsColor, borderRadius: 2 }} />
+                                                            </View>
+                                                            <Text style={{ fontSize: 10, color: spotsColor, fontWeight: '600' }}>
+                                                                {isFull ? 'Full' : `${camp.spotsRemaining}/${camp.maxSpots} spots`}
+                                                            </Text>
+                                                        </View>
+                                                    )}
                                                 </View>
                                                 <Text style={[styles.campPrice, isSelected && { color: Colors.primary }]}>
                                                     ${camp.totalPrice.toLocaleString()}
