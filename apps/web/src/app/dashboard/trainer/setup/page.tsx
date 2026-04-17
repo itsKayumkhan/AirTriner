@@ -627,30 +627,30 @@ export default function TrainerEditProfilePage() {
                         Enhance your visibility to prospective athletes.
                     </p>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                     {user?.id && (
                         <a
                             href={`/dashboard/trainers/${user.id}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="flex items-center gap-2 px-5 py-2.5 rounded-full border border-white/15 text-text-main/60 font-bold text-sm bg-white/4 hover:bg-white/8 hover:text-white transition-all"
+                            className="flex items-center gap-2 px-4 py-2 rounded-xl border border-white/10 text-text-main/50 font-bold text-xs hover:bg-white/5 hover:text-white transition-all"
                         >
-                            <Eye size={15} strokeWidth={2} />
-                            Preview Profile
+                            <Eye size={13} strokeWidth={2} />
+                            Preview
                         </a>
                     )}
                     <button
                         onClick={() => router.push("/dashboard")}
-                        className="px-6 py-2.5 rounded-full border border-white/10 text-white font-bold text-sm bg-transparent hover:bg-white/5 transition-colors"
+                        className="px-4 py-2 rounded-xl border border-white/10 text-text-main/50 font-bold text-xs hover:bg-white/5 hover:text-white transition-colors"
                     >
                         Discard
                     </button>
                     <button
                         onClick={handleSaveProfile}
                         disabled={saving}
-                        className="px-6 py-2.5 rounded-full bg-primary text-bg font-black text-sm hover:shadow-[0_0_15px_rgba(69,208,255,0.3)] transition-all flex items-center gap-2 disabled:bg-primary/50"
+                        className="px-6 py-2.5 rounded-xl bg-primary text-bg font-black text-xs uppercase tracking-wider hover:shadow-[0_0_15px_rgba(69,208,255,0.3)] transition-all flex items-center gap-2 disabled:bg-primary/50"
                     >
-                        {saving ? "Saving..." : "Save Changes"}
+                        {saving ? "Saving..." : "Save"}
                     </button>
                 </div>
             </div>

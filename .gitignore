@@ -57,3 +57,9 @@ android/.gradle/
 
 # Custom testing files
 testing files/
+
+# Playwright
+e2e/test-results/
+e2e/screenshots/
+playwright-report/
+test-results/

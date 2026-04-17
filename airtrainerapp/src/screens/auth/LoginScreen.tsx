@@ -151,19 +151,6 @@ export default function LoginScreen({ navigation }: any) {
                         <Text style={styles.socialButtonText}>Continue with Google</Text>
                     </Pressable>
 
-                    <Pressable
-                        style={({ pressed }) => [
-                            styles.socialButton,
-                            pressed && styles.socialButtonPressed,
-                        ]}
-                        onPress={() =>
-                            Alert.alert('Coming Soon', 'Apple sign-in will be available soon.')
-                        }
-                        accessibilityLabel="Continue with Apple"
-                    >
-                        <Ionicons name="logo-apple" size={20} color={Colors.primary} />
-                        <Text style={styles.socialButtonText}>Continue with Apple</Text>
-                    </Pressable>
                 </View>
             </Animated.View>
 

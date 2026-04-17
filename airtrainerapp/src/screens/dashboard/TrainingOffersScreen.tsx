@@ -92,6 +92,7 @@ type Camp = {
     dates: string[];
     maxSpots: number;
     spotsRemaining: number;
+    schedule?: { date: string; startTime: string }[];
 };
 
 type SessionDate = {
@@ -683,6 +684,7 @@ export default function TrainingOffersScreen({ navigation }: any) {
                                                         setSelectedCamp(null);
                                                         setSessionType('private');
                                                         setOfferPrice('');
+                                                        setSessionDates([{ date: '', time: '' }]);
                                                     } else {
                                                         setSelectedCamp(idx);
                                                         setSessionType('camp');
@@ -690,6 +692,16 @@ export default function TrainingOffersScreen({ navigation }: any) {
                                                         if (!offerMessage.trim()) {
                                                             setOfferMessage(`Join my ${camp.name} camp! ${camp.hoursPerDay} hrs/day for ${camp.days} days.`);
                                                         }
+                                                        // Auto-fill dates from camp schedule
+                                                        const campSchedule = camp.schedule;
+                                                        let autoSessionDates: SessionDate[] = [];
+                                                        if (campSchedule?.length) {
+                                                            autoSessionDates = campSchedule.map(s => ({ date: s.date, time: s.startTime }));
+                                                        } else if (camp.dates?.length) {
+                                                            autoSessionDates = camp.dates.map(d => ({ date: d, time: camp.startTime || "" }));
+                                                        }
+                                                        if (autoSessionDates.length === 0) autoSessionDates = [{ date: "", time: "" }];
+                                                        setSessionDates(autoSessionDates);
                                                     }
                                                 }}
                                                 style={[
@@ -799,54 +811,79 @@ export default function TrainingOffersScreen({ navigation }: any) {
 
                             {/* Session Dates & Times (multiple) */}
                             <Text style={styles.fieldLabel}>Session Date & Time</Text>
-                            {sessionDates.map((session, idx) => (
-                                <View key={idx} style={[styles.row, { marginBottom: Spacing.sm, alignItems: 'center' }]}>
-                                    <View style={{ flex: 1 }}>
-                                        <Input
-                                            icon="calendar-outline"
-                                            value={session.date}
-                                            onChangeText={(val: string) => {
-                                                const updated = [...sessionDates];
-                                                updated[idx] = { ...updated[idx], date: val };
-                                                setSessionDates(updated);
-                                            }}
-                                            placeholder="YYYY-MM-DD"
-                                        />
-                                    </View>
-                                    <View style={{ width: Spacing.sm }} />
-                                    <View style={{ flex: 1 }}>
-                                        <Input
-                                            icon="time-outline"
-                                            value={session.time}
-                                            onChangeText={(val: string) => {
-                                                const updated = [...sessionDates];
-                                                updated[idx] = { ...updated[idx], time: val };
-                                                setSessionDates(updated);
-                                            }}
-                                            placeholder="HH:MM"
-                                        />
-                                    </View>
-                                    {sessionDates.length > 1 && (
-                                        <TouchableOpacity
-                                            onPress={() => {
-                                                setSessionDates(prev => prev.filter((_, i) => i !== idx));
-                                            }}
-                                            style={styles.removeDateBtn}
-                                            activeOpacity={0.7}
-                                        >
-                                            <Ionicons name="trash-outline" size={16} color={Colors.error} />
-                                        </TouchableOpacity>
-                                    )}
+                            {selectedCamp !== null ? (
+                                /* Read-only session dates auto-filled from camp */
+                                <View>
+                                    {sessionDates.map((session, idx) => (
+                                        <View key={idx} style={[styles.row, { marginBottom: Spacing.sm, alignItems: 'center' }]}>
+                                            <View style={[styles.readOnlyDateBox, { flex: 1 }]}>
+                                                <Ionicons name="calendar-outline" size={16} color={Colors.textMuted} />
+                                                <Text style={styles.readOnlyDateText}>{session.date || '—'}</Text>
+                                            </View>
+                                            <View style={{ width: Spacing.sm }} />
+                                            <View style={[styles.readOnlyDateBox, { flex: 1 }]}>
+                                                <Ionicons name="time-outline" size={16} color={Colors.textMuted} />
+                                                <Text style={styles.readOnlyDateText}>{session.time || '—'}</Text>
+                                            </View>
+                                        </View>
+                                    ))}
+                                    <Text style={{ fontSize: FontSize.xs, color: Colors.textMuted, marginBottom: Spacing.sm }}>
+                                        Dates auto-filled from camp schedule
+                                    </Text>
                                 </View>
-                            ))}
-                            <TouchableOpacity
-                                onPress={() => setSessionDates(prev => [...prev, { date: '', time: '' }])}
-                                style={styles.addDateBtn}
-                                activeOpacity={0.7}
-                            >
-                                <Ionicons name="add-circle-outline" size={16} color={Colors.primary} />
-                                <Text style={styles.addDateText}>Add Another Date & Time</Text>
-                            </TouchableOpacity>
+                            ) : (
+                                /* Editable session dates for private offers */
+                                <>
+                                    {sessionDates.map((session, idx) => (
+                                        <View key={idx} style={[styles.row, { marginBottom: Spacing.sm, alignItems: 'center' }]}>
+                                            <View style={{ flex: 1 }}>
+                                                <Input
+                                                    icon="calendar-outline"
+                                                    value={session.date}
+                                                    onChangeText={(val: string) => {
+                                                        const updated = [...sessionDates];
+                                                        updated[idx] = { ...updated[idx], date: val };
+                                                        setSessionDates(updated);
+                                                    }}
+                                                    placeholder="YYYY-MM-DD"
+                                                />
+                                            </View>
+                                            <View style={{ width: Spacing.sm }} />
+                                            <View style={{ flex: 1 }}>
+                                                <Input
+                                                    icon="time-outline"
+                                                    value={session.time}
+                                                    onChangeText={(val: string) => {
+                                                        const updated = [...sessionDates];
+                                                        updated[idx] = { ...updated[idx], time: val };
+                                                        setSessionDates(updated);
+                                                    }}
+                                                    placeholder="HH:MM"
+                                                />
+                                            </View>
+                                            {sessionDates.length > 1 && (
+                                                <TouchableOpacity
+                                                    onPress={() => {
+                                                        setSessionDates(prev => prev.filter((_, i) => i !== idx));
+                                                    }}
+                                                    style={styles.removeDateBtn}
+                                                    activeOpacity={0.7}
+                                                >
+                                                    <Ionicons name="trash-outline" size={16} color={Colors.error} />
+                                                </TouchableOpacity>
+                                            )}
+                                        </View>
+                                    ))}
+                                    <TouchableOpacity
+                                        onPress={() => setSessionDates(prev => [...prev, { date: '', time: '' }])}
+                                        style={styles.addDateBtn}
+                                        activeOpacity={0.7}
+                                    >
+                                        <Ionicons name="add-circle-outline" size={16} color={Colors.primary} />
+                                        <Text style={styles.addDateText}>Add Another Date & Time</Text>
+                                    </TouchableOpacity>
+                                </>
+                            )}
                             <Text style={styles.timezoneHint}>
                                 Times are in your local timezone ({Intl.DateTimeFormat().resolvedOptions().timeZone})
                             </Text>
@@ -1434,6 +1471,21 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
         marginLeft: Spacing.xs,
+    },
+    readOnlyDateBox: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: Colors.glass,
+        borderRadius: BorderRadius.sm,
+        borderWidth: 1,
+        borderColor: Colors.borderLight,
+        paddingHorizontal: Spacing.md,
+        paddingVertical: Spacing.sm,
+        gap: Spacing.xs,
+    },
+    readOnlyDateText: {
+        fontSize: FontSize.sm,
+        color: Colors.textSecondary,
     },
     timezoneHint: {
         fontSize: FontSize.xs,
