@@ -25,6 +25,7 @@ import {
     Crown,
     AlertTriangle,
     Mail,
+    Building2,
 } from "lucide-react";
 import { IconButton } from "@/components/ui/Buttons";
 import { AuthContext } from "@/context/AuthContext";
@@ -104,7 +105,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             { label: "Training Offers", href: "/dashboard/trainer/offers", icon: Send },
             { label: "Availability", href: "/dashboard/availability", icon: Clock },
             { label: "Bookings", href: "/dashboard/bookings", icon: Calendar },
-            { label: "Payments", href: "/dashboard/earnings", icon: CreditCard },
+            { label: "Earnings", href: "/dashboard/earnings", icon: CreditCard },
+            { label: "Payment Settings", href: "/dashboard/payments", icon: Building2 },
             { label: "Reviews", href: "/dashboard/reviews", icon: Star },
             { label: "My Profile", href: "/dashboard/profile", icon: User },
             {

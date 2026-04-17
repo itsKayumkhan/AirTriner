@@ -5,6 +5,7 @@ import { getSession, setSession, AuthUser } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { uploadToCloudinary } from "@/lib/cloudinary";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { v4 as uuidv4 } from "uuid";
 import LocationAutocomplete, { type LocationValue } from "@/components/forms/LocationAutocomplete";
 import {
@@ -1615,6 +1616,9 @@ export default function TrainerEditProfilePage() {
                 </div>
             </div>
 
+            {/* Stripe Payout Status */}
+            <StripeConnectStatus userId={user?.id} />
+
             {/* Custom Popup Modal */}
             {popup && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
@@ -1649,6 +1653,60 @@ export default function TrainerEditProfilePage() {
                     </div>
                 </div>
             )}
+        </div>
+    );
+}
+
+// Inline component: Stripe Connect status card for trainer setup page
+function StripeConnectStatus({ userId }: { userId?: string }) {
+    const [status, setStatus] = useState<{ hasAccount: boolean; onboardingComplete: boolean; payoutsEnabled: boolean } | null>(null);
+
+    useEffect(() => {
+        if (!userId) return;
+        fetch(`/api/stripe/connect?userId=${userId}`)
+            .then(r => r.json())
+            .then(setStatus)
+            .catch(() => {});
+    }, [userId]);
+
+    if (!status) return null;
+
+    const isConnected = status.hasAccount && status.onboardingComplete && status.payoutsEnabled;
+    const isPartial = status.hasAccount && !status.onboardingComplete;
+
+    return (
+        <div className="mt-6 bg-[#1A1C23] border border-white/5 rounded-[20px] p-6 shadow-md">
+            <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                        isConnected ? "bg-emerald-500/15 text-emerald-400" : isPartial ? "bg-amber-500/15 text-amber-400" : "bg-white/5 text-text-main/40"
+                    }`}>
+                        <DollarSign size={20} />
+                    </div>
+                    <div>
+                        <h3 className="text-white font-bold text-sm">
+                            {isConnected ? "Bank Account Connected" : isPartial ? "Stripe Setup Incomplete" : "Bank Account Not Connected"}
+                        </h3>
+                        <p className="text-text-main/50 text-xs">
+                            {isConnected
+                                ? "You're all set to receive payouts."
+                                : "Connect your bank to receive payouts from sessions."}
+                        </p>
+                    </div>
+                </div>
+                {!isConnected && (
+                    <Link
+                        href="/dashboard/payments"
+                        className="px-4 py-2 rounded-xl bg-primary/10 border border-primary/20 text-primary text-xs font-black uppercase tracking-wider hover:bg-primary/20 transition-all flex items-center gap-1.5"
+                    >
+                        {isPartial ? "Complete Setup" : "Connect"}
+                        <ExternalLink size={12} />
+                    </Link>
+                )}
+                {isConnected && (
+                    <CheckCircle size={22} className="text-emerald-400" />
+                )}
+            </div>
         </div>
     );
 }
