@@ -18,6 +18,7 @@ import {
     Zap,
     Trophy,
     Crown,
+    Mail,
     X,
     AlertCircle,
     CheckCircle2,
@@ -155,6 +156,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         { icon: <Trophy size={20} />, label: "Sports", href: "/admin/sports" },
         { icon: <CreditCard size={20} />, label: "Payments", href: "/admin/payments" },
         { icon: <Crown size={20} />, label: "Subscriptions", href: "/admin/subscriptions" },
+        { icon: <Mail size={20} />, label: "Contact Messages", href: "/admin/contacts" },
     ];
 
     const SidebarContent = ({ onNavClick }: { onNavClick?: () => void }) => (

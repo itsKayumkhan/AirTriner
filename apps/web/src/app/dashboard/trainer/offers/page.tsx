@@ -5,6 +5,7 @@ import { getSession, AuthUser } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { Send, Users, Plus, X, Clock, MapPin, DollarSign, Star, ChevronRight, Filter, Search, Calendar, MessageSquare, Zap, Award, PartyPopper, Lock, Crown, Trash2, Repeat } from "lucide-react";
+import { toast } from "@/components/ui/Toast";
 import { formatSportName } from "@/lib/format";
 
 interface Athlete {
@@ -160,7 +161,7 @@ export default function TrainingOffersPage() {
         const finalTrainerRate = user.trainerProfile?.hourly_rate ? Number(user.trainerProfile.hourly_rate) : 50;
 
         if (hasCustomRate && (isNaN(numericRate) || numericRate < 1)) {
-            setOfferError("Please enter a valid rate.");
+            toast.error("Please enter a valid rate.");
             return;
         }
 
@@ -168,7 +169,7 @@ export default function TrainingOffersPage() {
 
         const validDates = offerData.sessionDates.filter(d => d.date && d.time);
         if (validDates.length === 0) {
-            setOfferError("Please add at least one date and time for the session.");
+            toast.error("Please add at least one date and time for the session.");
             return;
         }
 
@@ -233,11 +234,13 @@ export default function TrainingOffersPage() {
             setSelectedCamp(null);
             setOfferData({ message: "", sessionType: "private", rate: "", introDiscount: false, discountPercent: "20", sessionDates: [{ date: "", time: "" }], sport: "" });
 
+            toast.success("Offer sent successfully!");
+
             // Reload
             if (user) loadData(user);
         } catch (err) {
             console.error("Failed to send offer:", err);
-            alert("Failed to send offer. Please try again.");
+            toast.error("Failed to send offer. Please try again.");
         } finally {
             setSending(false);
         }
@@ -520,11 +523,6 @@ export default function TrainingOffersPage() {
                                 </div>
                             </div>
 
-                            {offerError && (
-                                <div className="p-3 mb-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-500 text-[13px] font-bold flex items-center gap-2">
-                                    <X size={16} /> {offerError}
-                                </div>
-                            )}
 
                             <div className="space-y-4">
                                 <div>

@@ -154,6 +154,69 @@ export async function sendAthleteReceipt(data: BookingReceiptData): Promise<void
 
 // ── Send trainer receipt ──
 
+// ── Send contact form notification ──
+
+export interface ContactNotificationData {
+    email: string;
+    subject: string;
+    message: string;
+    userId: string | null;
+}
+
+export async function sendContactNotification(data: ContactNotificationData): Promise<void> {
+    try {
+        const t = await getTransporter();
+        const timestamp = new Date().toLocaleString('en-US', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+            timeZoneName: 'short',
+        });
+
+        const body = `
+            <p style="font-size: 18px; margin: 0 0 16px;">New Contact Form Submission</p>
+            <p style="color: #aaa; margin: 0 0 24px;">Someone reached out via the AirTrainr contact form.</p>
+
+            <div style="background: #1a1a1a; border-radius: 12px; padding: 20px; margin: 0 0 20px;">
+                <p style="margin: 0 0 8px;"><strong>From:</strong> ${data.email}</p>
+                <p style="margin: 0 0 8px;"><strong>Subject:</strong> ${data.subject}</p>
+                <p style="margin: 0 0 8px;"><strong>User ID:</strong> ${data.userId || 'Guest (not logged in)'}</p>
+                <p style="margin: 0;"><strong>Submitted:</strong> ${timestamp}</p>
+            </div>
+
+            <div style="background: #1a1a1a; border-radius: 12px; padding: 20px; margin: 0 0 20px;">
+                <h3 style="margin: 0 0 12px; color: #a3ff12; font-size: 16px;">Message</h3>
+                <p style="margin: 0; white-space: pre-wrap; color: #ccc;">${data.message}</p>
+            </div>
+
+            <p style="color: #888; font-size: 13px;">
+                You can reply directly to ${data.email} or view all messages in the <a href="https://air-triner-web.vercel.app/admin/contacts" style="color: #a3ff12;">Admin Panel</a>.
+            </p>
+        `;
+
+        const info = await t.sendMail({
+            from: '"AirTrainr Contact" <contact@airtrainr.com>',
+            to: 'contact@airtrainr.com',
+            replyTo: data.email,
+            subject: `[AirTrainr Contact] ${data.subject}`,
+            html: wrapHtml('Contact Form Message', body),
+        });
+
+        if (process.env.NODE_ENV !== 'production') {
+            const previewUrl = nodemailer.getTestMessageUrl(info);
+            console.log(`[email] Contact notification preview: ${previewUrl}`);
+        }
+        console.log(`[email] Contact notification sent for ${data.email}`);
+    } catch (error) {
+        console.error('[email] Failed to send contact notification:', error);
+    }
+}
+
+// ── Send trainer receipt ──
+
 export async function sendTrainerReceipt(data: BookingReceiptData): Promise<void> {
     try {
         const t = await getTransporter();
