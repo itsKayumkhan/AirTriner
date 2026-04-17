@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
     View, Text, StyleSheet, FlatList, Pressable, RefreshControl, ActivityIndicator,
-    Modal, ScrollView, Alert,
+    Modal, ScrollView, Alert, Linking,
 } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,6 +9,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { supabase, NotificationRow } from '../../lib/supabase';
 import { Colors, Spacing, BorderRadius, FontSize, FontWeight } from '../../theme';
 import { ScreenWrapper, ScreenHeader, Card, Badge, EmptyState, LoadingScreen, Button } from '../../components/ui';
+import { Config } from '../../lib/config';
 
 const NOTIF_ICONS: Record<string, { icon: string; color: string; bg: string }> = {
     NEW_REQUEST_NEARBY: { icon: 'location', color: Colors.primary, bg: Colors.primaryGlow },
@@ -205,76 +206,41 @@ export default function NotificationsScreen({ navigation }: any) {
         if (!user) return;
         setActionLoading(true);
         try {
-            const { data: settings } = await supabase
-                .from('platform_settings')
-                .select('platform_fee_percentage')
+            // 1. Get athlete email for Stripe checkout
+            const { data: athleteUser } = await supabase
+                .from('users')
+                .select('email')
+                .eq('id', user.id)
                 .single();
-            const feePercent = settings?.platform_fee_percentage || 3;
-            const platformFee = offer.price * (feePercent / 100);
 
-            // Camp spots management with race condition protection
-            // offer.trainer_id may be users.id (web) or trainer_profiles.id (mobile) — handle both
-            const proposedCamp = offer.proposed_dates?.camp;
-            if (proposedCamp && proposedCamp.name && offer.trainer_id) {
-                let retries = 3;
-                while (retries > 0) {
-                    // Try by user_id first
-                    let { data: trainerProfile } = await supabase
-                        .from('trainer_profiles').select('camp_offerings, user_id')
-                        .eq('user_id', offer.trainer_id).maybeSingle();
-                    // Fallback: offer.trainer_id may be trainer_profiles PK
-                    if (!trainerProfile) {
-                        const fallback = await supabase
-                            .from('trainer_profiles').select('camp_offerings, user_id')
-                            .eq('id', offer.trainer_id).maybeSingle();
-                        trainerProfile = fallback.data;
-                    }
-                    if (!trainerProfile?.camp_offerings) break;
-                    const campIndex = trainerProfile.camp_offerings.findIndex((c: any) => c.name === proposedCamp.name);
-                    if (campIndex === -1) break;
-                    const currentSpots = trainerProfile.camp_offerings[campIndex].spotsRemaining ?? trainerProfile.camp_offerings[campIndex].maxSpots ?? 0;
-                    if (currentSpots <= 0) {
-                        await supabase.from('training_offers').update({ status: 'declined' }).eq('id', offer.id);
-                        Alert.alert('Camp Full', 'This camp is now full. The offer has been automatically declined.');
-                        setActionLoading(false);
-                        return;
-                    }
-                    const updatedCamps = trainerProfile.camp_offerings.map((c: any, i: number) =>
-                        i === campIndex ? { ...c, spotsRemaining: currentSpots - 1 } : c
-                    );
-                    const { error } = await supabase.from('trainer_profiles')
-                        .update({ camp_offerings: updatedCamps }).eq('user_id', trainerProfile.user_id);
-                    if (!error) break;
-                    retries--;
-                }
+            // 2. Call web API to create Stripe checkout session
+            const apiUrl = Config.appUrl || Config.apiUrl?.replace('/api/v1', '');
+            if (!apiUrl) {
+                throw new Error('App URL not configured');
             }
 
-            await supabase.from('training_offers').update({ status: 'accepted' }).eq('id', offer.id);
-
-            await supabase.from('bookings').insert({
-                athlete_id: user.id,
-                trainer_id: offer.trainer_id,
-                sport: offer.sport || 'General',
-                scheduled_at: offer.proposed_dates?.scheduledAt || new Date().toISOString(),
-                duration_minutes: offer.session_length_min || 60,
-                price: offer.price,
-                platform_fee: platformFee,
-                total_paid: offer.price + platformFee,
-                status: 'pending',
-                status_history: [{ status: 'pending', timestamp: new Date().toISOString(), note: 'Created from accepted offer' }],
+            const res = await fetch(`${apiUrl}/api/stripe/create-offer-payment`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    offerId: offer.id,
+                    athleteId: user.id,
+                    athleteEmail: athleteUser?.email,
+                }),
             });
 
-            await supabase.from('notifications').insert({
-                user_id: offer.trainer_id,
-                type: 'OFFER_ACCEPTED',
-                title: 'Offer Accepted!',
-                body: 'Your training offer has been accepted',
-                data: { offerId: offer.id },
-                read: false,
-            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Failed to create payment');
 
-            setSelectedOffer({ ...offer, status: 'accepted' });
-            Alert.alert('Offer Accepted', 'A booking has been created. The trainer will confirm it.');
+            // 3. Open Stripe checkout in browser
+            await Linking.openURL(data.url);
+
+            // 4. Close modal and inform user — booking is created by webhook after payment
+            setOfferModalVisible(false);
+            Alert.alert(
+                'Payment Required',
+                'You will be redirected to complete payment. The booking will be created after payment is confirmed.'
+            );
         } catch (err) {
             console.error('Error accepting offer:', err);
             Alert.alert('Error', 'Could not accept the offer. Please try again.');

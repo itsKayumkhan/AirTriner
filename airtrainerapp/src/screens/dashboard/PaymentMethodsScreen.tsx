@@ -6,16 +6,26 @@ import {
     Pressable,
     Alert,
     ActivityIndicator,
+    Linking,
 } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
-import * as WebBrowser from 'expo-web-browser';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
+import { Config } from '../../lib/config';
 import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows } from '../../theme';
 import { ScreenWrapper, ScreenHeader, Card, Badge, EmptyState, LoadingScreen, Button, SectionHeader } from '../../components/ui';
 
-const API_URL = 'https://api.airtrainr.com/api/v1';
+type ConnectStatus = {
+    hasAccount: boolean;
+    onboardingComplete: boolean;
+    payoutsEnabled: boolean;
+    chargesEnabled: boolean;
+    bankLast4: string | null;
+    bankName: string | null;
+    dashboardUrl: string | null;
+    accountId?: string;
+};
 
 type Transaction = {
     id: string;
@@ -84,16 +94,46 @@ function TransactionItem({ tx }: { tx: Transaction }) {
     );
 }
 
+/* ─── How-it-works step ─── */
+function StepItem({ number, text }: { number: number; text: string }) {
+    return (
+        <View style={styles.stepRow}>
+            <View style={styles.stepCircle}>
+                <Text style={styles.stepNumber}>{number}</Text>
+            </View>
+            <Text style={styles.stepText}>{text}</Text>
+        </View>
+    );
+}
+
 export default function PaymentMethodsScreen({ navigation }: any) {
     const { user } = useAuth();
+    const [connectStatus, setConnectStatus] = useState<ConnectStatus | null>(null);
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [connecting, setConnecting] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
     const isTrainer = user?.role === 'trainer';
-    const trainerProfile = user?.trainerProfile;
+    const baseUrl = Config.appUrl;
 
+    /* ─── Fetch Stripe Connect status from web API ─── */
+    const fetchConnectStatus = useCallback(async () => {
+        if (!user || !isTrainer) return;
+        setError(null);
+        try {
+            const res = await fetch(`${baseUrl}/api/stripe/connect-status?userId=${user.id}`);
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Failed to fetch status');
+            setConnectStatus(data);
+        } catch (err: unknown) {
+            console.error('Error fetching connect status:', err);
+            setError(err instanceof Error ? err.message : 'Could not load payment status');
+        }
+    }, [user, isTrainer, baseUrl]);
+
+    /* ─── Fetch transactions ─── */
     const fetchTransactions = useCallback(async () => {
         if (!user) return;
         try {
@@ -118,51 +158,54 @@ export default function PaymentMethodsScreen({ navigation }: any) {
             }
         } catch (err) {
             console.error('Error fetching transactions:', err);
-        } finally {
-            setIsLoading(false);
         }
-    }, [user, isTrainer, trainerProfile]);
+    }, [user, isTrainer]);
 
+    /* ─── Initial load ─── */
     useEffect(() => {
-        fetchTransactions();
-    }, [fetchTransactions]);
+        const load = async () => {
+            setIsLoading(true);
+            await Promise.all([fetchConnectStatus(), fetchTransactions()]);
+            setIsLoading(false);
+        };
+        load();
+    }, [fetchConnectStatus, fetchTransactions]);
+
+    /* ─── Re-fetch when screen comes back into focus (after Stripe onboarding) ─── */
+    useEffect(() => {
+        const unsubscribe = navigation.addListener('focus', () => {
+            fetchConnectStatus();
+            fetchTransactions();
+        });
+        return unsubscribe;
+    }, [navigation, fetchConnectStatus, fetchTransactions]);
 
     const onRefresh = async () => {
         setRefreshing(true);
-        await fetchTransactions();
+        await Promise.all([fetchConnectStatus(), fetchTransactions()]);
         setRefreshing(false);
     };
 
-    const handleConnectStripe = async () => {
+    /* ─── Connect / Complete Setup handler ─── */
+    const handleConnect = async () => {
+        if (!user) return;
         setConnecting(true);
+        setError(null);
         try {
-            const { data: sessionData } = await supabase.auth.getSession();
-            const accessToken = sessionData?.session?.access_token;
-
-            const response = await fetch(`${API_URL}/payments/trainer/onboarding`, {
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-                },
+            const res = await fetch(`${baseUrl}/api/stripe/connect`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId: user.id, email: user.email }),
             });
-
-            if (response.ok) {
-                const { url } = await response.json();
-                if (url) {
-                    await WebBrowser.openBrowserAsync(url);
-                    fetchTransactions();
-                }
-            } else {
-                Alert.alert(
-                    'Stripe Connect',
-                    'To connect your Stripe account, please visit airtrainr.com on your computer and go to Payment Methods in your profile settings.'
-                );
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Failed to start onboarding');
+            if (data.url) {
+                await Linking.openURL(data.url);
             }
-        } catch (error) {
-            Alert.alert(
-                'Stripe Connect',
-                'To connect your Stripe account, please visit airtrainr.com on your computer and go to Payment Methods.'
-            );
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : 'Something went wrong';
+            Alert.alert('Connection Error', msg);
+            setError(msg);
         } finally {
             setConnecting(false);
         }
@@ -180,7 +223,11 @@ export default function PaymentMethodsScreen({ navigation }: any) {
         return <LoadingScreen message="Loading payments..." />;
     }
 
-    const stripeConnected = !!(trainerProfile?.stripe_account_id);
+    /* ─── Derived states (mirrors web logic) ─── */
+    const isFullyConnected =
+        connectStatus?.hasAccount && connectStatus?.onboardingComplete && connectStatus?.payoutsEnabled;
+    const isPartial = connectStatus?.hasAccount && !connectStatus?.onboardingComplete;
+    const isNotConnected = !connectStatus?.hasAccount;
 
     return (
         <ScreenWrapper
@@ -192,55 +239,167 @@ export default function PaymentMethodsScreen({ navigation }: any) {
                 onBack={() => navigation.goBack()}
             />
 
-            {/* TRAINER: Payout Account - Stripe connect status as hero card */}
+            {/* ── ERROR BANNER ── */}
+            {error && (
+                <Animated.View entering={FadeInDown.duration(200)}>
+                    <Card style={styles.errorCard}>
+                        <View style={styles.errorRow}>
+                            <Ionicons name="alert-circle" size={18} color={Colors.error} />
+                            <View style={{ flex: 1 }}>
+                                <Text style={styles.errorText}>{error}</Text>
+                                <Pressable onPress={() => user && fetchConnectStatus()}>
+                                    <Text style={styles.errorRetry}>Try again</Text>
+                                </Pressable>
+                            </View>
+                        </View>
+                    </Card>
+                </Animated.View>
+            )}
+
+            {/* ── TRAINER: PAYOUT ACCOUNT ── */}
             {isTrainer ? (
                 <Animated.View entering={FadeInDown.duration(250)} style={styles.section}>
                     <SectionHeader title="Payout Account" />
 
-                    {stripeConnected ? (
-                        <Card style={styles.stripeConnectedCard}>
-                            <View style={styles.stripeConnectedRow}>
-                                <View style={styles.stripeConnectedLeft}>
-                                    <View style={styles.stripeConnectedIconWrap}>
-                                        <Ionicons name="checkmark-circle" size={24} color={Colors.success} />
+                    {/* ── FULLY CONNECTED ── */}
+                    {isFullyConnected && (
+                        <>
+                            {/* Status header */}
+                            <Card style={styles.connectedCard}>
+                                <View style={styles.statusHeaderRow}>
+                                    <View style={[styles.statusIconWrap, styles.statusIconGreen]}>
+                                        <Ionicons name="shield-checkmark" size={26} color={Colors.success} />
                                     </View>
-                                    <View style={styles.paymentCardInfo}>
-                                        <Text style={styles.paymentCardTitle}>Stripe Connected</Text>
-                                        <Text style={styles.paymentCardSubtitle}>
-                                            Account: {'\u00B7\u00B7\u00B7'}{trainerProfile!.stripe_account_id!.slice(-6)}
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={styles.statusTitle}>Payouts Enabled</Text>
+                                        <Text style={styles.statusSubtitle}>
+                                            Your bank account is connected and ready to receive payouts.
                                         </Text>
                                     </View>
                                 </View>
-                                <Badge
-                                    label="Active"
-                                    color={Colors.success}
-                                    bgColor={Colors.successLight}
-                                    dot
-                                />
-                            </View>
-                        </Card>
-                    ) : (
-                        <Card style={styles.stripeWarningCard}>
-                            <View style={styles.stripeWarningIconRow}>
-                                <View style={styles.stripeWarningIconWrap}>
-                                    <Ionicons name="alert-circle-outline" size={28} color={Colors.warning} />
+                            </Card>
+
+                            {/* Status badges row */}
+                            <View style={styles.badgesRow}>
+                                <View style={[styles.badgeCard, styles.badgeCardGreen]}>
+                                    <Ionicons name="checkmark-circle" size={18} color={Colors.success} />
+                                    <View>
+                                        <Text style={styles.badgeLabel}>PAYOUTS</Text>
+                                        <Text style={styles.badgeValue}>Enabled</Text>
+                                    </View>
                                 </View>
-                                <View style={{ flex: 1 }}>
-                                    <Text style={styles.stripeWarningTitle}>Connect to Receive Payouts</Text>
-                                    <Text style={styles.stripeWarningSubtitle}>
-                                        Link your Stripe account to start receiving payments from completed sessions.
-                                    </Text>
+                                <View style={[styles.badgeCard, styles.badgeCardGreen]}>
+                                    <Ionicons name="checkmark-circle" size={18} color={Colors.success} />
+                                    <View>
+                                        <Text style={styles.badgeLabel}>CHARGES</Text>
+                                        <Text style={styles.badgeValue}>Enabled</Text>
+                                    </View>
                                 </View>
                             </View>
+
+                            {/* Bank info */}
+                            <Card style={styles.bankInfoCard}>
+                                <View style={styles.bankInfoRow}>
+                                    <Ionicons name="card-outline" size={18} color={Colors.textSecondary} />
+                                    <View>
+                                        <Text style={styles.badgeLabel}>BANK</Text>
+                                        <Text style={styles.badgeValue}>
+                                            {connectStatus.bankName ? `${connectStatus.bankName} ` : ''}
+                                            {connectStatus.bankLast4 ? `****${connectStatus.bankLast4}` : 'Connected'}
+                                        </Text>
+                                    </View>
+                                </View>
+                            </Card>
+
+                            {/* Stripe Dashboard link */}
+                            {connectStatus.dashboardUrl && (
+                                <Pressable
+                                    style={({ pressed }) => [styles.dashboardLink, pressed && { opacity: 0.8 }]}
+                                    onPress={() => Linking.openURL(connectStatus.dashboardUrl!)}
+                                >
+                                    <Ionicons name="open-outline" size={16} color={Colors.textSecondary} />
+                                    <Text style={styles.dashboardLinkText}>Manage on Stripe Dashboard</Text>
+                                </Pressable>
+                            )}
+                        </>
+                    )}
+
+                    {/* ── PARTIAL SETUP ── */}
+                    {isPartial && (
+                        <>
+                            <Card style={styles.partialCard}>
+                                <View style={styles.statusHeaderRow}>
+                                    <View style={[styles.statusIconWrap, styles.statusIconAmber]}>
+                                        <Ionicons name="alert-circle" size={26} color={Colors.warning} />
+                                    </View>
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={styles.statusTitle}>Setup Incomplete</Text>
+                                        <Text style={styles.statusSubtitle}>
+                                            You started the setup but haven't finished. Complete it to receive payouts.
+                                        </Text>
+                                    </View>
+                                </View>
+                            </Card>
+
+                            <Card style={styles.partialInfoCard}>
+                                <Text style={styles.partialInfoTitle}>Almost there!</Text>
+                                <Text style={styles.partialInfoText}>
+                                    Your Stripe account was created but onboarding is not complete.
+                                    You need to finish adding your bank details and identity verification.
+                                </Text>
+                            </Card>
+
                             <Button
-                                title="Connect Stripe Account"
-                                onPress={handleConnectStripe}
+                                title={connecting ? 'Redirecting...' : 'Complete Setup'}
+                                onPress={handleConnect}
                                 variant="primary"
-                                icon="link-outline"
+                                icon="arrow-forward-outline"
                                 loading={connecting}
                                 disabled={connecting}
                             />
-                        </Card>
+                        </>
+                    )}
+
+                    {/* ── NOT CONNECTED ── */}
+                    {isNotConnected && (
+                        <>
+                            <Card style={styles.notConnectedCard}>
+                                <View style={styles.statusHeaderRow}>
+                                    <View style={[styles.statusIconWrap, styles.statusIconDefault]}>
+                                        <Ionicons name="business-outline" size={26} color={Colors.textSecondary} />
+                                    </View>
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={styles.statusTitle}>Bank Account Not Connected</Text>
+                                        <Text style={styles.statusSubtitle}>
+                                            Connect your bank account through Stripe to start receiving payouts.
+                                        </Text>
+                                    </View>
+                                </View>
+                            </Card>
+
+                            {/* How it works */}
+                            <Card>
+                                <Text style={styles.howItWorksTitle}>How it works</Text>
+                                <View style={styles.stepsContainer}>
+                                    <StepItem number={1} text="Click the button below to connect via Stripe (our payment processor)." />
+                                    <StepItem number={2} text="Stripe will ask for your bank details and verify your identity." />
+                                    <StepItem number={3} text="Once set up, payouts from completed training sessions go directly to your bank." />
+                                </View>
+                            </Card>
+
+                            <Button
+                                title={connecting ? 'Redirecting to Stripe...' : 'Connect Bank Account'}
+                                onPress={handleConnect}
+                                variant="primary"
+                                icon="business-outline"
+                                loading={connecting}
+                                disabled={connecting}
+                            />
+
+                            <Text style={styles.poweredByText}>
+                                Powered by Stripe. Your banking details are never stored on our servers.
+                            </Text>
+                        </>
                     )}
 
                     {/* Payout info strip */}
@@ -258,6 +417,7 @@ export default function PaymentMethodsScreen({ navigation }: any) {
                     </Card>
                 </Animated.View>
             ) : (
+                /* ── ATHLETE: payment method placeholder ── */
                 <Animated.View entering={FadeInDown.duration(250)} style={styles.section}>
                     <SectionHeader title="Payment Method" />
                     <Card>
@@ -280,7 +440,7 @@ export default function PaymentMethodsScreen({ navigation }: any) {
                 </Animated.View>
             )}
 
-            {/* Recent Transactions */}
+            {/* ── Recent Transactions ── */}
             <View style={styles.section}>
                 <SectionHeader title="Recent Transactions" />
 
@@ -310,8 +470,8 @@ export default function PaymentMethodsScreen({ navigation }: any) {
                 )}
             </View>
 
-            {/* Trainer: Connect Stripe CTA if not connected */}
-            {isTrainer && !stripeConnected && (
+            {/* Trainer: bottom CTA if not connected */}
+            {isTrainer && isNotConnected && (
                 <Card variant="elevated" style={styles.stripeCta}>
                     <View style={styles.stripeCtaIcon}>
                         <Ionicons name="card-outline" size={24} color={Colors.primary} />
@@ -321,10 +481,10 @@ export default function PaymentMethodsScreen({ navigation }: any) {
                         Connect your Stripe account to automatically receive payouts after each completed session. No delays, no hassle.
                     </Text>
                     <Button
-                        title="Connect Stripe Account"
-                        onPress={handleConnectStripe}
+                        title="Connect Bank Account"
+                        onPress={handleConnect}
                         variant="primary"
-                        icon="link-outline"
+                        icon="business-outline"
                         loading={connecting}
                         disabled={connecting}
                         fullWidth={false}
@@ -341,71 +501,183 @@ const styles = StyleSheet.create({
         marginBottom: Spacing.xl,
     },
 
-    // Stripe Connected
-    stripeConnectedCard: {
-        borderColor: Colors.success + '44',
+    // Error banner
+    errorCard: {
+        borderColor: Colors.error + '44',
+        marginBottom: Spacing.md,
     },
-    stripeConnectedRow: {
+    errorRow: {
         flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
+        alignItems: 'flex-start',
+        gap: Spacing.sm,
     },
-    stripeConnectedLeft: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: Spacing.md,
-        flex: 1,
-    },
-    stripeConnectedIconWrap: {
-        width: 44,
-        height: 44,
-        borderRadius: BorderRadius.md,
-        backgroundColor: Colors.successLight,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    paymentCardInfo: {
-        flex: 1,
-        gap: 3,
-    },
-    paymentCardTitle: {
-        fontSize: FontSize.md,
-        fontWeight: FontWeight.semibold,
-        color: Colors.text,
-    },
-    paymentCardSubtitle: {
+    errorText: {
         fontSize: FontSize.sm,
-        color: Colors.textSecondary,
+        fontWeight: FontWeight.semibold,
+        color: Colors.error,
+    },
+    errorRetry: {
+        fontSize: FontSize.xs,
+        fontWeight: FontWeight.bold,
+        color: Colors.error,
+        marginTop: 4,
+        textDecorationLine: 'underline',
     },
 
-    // Stripe Warning
-    stripeWarningCard: {
-        borderColor: Colors.warning + '44',
-        gap: Spacing.lg,
-    },
-    stripeWarningIconRow: {
+    // Status header (shared)
+    statusHeaderRow: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: Spacing.md,
     },
-    stripeWarningIconWrap: {
-        width: 48,
-        height: 48,
-        borderRadius: BorderRadius.md,
-        backgroundColor: Colors.warningLight,
+    statusIconWrap: {
+        width: 52,
+        height: 52,
+        borderRadius: BorderRadius.lg,
         justifyContent: 'center',
         alignItems: 'center',
     },
-    stripeWarningTitle: {
-        fontSize: FontSize.md,
+    statusIconGreen: {
+        backgroundColor: Colors.success + '22',
+    },
+    statusIconAmber: {
+        backgroundColor: Colors.warning + '22',
+    },
+    statusIconDefault: {
+        backgroundColor: Colors.surface,
+    },
+    statusTitle: {
+        fontSize: FontSize.lg,
         fontWeight: FontWeight.bold,
         color: Colors.text,
     },
-    stripeWarningSubtitle: {
+    statusSubtitle: {
         fontSize: FontSize.sm,
         color: Colors.textSecondary,
         marginTop: 2,
         lineHeight: 20,
+    },
+
+    // Fully connected
+    connectedCard: {
+        borderColor: Colors.success + '44',
+    },
+    badgesRow: {
+        flexDirection: 'row',
+        gap: Spacing.sm,
+    },
+    badgeCard: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.sm,
+        paddingHorizontal: Spacing.md,
+        paddingVertical: Spacing.md,
+        borderRadius: BorderRadius.md,
+        borderWidth: 1,
+    },
+    badgeCardGreen: {
+        backgroundColor: Colors.success + '0D',
+        borderColor: Colors.success + '28',
+    },
+    badgeLabel: {
+        fontSize: FontSize.xs,
+        fontWeight: FontWeight.bold,
+        color: Colors.success,
+        letterSpacing: 1,
+    },
+    badgeValue: {
+        fontSize: FontSize.sm,
+        fontWeight: FontWeight.semibold,
+        color: Colors.text,
+    },
+    bankInfoCard: {},
+    bankInfoRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.sm,
+    },
+    dashboardLink: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.sm,
+        paddingHorizontal: Spacing.lg,
+        paddingVertical: Spacing.md,
+        borderRadius: BorderRadius.md,
+        backgroundColor: Colors.card,
+        borderWidth: 1,
+        borderColor: Colors.border,
+        alignSelf: 'flex-start',
+    },
+    dashboardLinkText: {
+        fontSize: FontSize.sm,
+        fontWeight: FontWeight.bold,
+        color: Colors.textSecondary,
+    },
+
+    // Partial setup
+    partialCard: {
+        borderColor: Colors.warning + '44',
+    },
+    partialInfoCard: {
+        backgroundColor: Colors.warning + '0D',
+        borderColor: Colors.warning + '28',
+        borderWidth: 1,
+        borderRadius: BorderRadius.md,
+        paddingHorizontal: Spacing.lg,
+        paddingVertical: Spacing.md,
+    },
+    partialInfoTitle: {
+        fontSize: FontSize.sm,
+        fontWeight: FontWeight.semibold,
+        color: Colors.warning,
+        marginBottom: 4,
+    },
+    partialInfoText: {
+        fontSize: FontSize.sm,
+        color: Colors.textSecondary,
+        lineHeight: 20,
+    },
+
+    // Not connected
+    notConnectedCard: {},
+    howItWorksTitle: {
+        fontSize: FontSize.sm,
+        fontWeight: FontWeight.bold,
+        color: Colors.text,
+        marginBottom: Spacing.md,
+    },
+    stepsContainer: {
+        gap: Spacing.md,
+    },
+    stepRow: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        gap: Spacing.md,
+    },
+    stepCircle: {
+        width: 24,
+        height: 24,
+        borderRadius: 12,
+        backgroundColor: Colors.surface,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginTop: 1,
+    },
+    stepNumber: {
+        fontSize: FontSize.xs,
+        fontWeight: FontWeight.bold,
+        color: Colors.textSecondary,
+    },
+    stepText: {
+        flex: 1,
+        fontSize: FontSize.sm,
+        color: Colors.textSecondary,
+        lineHeight: 20,
+    },
+    poweredByText: {
+        fontSize: FontSize.xs,
+        color: Colors.textSecondary + '80',
     },
 
     // Payout info strip
@@ -426,7 +698,7 @@ const styles = StyleSheet.create({
         color: Colors.textSecondary,
     },
 
-    // Coming soon
+    // Coming soon (athlete)
     comingSoonRow: {
         flexDirection: 'row',
         alignItems: 'center',
