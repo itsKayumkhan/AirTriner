@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { getSession, AuthUser } from "@/lib/auth";
 import { supabase, NotificationRow } from "@/lib/supabase";
 import { OfferModal } from "@/components/notifications/OfferModal";
@@ -15,12 +16,25 @@ interface OfferNotificationData {
 
 export default function NotificationsPage() {
     const { markAllRead: ctxMarkAllRead, clearAllNotifications: ctxClearAll } = useNotifications();
+    const searchParams = useSearchParams();
     const [user, setUser] = useState<AuthUser | null>(null);
     const [notifications, setNotifications] = useState<NotificationRow[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedNotification, setSelectedNotification] = useState<NotificationRow | null>(null);
     const [showOfferModal, setShowOfferModal] = useState(false);
     const [isResponding, setIsResponding] = useState(false);
+    const [paymentSuccess, setPaymentSuccess] = useState(false);
+
+    useEffect(() => {
+        // Show success banner if returning from Stripe payment
+        if (searchParams.get("offer_paid") === "true") {
+            setPaymentSuccess(true);
+            // Clean up URL params
+            window.history.replaceState({}, "", "/dashboard/notifications");
+            // Auto-hide after 8 seconds
+            setTimeout(() => setPaymentSuccess(false), 8000);
+        }
+    }, [searchParams]);
 
     useEffect(() => {
         const session = getSession();
@@ -72,105 +86,44 @@ export default function NotificationsPage() {
     const handleOfferResponse = async (notificationId: string, offerId: string, response: "accepted" | "declined") => {
         setIsResponding(true);
         try {
-            // 1. Get the full offer details to get the proposed date and price
-            const { data: offer, error: fetchError } = await supabase
-                .from("training_offers")
-                .select("*")
-                .eq("id", offerId)
-                .single();
-
-            if (fetchError || !offer) throw new Error("Could not find offer details");
-
             if (response === "accepted") {
-                // 2. Create the booking with the CORRECT scheduled date
-                const proposed = offer.proposed_dates as any || {};
-                const scheduledAt = proposed.scheduledAt || new Date().toISOString();
+                // Redirect to Stripe Checkout -- booking will be created by webhook after payment
+                if (!user) throw new Error("Not logged in");
 
-                // Fetch real platform fee from DB
-                const price = Number(offer.price);
-                const { data: settings } = await supabase
-                    .from("platform_settings")
-                    .select("platform_fee_percentage")
-                    .maybeSingle();
-                const feePercent = (settings?.platform_fee_percentage ?? 3) / 100;
-                const platformFee = Math.round(price * feePercent * 100) / 100;
-                const totalPaid = price + platformFee;
+                // Get athlete email
+                const { data: athleteUser } = await supabase
+                    .from("users")
+                    .select("email")
+                    .eq("id", user.id)
+                    .single();
 
-                const { error: bookingError } = await supabase
-                    .from("bookings")
-                    .insert({
-                        athlete_id: offer.athlete_id,
-                        trainer_id: offer.trainer_id,
-                        sport: offer.sport || "General Training",
-                        scheduled_at: scheduledAt,
-                        duration_minutes: offer.session_length_min || 60,
-                        price: price,
-                        platform_fee: platformFee,
-                        total_paid: totalPaid,
-                        status: "pending",
-                        athlete_notes: `Accepted offer: ${offer.message || ""}`,
-                        status_history: [{
-                            to: "pending",
-                            by: user?.id,
-                            at: new Date().toISOString(),
-                            reason: "Accepted Trainer Offer"
-                        }]
-                    });
+                if (!athleteUser?.email) throw new Error("Could not find your email");
 
-                if (bookingError) throw bookingError;
+                const res = await fetch("/api/stripe/create-offer-payment", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        offerId,
+                        athleteId: user.id,
+                        athleteEmail: athleteUser.email,
+                    }),
+                });
 
-                // Camp spots management with race condition protection
-                const proposedCamp = proposed?.camp;
-                if (proposedCamp && proposedCamp.name && offer.trainer_id) {
-                    // Retry loop for optimistic concurrency control
-                    let retries = 3;
-                    while (retries > 0) {
-                        // 1. Fetch latest camp data (fresh read every attempt)
-                        const { data: trainerProfile } = await supabase
-                            .from("trainer_profiles")
-                            .select("camp_offerings")
-                            .eq("user_id", offer.trainer_id)
-                            .maybeSingle();
+                const data = await res.json();
 
-                        if (!trainerProfile?.camp_offerings || !Array.isArray(trainerProfile.camp_offerings)) break;
-
-                        const campIndex = trainerProfile.camp_offerings.findIndex((c: any) => c.name === proposedCamp.name);
-                        if (campIndex === -1) break;
-
-                        const currentCamp = trainerProfile.camp_offerings[campIndex] as any;
-                        const currentSpots = currentCamp.spotsRemaining ?? currentCamp.maxSpots ?? 0;
-
-                        // 2. Check if camp is full BEFORE decrementing
-                        if (currentSpots <= 0) {
-                            // Camp is full -- reject the offer instead of accepting
-                            await supabase.from("training_offers").update({ status: "declined" }).eq("id", offerId);
-                            throw new Error("This camp is now full. The offer has been automatically declined.");
-                        }
-
-                        // 3. Decrement and save
-                        const updatedCamps = trainerProfile.camp_offerings.map((c: any, i: number) => {
-                            if (i === campIndex) {
-                                return { ...c, spotsRemaining: currentSpots - 1 };
-                            }
-                            return c;
-                        });
-
-                        const { error: updateError } = await supabase
-                            .from("trainer_profiles")
-                            .update({ camp_offerings: updatedCamps })
-                            .eq("user_id", offer.trainer_id);
-
-                        if (!updateError) break; // Success
-                        retries--;
-                        if (retries === 0) console.error("Failed to update camp spots after retries");
-                    }
+                if (!res.ok) {
+                    throw new Error(data.error || "Failed to create payment session");
                 }
+
+                // Redirect to Stripe Checkout
+                window.location.href = data.url;
+                return; // Don't setIsResponding(false) -- page is navigating away
             }
 
-            // 3. Update the training offer status
+            // Declined flow stays the same -- no payment needed
             const { error: offerError } = await supabase
                 .from("training_offers")
-                .update({ status: response })
+                .update({ status: "declined" })
                 .eq("id", offerId);
 
             if (offerError) throw offerError;
@@ -178,7 +131,7 @@ export default function NotificationsPage() {
             // Update the notification data so we don't show the buttons again
             const currentNotif = notifications.find(n => n.id === notificationId);
             if (currentNotif) {
-                const newData = { ...(currentNotif.data as OfferNotificationData), offer_status: response };
+                const newData = { ...(currentNotif.data as OfferNotificationData), offer_status: "declined" };
                 await supabase
                     .from("notifications")
                     .update({ data: newData })
@@ -190,9 +143,9 @@ export default function NotificationsPage() {
                 setShowOfferModal(false);
                 setSelectedNotification(null);
             }
-        } catch (err) {
+        } catch (err: any) {
             console.error("Failed to respond to offer:", err);
-            alert("Failed to update offer status. Please try again.");
+            alert(err.message || "Failed to update offer status. Please try again.");
         } finally {
             setIsResponding(false);
         }
@@ -284,6 +237,19 @@ export default function NotificationsPage() {
                     )}
                 </div>
             </div>
+
+            {paymentSuccess && (
+                <div className="mb-6 p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center gap-3">
+                    <CheckCircle className="text-emerald-400 w-5 h-5 shrink-0" />
+                    <div>
+                        <p className="text-sm font-bold text-emerald-400">Payment Successful!</p>
+                        <p className="text-xs text-text-main/60 mt-0.5">Your training offer has been accepted and the booking is being created. You will receive a confirmation shortly.</p>
+                    </div>
+                    <button onClick={() => setPaymentSuccess(false)} className="ml-auto text-text-main/40 hover:text-white">
+                        <XCircle size={16} />
+                    </button>
+                </div>
+            )}
 
             {notifications.length === 0 ? (
                 <div className="bg-surface rounded-2xl border border-white/5 p-16 text-center ">

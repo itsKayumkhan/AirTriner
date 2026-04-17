@@ -439,7 +439,7 @@ export default function AdminAthletesPage() {
 
             {/* Athlete Detail Modal */}
             {detailModal.isOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+                <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
                     <div className="bg-[#1A1C23] border border-white/10 rounded-[24px] shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-200">
                         {/* Modal Header */}
                         <div className="flex items-center justify-between p-6 border-b border-white/5 sticky top-0 bg-[#1A1C23] z-10 rounded-t-[24px]">

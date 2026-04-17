@@ -213,13 +213,22 @@ export default function NotificationsScreen({ navigation }: any) {
             const platformFee = offer.price * (feePercent / 100);
 
             // Camp spots management with race condition protection
+            // offer.trainer_id may be users.id (web) or trainer_profiles.id (mobile) — handle both
             const proposedCamp = offer.proposed_dates?.camp;
             if (proposedCamp && proposedCamp.name && offer.trainer_id) {
                 let retries = 3;
                 while (retries > 0) {
-                    const { data: trainerProfile } = await supabase
-                        .from('trainer_profiles').select('camp_offerings')
+                    // Try by user_id first
+                    let { data: trainerProfile } = await supabase
+                        .from('trainer_profiles').select('camp_offerings, user_id')
                         .eq('user_id', offer.trainer_id).maybeSingle();
+                    // Fallback: offer.trainer_id may be trainer_profiles PK
+                    if (!trainerProfile) {
+                        const fallback = await supabase
+                            .from('trainer_profiles').select('camp_offerings, user_id')
+                            .eq('id', offer.trainer_id).maybeSingle();
+                        trainerProfile = fallback.data;
+                    }
                     if (!trainerProfile?.camp_offerings) break;
                     const campIndex = trainerProfile.camp_offerings.findIndex((c: any) => c.name === proposedCamp.name);
                     if (campIndex === -1) break;
@@ -234,7 +243,7 @@ export default function NotificationsScreen({ navigation }: any) {
                         i === campIndex ? { ...c, spotsRemaining: currentSpots - 1 } : c
                     );
                     const { error } = await supabase.from('trainer_profiles')
-                        .update({ camp_offerings: updatedCamps }).eq('user_id', offer.trainer_id);
+                        .update({ camp_offerings: updatedCamps }).eq('user_id', trainerProfile.user_id);
                     if (!error) break;
                     retries--;
                 }

@@ -212,6 +212,207 @@ export async function POST(req: NextRequest) {
                     break;
                 }
 
+                // ── Offer accept payment ──
+                if (metaType === 'offer_accept') {
+                    const {
+                        offerId, athleteId, trainerId, sport,
+                        scheduledAt, sessionLengthMin, message,
+                        price, platformFee, totalAmount, campName,
+                    } = session.metadata || {};
+
+                    if (!offerId) {
+                        console.error('[webhook] offer_accept: missing offerId');
+                        break;
+                    }
+
+                    // Idempotency: check if offer is already accepted
+                    const { data: existingOffer } = await supabaseAdmin
+                        .from('training_offers')
+                        .select('status')
+                        .eq('id', offerId)
+                        .single();
+
+                    if (existingOffer?.status === 'accepted') {
+                        console.log(`[webhook] Offer already accepted: ${offerId}`);
+                        break;
+                    }
+
+                    // 1. Create the booking
+                    const bookingScheduledAt = scheduledAt || new Date().toISOString();
+                    const { data: newBooking, error: bookingError } = await supabaseAdmin
+                        .from('bookings')
+                        .insert({
+                            athlete_id: athleteId,
+                            trainer_id: trainerId,
+                            sport: sport || 'General Training',
+                            scheduled_at: bookingScheduledAt,
+                            duration_minutes: Number(sessionLengthMin) || 60,
+                            price: Number(price),
+                            platform_fee: Number(platformFee),
+                            total_paid: Number(totalAmount),
+                            status: 'pending',
+                            athlete_notes: `Accepted offer: ${message || ''}`,
+                            status_history: [{
+                                to: 'pending',
+                                by: athleteId,
+                                at: new Date().toISOString(),
+                                reason: 'Accepted Trainer Offer (paid via Stripe)',
+                            }],
+                        })
+                        .select('id')
+                        .single();
+
+                    if (bookingError) {
+                        console.error('[webhook] offer_accept: failed to create booking:', bookingError);
+                        break;
+                    }
+
+                    // 2. Update offer status to accepted
+                    await supabaseAdmin
+                        .from('training_offers')
+                        .update({ status: 'accepted' })
+                        .eq('id', offerId);
+
+                    // 3. Create payment transaction (escrow)
+                    const { count: completedCount } = await supabaseAdmin
+                        .from('bookings')
+                        .select('*', { count: 'exact', head: true })
+                        .eq('trainer_id', trainerId)
+                        .eq('status', 'completed');
+                    const holdHours = (completedCount ?? 0) >= 10 ? 24 : 72;
+                    const holdUntil = new Date(Date.now() + holdHours * 60 * 60 * 1000);
+
+                    await supabaseAdmin
+                        .from('payment_transactions')
+                        .insert({
+                            booking_id: newBooking.id,
+                            stripe_payment_intent_id: session.payment_intent ? String(session.payment_intent) : null,
+                            amount: Number(totalAmount),
+                            platform_fee: Number(platformFee),
+                            trainer_payout: Number(price),
+                            status: 'held',
+                            hold_until: holdUntil.toISOString(),
+                        });
+
+                    // 4. Camp spots management
+                    // trainerId should be users.id (resolved by create-offer-payment), but add fallback for safety
+                    if (campName && trainerId) {
+                        let retries = 3;
+                        while (retries > 0) {
+                            let { data: trainerProfile } = await supabaseAdmin
+                                .from('trainer_profiles')
+                                .select('camp_offerings, user_id')
+                                .eq('user_id', trainerId)
+                                .maybeSingle();
+
+                            // Fallback: trainerId might be trainer_profiles PK
+                            if (!trainerProfile) {
+                                const fallback = await supabaseAdmin
+                                    .from('trainer_profiles')
+                                    .select('camp_offerings, user_id')
+                                    .eq('id', trainerId)
+                                    .maybeSingle();
+                                trainerProfile = fallback.data;
+                            }
+
+                            if (!trainerProfile?.camp_offerings || !Array.isArray(trainerProfile.camp_offerings)) break;
+
+                            const campIndex = trainerProfile.camp_offerings.findIndex((c: any) => c.name === campName);
+                            if (campIndex === -1) break;
+
+                            const currentCamp = trainerProfile.camp_offerings[campIndex] as any;
+                            const currentSpots = currentCamp.spotsRemaining ?? currentCamp.maxSpots ?? 0;
+
+                            if (currentSpots <= 0) break; // Camp full, but payment already done — don't block
+
+                            const updatedCamps = trainerProfile.camp_offerings.map((c: any, i: number) => {
+                                if (i === campIndex) return { ...c, spotsRemaining: currentSpots - 1 };
+                                return c;
+                            });
+
+                            const { error: updateError } = await supabaseAdmin
+                                .from('trainer_profiles')
+                                .update({ camp_offerings: updatedCamps })
+                                .eq('user_id', trainerProfile.user_id);
+
+                            if (!updateError) break;
+                            retries--;
+                        }
+                    }
+
+                    // 5. Update notification so buttons don't show again
+                    const { data: offerNotifs } = await supabaseAdmin
+                        .from('notifications')
+                        .select('id, data')
+                        .eq('user_id', athleteId)
+                        .contains('data', { offer_id: offerId });
+
+                    if (offerNotifs && offerNotifs.length > 0) {
+                        for (const notif of offerNotifs) {
+                            const newData = { ...(notif.data as any), offer_status: 'accepted' };
+                            await supabaseAdmin
+                                .from('notifications')
+                                .update({ data: newData })
+                                .eq('id', notif.id);
+                        }
+                    }
+
+                    // 6. Notify trainer
+                    await supabaseAdmin.from('notifications').insert({
+                        user_id: trainerId,
+                        type: 'PAYMENT_RECEIVED',
+                        title: 'Offer Accepted & Payment Received',
+                        body: `Athlete has accepted your training offer and paid $${Number(totalAmount).toFixed(2)}. Funds are held in escrow.`,
+                        data: { booking_id: newBooking.id, offer_id: offerId },
+                        read: false,
+                    });
+
+                    console.log(`[webhook] Offer accepted with payment: ${offerId} → booking ${newBooking.id} ($${totalAmount})`);
+
+                    // ── Send email receipts ──
+                    try {
+                        const { data: athlete } = await supabaseAdmin
+                            .from('users')
+                            .select('first_name, last_name, email')
+                            .eq('id', athleteId)
+                            .single();
+
+                        const { data: trainerUser } = await supabaseAdmin
+                            .from('users')
+                            .select('first_name, last_name, email')
+                            .eq('id', trainerId)
+                            .single();
+
+                        if (athlete && trainerUser) {
+                            const receiptData: BookingReceiptData = {
+                                athleteEmail: athlete.email,
+                                athleteName: `${athlete.first_name} ${athlete.last_name}`,
+                                trainerEmail: trainerUser.email,
+                                trainerName: `${trainerUser.first_name} ${trainerUser.last_name}`,
+                                sport: sport || 'General Training',
+                                scheduledAt: bookingScheduledAt,
+                                durationMinutes: Number(sessionLengthMin) || 60,
+                                sessionFee: Number(price),
+                                platformFee: Number(platformFee),
+                                totalPaid: Number(totalAmount),
+                                trainerPayout: Number(price),
+                                bookingId: newBooking.id,
+                            };
+
+                            sendAthleteReceipt(receiptData).catch(e =>
+                                console.error('[webhook] Offer accept athlete receipt failed:', e)
+                            );
+                            sendTrainerReceipt(receiptData).catch(e =>
+                                console.error('[webhook] Offer accept trainer receipt failed:', e)
+                            );
+                        }
+                    } catch (receiptErr) {
+                        console.error('[webhook] Offer accept receipt error:', receiptErr);
+                    }
+
+                    break;
+                }
+
                 // ── Subscription payment ──
                 if (session.mode !== 'subscription') break;
 

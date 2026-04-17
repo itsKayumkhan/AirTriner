@@ -95,13 +95,13 @@ export default function TrainerEditProfilePage() {
     // Custom session duration input
     const [customDuration, setCustomDuration] = useState("");
 
-    // Multi-day camp offerings (Change 1)
-    const [campOfferings, setCampOfferings] = useState<Array<{ name: string; hoursPerDay: number; days: number; totalPrice: number; location: string; startTime: string; endTime: string; dates: string[]; maxSpots: number; spotsRemaining: number }>>([]);
+    // Multi-day camp offerings (Change 1) — non-consecutive days with individual times
+    const [campOfferings, setCampOfferings] = useState<Array<{ name: string; hoursPerDay: number; days: number; totalPrice: number; location: string; startTime: string; endTime: string; dates: string[]; maxSpots: number; spotsRemaining: number; schedule?: Array<{ date: string; startTime: string }> }>>([]);
     const [showCampSection, setShowCampSection] = useState(false);
     const [showCampForm, setShowCampForm] = useState(false);
     const [editingCampIndex, setEditingCampIndex] = useState<number | null>(null);
-    const [campForm, setCampForm] = useState({ name: "", hoursPerDay: "", days: "", totalPrice: "", location: "", startTime: "", endTime: "", maxSpots: "", startDate: "", endDate: "" });
-    const [campDates, setCampDates] = useState<string[]>([""]);
+    const [campForm, setCampForm] = useState({ name: "", hoursPerDay: "", totalPrice: "", location: "", maxSpots: "" });
+    const [campSchedule, setCampSchedule] = useState<Array<{ date: string; startTime: string }>>([{ date: "", startTime: "" }]);
 
     // Profile image upload with admin approval (Change 3)
     const [profileImageUrl, setProfileImageUrl] = useState<string | null>(null);
@@ -490,31 +490,15 @@ export default function TrainerEditProfilePage() {
     const handleAddCamp = () => {
         const name = campForm.name.trim();
         const hoursPerDay = parseFloat(campForm.hoursPerDay);
-        const days = parseInt(campForm.days);
         const totalPrice = parseFloat(campForm.totalPrice);
         const location = campForm.location.trim();
-        const startTime = campForm.startTime.trim();
-        // Auto-calculate endTime from startTime + hoursPerDay
-        let endTime = "";
-        if (startTime && hoursPerDay) {
-            const [h, m] = startTime.split(":").map(Number);
-            const totalMins = h * 60 + m + hoursPerDay * 60;
-            const eH = Math.floor(totalMins / 60) % 24;
-            const eM = Math.round(totalMins % 60);
-            endTime = `${String(eH).padStart(2, "0")}:${String(eM).padStart(2, "0")}`;
-        }
         const maxSpots = parseInt(campForm.maxSpots);
-        const startDate = campForm.startDate.trim();
-        // Auto-calculate endDate from startDate + days
-        let endDate = "";
-        if (startDate && days) {
-            const sd = new Date(startDate + "T00:00:00");
-            sd.setDate(sd.getDate() + days - 1);
-            endDate = sd.toISOString().split("T")[0];
-        }
-        const dates = startDate ? [startDate, ...(endDate ? [endDate] : [])] : [];
 
-        if (!name || !hoursPerDay || hoursPerDay <= 0 || !days || days <= 0 || !totalPrice || totalPrice <= 0) {
+        // Filter out empty schedule rows
+        const validSchedule = campSchedule.filter(s => s.date.trim() && s.startTime.trim());
+        const days = validSchedule.length;
+
+        if (!name || !hoursPerDay || hoursPerDay <= 0 || !totalPrice || totalPrice <= 0) {
             setPopup({ type: "error", message: "Please fill in all camp fields with valid values." });
             return;
         }
@@ -524,14 +508,30 @@ export default function TrainerEditProfilePage() {
             return;
         }
 
-        if (!startDate) {
-            setPopup({ type: "error", message: "Please select a start date for the camp." });
+        if (days === 0) {
+            setPopup({ type: "error", message: "Please add at least one day with a date and start time." });
             return;
         }
 
+        // Sort schedule by date
+        const sortedSchedule = [...validSchedule].sort((a, b) => a.date.localeCompare(b.date));
+
+        // Derive legacy fields from the schedule for backward compatibility
+        const firstEntry = sortedSchedule[0];
+        const lastEntry = sortedSchedule[sortedSchedule.length - 1];
+        const startTime = firstEntry.startTime;
+        let endTime = "";
+        if (startTime && hoursPerDay) {
+            const [h, m] = startTime.split(":").map(Number);
+            const totalMins = h * 60 + m + hoursPerDay * 60;
+            const eH = Math.floor(totalMins / 60) % 24;
+            const eM = Math.round(totalMins % 60);
+            endTime = `${String(eH).padStart(2, "0")}:${String(eM).padStart(2, "0")}`;
+        }
+        const dates = [firstEntry.date, ...(lastEntry.date !== firstEntry.date ? [lastEntry.date] : [])];
 
         const existingSpotsRemaining = editingCampIndex !== null ? campOfferings[editingCampIndex].spotsRemaining : maxSpots;
-        const camp = { name, hoursPerDay, days, totalPrice, location, startTime, endTime, dates, maxSpots, spotsRemaining: editingCampIndex !== null ? Math.min(existingSpotsRemaining, maxSpots) : maxSpots };
+        const camp = { name, hoursPerDay, days, totalPrice, location, startTime, endTime, dates, maxSpots, spotsRemaining: editingCampIndex !== null ? Math.min(existingSpotsRemaining, maxSpots) : maxSpots, schedule: sortedSchedule };
 
         if (editingCampIndex !== null) {
             setCampOfferings(prev => prev.map((c, i) => i === editingCampIndex ? camp : c));
@@ -539,7 +539,8 @@ export default function TrainerEditProfilePage() {
         } else {
             setCampOfferings(prev => [...prev, camp]);
         }
-        setCampForm({ name: "", hoursPerDay: "", days: "", totalPrice: "", location: "", startTime: "", endTime: "", maxSpots: "", startDate: "", endDate: "" }); setCampDates([""]);
+        setCampForm({ name: "", hoursPerDay: "", totalPrice: "", location: "", maxSpots: "" });
+        setCampSchedule([{ date: "", startTime: "" }]);
         setShowCampForm(false);
     };
 
@@ -548,15 +549,18 @@ export default function TrainerEditProfilePage() {
         setCampForm({
             name: camp.name,
             hoursPerDay: camp.hoursPerDay.toString(),
-            days: camp.days.toString(),
             totalPrice: camp.totalPrice.toString(),
             location: camp.location || "",
-            startTime: camp.startTime || "",
-            endTime: camp.endTime || "",
             maxSpots: camp.maxSpots?.toString() || "",
-            startDate: camp.dates?.[0] || "",
-            endDate: camp.dates?.[1] || "",
         });
+        // Load schedule if present, otherwise reconstruct from legacy fields
+        if (camp.schedule && camp.schedule.length > 0) {
+            setCampSchedule(camp.schedule.map(s => ({ date: s.date, startTime: s.startTime })));
+        } else if (camp.dates?.[0]) {
+            setCampSchedule([{ date: camp.dates[0], startTime: camp.startTime || "" }]);
+        } else {
+            setCampSchedule([{ date: "", startTime: "" }]);
+        }
         setEditingCampIndex(index);
         setShowCampForm(true);
     };
@@ -1339,15 +1343,6 @@ export default function TrainerEditProfilePage() {
                                         const spotsLeft = camp.spotsRemaining ?? camp.maxSpots;
                                         const spotsPercent = camp.maxSpots > 0 ? (spotsLeft / camp.maxSpots) * 100 : 100;
                                         const isFull = spotsLeft <= 0;
-                                        // Auto-calculate end time for display
-                                        let endTimeDisplay = camp.endTime || "";
-                                        if (camp.startTime && camp.hoursPerDay && !camp.endTime) {
-                                            const [sh, sm] = camp.startTime.split(":").map(Number);
-                                            const total = sh * 60 + sm + camp.hoursPerDay * 60;
-                                            const eH = Math.floor(total / 60) % 24;
-                                            const eM = Math.round(total % 60);
-                                            endTimeDisplay = `${String(eH).padStart(2, "0")}:${String(eM).padStart(2, "0")}`;
-                                        }
                                         // Format time to 12h
                                         const to12h = (t: string) => {
                                             if (!t) return "";
@@ -1355,13 +1350,21 @@ export default function TrainerEditProfilePage() {
                                             const ampm = h >= 12 ? "PM" : "AM";
                                             return `${h % 12 || 12}:${String(m).padStart(2, "0")} ${ampm}`;
                                         };
+                                        // Auto-calculate end time from start + hoursPerDay
+                                        const calcEndTime = (st: string) => {
+                                            if (!st || !camp.hoursPerDay) return "";
+                                            const [sh, sm] = st.split(":").map(Number);
+                                            const total = sh * 60 + sm + camp.hoursPerDay * 60;
+                                            const eH = Math.floor(total / 60) % 24;
+                                            const eM = Math.round(total % 60);
+                                            return `${String(eH).padStart(2, "0")}:${String(eM).padStart(2, "0")}`;
+                                        };
                                         // Format dates
                                         const formatDate = (d: string) => {
                                             const dt = new Date(d + "T00:00:00");
-                                            return dt.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+                                            return dt.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
                                         };
-                                        const startDateStr = camp.dates?.[0] ? formatDate(camp.dates[0]) : "";
-                                        const endDateStr = camp.dates?.[1] ? formatDate(camp.dates[1]) : "";
+                                        const schedule = camp.schedule && camp.schedule.length > 0 ? camp.schedule : null;
 
                                         return (
                                             <div key={idx} className={`relative rounded-2xl border overflow-hidden transition-all ${isFull ? "border-red-500/20 bg-red-500/[0.02]" : "border-white/5 bg-[#12141A]"}`}>
@@ -1391,15 +1394,6 @@ export default function TrainerEditProfilePage() {
                                                             <p className="text-[9px] font-bold text-text-main/30 uppercase tracking-widest mb-1">Duration</p>
                                                             <p className="text-white text-xs font-bold">{camp.hoursPerDay} hrs/day &times; {camp.days} days</p>
                                                         </div>
-                                                        {camp.startTime && (
-                                                            <div className="bg-white/[0.03] rounded-xl px-3 py-2.5 border border-white/[0.04]">
-                                                                <p className="text-[9px] font-bold text-text-main/30 uppercase tracking-widest mb-1">Time</p>
-                                                                <p className="text-white text-xs font-bold flex items-center gap-1">
-                                                                    <Clock size={10} className="text-primary/50" />
-                                                                    {to12h(camp.startTime)}{endTimeDisplay ? ` – ${to12h(endTimeDisplay)}` : ""}
-                                                                </p>
-                                                            </div>
-                                                        )}
                                                         {camp.location && (
                                                             <div className="bg-white/[0.03] rounded-xl px-3 py-2.5 border border-white/[0.04]">
                                                                 <p className="text-[9px] font-bold text-text-main/30 uppercase tracking-widest mb-1">Location</p>
@@ -1409,15 +1403,26 @@ export default function TrainerEditProfilePage() {
                                                                 </p>
                                                             </div>
                                                         )}
-                                                        {startDateStr && (
-                                                            <div className="bg-white/[0.03] rounded-xl px-3 py-2.5 border border-white/[0.04]">
-                                                                <p className="text-[9px] font-bold text-text-main/30 uppercase tracking-widest mb-1">Dates</p>
-                                                                <p className="text-white text-xs font-bold">
-                                                                    {startDateStr}{endDateStr ? ` → ${endDateStr}` : ""}
-                                                                </p>
-                                                            </div>
-                                                        )}
                                                     </div>
+
+                                                    {/* Schedule (individual days) */}
+                                                    {schedule && schedule.length > 0 && (
+                                                        <div className="mb-4">
+                                                            <p className="text-[9px] font-bold text-text-main/30 uppercase tracking-widest mb-2">Schedule</p>
+                                                            <div className="space-y-1.5">
+                                                                {schedule.map((s, si) => (
+                                                                    <div key={si} className="flex items-center gap-2 bg-white/[0.03] rounded-lg px-3 py-1.5 border border-white/[0.04]">
+                                                                        <span className="text-white text-xs font-bold">{formatDate(s.date)}</span>
+                                                                        <span className="text-text-main/30">|</span>
+                                                                        <span className="text-white text-xs font-bold flex items-center gap-1">
+                                                                            <Clock size={10} className="text-primary/50" />
+                                                                            {to12h(s.startTime)} – {to12h(calcEndTime(s.startTime))}
+                                                                        </span>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
 
                                                     {/* Spots progress bar */}
                                                     {camp.maxSpots > 0 && (
@@ -1478,13 +1483,13 @@ export default function TrainerEditProfilePage() {
                                                     />
                                                 </div>
                                                 <div>
-                                                    <label className="block text-[10px] font-bold text-text-main/50 uppercase tracking-wider mb-1.5">Number of Days</label>
+                                                    <label className="block text-[10px] font-bold text-text-main/50 uppercase tracking-wider mb-1.5">Max Spots</label>
                                                     <input
                                                         type="number"
                                                         min="1"
-                                                        value={campForm.days}
-                                                        onChange={(e) => setCampForm(p => ({ ...p, days: e.target.value }))}
-                                                        placeholder="e.g. 5"
+                                                        value={campForm.maxSpots}
+                                                        onChange={(e) => setCampForm(p => ({ ...p, maxSpots: e.target.value }))}
+                                                        placeholder="e.g. 20"
                                                         className="w-full bg-[#1A1C23] border border-white/5 rounded-xl px-4 py-2.5 text-white text-sm outline-none focus:border-primary/50 transition-colors placeholder:text-text-main/30"
                                                     />
                                                 </div>
@@ -1498,63 +1503,71 @@ export default function TrainerEditProfilePage() {
                                                         placeholder="e.g. XYZ Arena, Toronto"
                                                     />
                                                 </div>
-                                                <div>
-                                                    <label className="block text-[10px] font-bold text-text-main/50 uppercase tracking-wider mb-1.5">Start Time</label>
-                                                    <input
-                                                        type="time"
-                                                        value={campForm.startTime}
-                                                        onChange={(e) => setCampForm(p => ({ ...p, startTime: e.target.value }))}
-                                                        className="w-full bg-[#1A1C23] border border-white/5 rounded-xl px-4 py-2.5 text-white text-sm outline-none focus:border-primary/50 transition-colors"
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <label className="block text-[10px] font-bold text-text-main/50 uppercase tracking-wider mb-1.5">End Time</label>
-                                                    <div className="w-full bg-[#1A1C23] border border-white/5 rounded-xl px-4 py-2.5 text-sm text-text-main/50">
-                                                        {campForm.startTime && campForm.hoursPerDay ? (() => {
-                                                            const [h, m] = campForm.startTime.split(":").map(Number);
-                                                            const totalMins = h * 60 + m + parseFloat(campForm.hoursPerDay) * 60;
-                                                            const endH = Math.floor(totalMins / 60) % 24;
-                                                            const endM = Math.round(totalMins % 60);
-                                                            const ampm = endH >= 12 ? "PM" : "AM";
-                                                            const h12 = endH % 12 || 12;
-                                                            return `${h12}:${String(endM).padStart(2, "0")} ${ampm} (auto-calculated)`;
-                                                        })() : "Set start time & hours/day"}
-                                                    </div>
-                                                </div>
-                                                {/* Camp Start Date */}
-                                                <div>
-                                                    <label className="block text-[10px] font-bold text-text-main/50 uppercase tracking-wider mb-1.5">Start Date</label>
-                                                    <input
-                                                        type="date"
-                                                        value={campForm.startDate}
-                                                        min={new Date().toISOString().split("T")[0]}
-                                                        onChange={(e) => setCampForm(p => ({ ...p, startDate: e.target.value }))}
-                                                        className="w-full bg-[#1A1C23] border border-white/5 rounded-xl px-4 py-2.5 text-white text-sm outline-none focus:border-primary/50 transition-colors"
-                                                    />
-                                                </div>
-                                                {/* Auto-calculated End Date */}
-                                                <div>
-                                                    <label className="block text-[10px] font-bold text-text-main/50 uppercase tracking-wider mb-1.5">End Date</label>
-                                                    <div className="w-full bg-[#1A1C23] border border-white/5 rounded-xl px-4 py-2.5 text-sm text-text-main/50">
-                                                        {campForm.startDate && campForm.days ? (() => {
-                                                            const sd = new Date(campForm.startDate + "T00:00:00");
-                                                            sd.setDate(sd.getDate() + parseInt(campForm.days) - 1);
-                                                            return sd.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" }) + " (auto)";
-                                                        })() : "Set start date & days"}
-                                                    </div>
-                                                </div>
-                                                <div>
-                                                    <label className="block text-[10px] font-bold text-text-main/50 uppercase tracking-wider mb-1.5">Max Spots</label>
-                                                    <input
-                                                        type="number"
-                                                        min="1"
-                                                        value={campForm.maxSpots}
-                                                        onChange={(e) => setCampForm(p => ({ ...p, maxSpots: e.target.value }))}
-                                                        placeholder="e.g. 20"
-                                                        className="w-full bg-[#1A1C23] border border-white/5 rounded-xl px-4 py-2.5 text-white text-sm outline-none focus:border-primary/50 transition-colors placeholder:text-text-main/30"
-                                                    />
-                                                </div>
                                             </div>
+
+                                            {/* Schedule: individual day + time rows */}
+                                            <div>
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <label className="block text-[10px] font-bold text-text-main/50 uppercase tracking-wider">Schedule (Date + Start Time per day)</label>
+                                                    <span className="text-[10px] text-text-main/30 font-medium">{campSchedule.filter(s => s.date && s.startTime).length} day(s)</span>
+                                                </div>
+                                                <div className="space-y-2">
+                                                    {campSchedule.map((entry, si) => (
+                                                        <div key={si} className="flex items-center gap-2">
+                                                            <input
+                                                                type="date"
+                                                                value={entry.date}
+                                                                min={new Date().toISOString().split("T")[0]}
+                                                                onChange={(e) => {
+                                                                    const updated = [...campSchedule];
+                                                                    updated[si] = { ...updated[si], date: e.target.value };
+                                                                    setCampSchedule(updated);
+                                                                }}
+                                                                className="flex-1 bg-[#1A1C23] border border-white/5 rounded-xl px-3 py-2 text-white text-sm outline-none focus:border-primary/50 transition-colors"
+                                                            />
+                                                            <input
+                                                                type="time"
+                                                                value={entry.startTime}
+                                                                onChange={(e) => {
+                                                                    const updated = [...campSchedule];
+                                                                    updated[si] = { ...updated[si], startTime: e.target.value };
+                                                                    setCampSchedule(updated);
+                                                                }}
+                                                                className="w-[130px] bg-[#1A1C23] border border-white/5 rounded-xl px-3 py-2 text-white text-sm outline-none focus:border-primary/50 transition-colors"
+                                                            />
+                                                            {/* End time auto display */}
+                                                            <div className="w-[100px] text-[11px] text-text-main/40 font-medium text-center">
+                                                                {entry.startTime && campForm.hoursPerDay ? (() => {
+                                                                    const [h, m] = entry.startTime.split(":").map(Number);
+                                                                    const totalMins = h * 60 + m + parseFloat(campForm.hoursPerDay) * 60;
+                                                                    const endH = Math.floor(totalMins / 60) % 24;
+                                                                    const endM = Math.round(totalMins % 60);
+                                                                    const ampm = endH >= 12 ? "PM" : "AM";
+                                                                    const h12 = endH % 12 || 12;
+                                                                    return `ends ${h12}:${String(endM).padStart(2, "0")} ${ampm}`;
+                                                                })() : ""}
+                                                            </div>
+                                                            {campSchedule.length > 1 && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setCampSchedule(prev => prev.filter((_, i) => i !== si))}
+                                                                    className="w-7 h-7 rounded-lg bg-white/5 border border-white/5 text-text-main/30 flex items-center justify-center hover:text-red-400 hover:bg-red-500/10 transition-all shrink-0"
+                                                                >
+                                                                    <X size={12} />
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setCampSchedule(prev => [...prev, { date: "", startTime: "" }])}
+                                                    className="flex items-center gap-1.5 mt-2 px-3 py-1.5 rounded-lg bg-white/4 border border-white/10 text-text-main/50 text-[11px] font-bold hover:border-primary/30 hover:text-primary transition-all"
+                                                >
+                                                    <Plus size={12} /> Add Day
+                                                </button>
+                                            </div>
+
                                             <div className="flex items-center gap-2 pt-1">
                                                 <button
                                                     type="button"
@@ -1565,7 +1578,7 @@ export default function TrainerEditProfilePage() {
                                                 </button>
                                                 <button
                                                     type="button"
-                                                    onClick={() => { setShowCampForm(false); setEditingCampIndex(null); setCampForm({ name: "", hoursPerDay: "", days: "", totalPrice: "", location: "", startTime: "", endTime: "", maxSpots: "", startDate: "", endDate: "" }); setCampDates([""]); }}
+                                                    onClick={() => { setShowCampForm(false); setEditingCampIndex(null); setCampForm({ name: "", hoursPerDay: "", totalPrice: "", location: "", maxSpots: "" }); setCampSchedule([{ date: "", startTime: "" }]); }}
                                                     className="px-4 py-2 rounded-xl text-text-main/50 text-xs font-bold hover:text-white transition-all"
                                                 >
                                                     Cancel
@@ -1577,7 +1590,7 @@ export default function TrainerEditProfilePage() {
                                     {!showCampForm && (
                                         <button
                                             type="button"
-                                            onClick={() => { setShowCampForm(true); setEditingCampIndex(null); setCampForm({ name: "", hoursPerDay: "", days: "", totalPrice: "", location: "", startTime: "", endTime: "", maxSpots: "", startDate: "", endDate: "" }); setCampDates([""]); }}
+                                            onClick={() => { setShowCampForm(true); setEditingCampIndex(null); setCampForm({ name: "", hoursPerDay: "", totalPrice: "", location: "", maxSpots: "" }); setCampSchedule([{ date: "", startTime: "" }]); }}
                                             className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/4 border border-white/10 text-text-main/60 text-xs font-bold hover:border-primary/30 hover:text-primary transition-all"
                                         >
                                             <Plus size={14} /> Add Camp

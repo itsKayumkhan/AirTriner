@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { getSession, AuthUser } from "@/lib/auth";
-import { supabase } from "@/lib/supabase";
 import { Send, Loader2, CheckCircle } from "lucide-react";
 import { toast } from "@/components/ui/Toast";
 
@@ -38,14 +37,21 @@ export default function ContactPage() {
 
         setLoading(true);
         try {
-            const { error } = await supabase.from("contact_messages").insert({
-                user_id: user?.id ?? null,
-                email: email.trim(),
-                subject,
-                message: message.trim(),
+            const res = await fetch("/api/contact", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    userId: user?.id ?? null,
+                    email: email.trim(),
+                    subject,
+                    message: message.trim(),
+                }),
             });
 
-            if (error) throw error;
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                throw new Error(data.error || "Failed to send");
+            }
 
             setSubmitted(true);
             toast.success("Message Sent", "We'll get back to you soon.");

@@ -608,11 +608,11 @@ export default function AdminTrainersPage() {
 
             {/* Trainer Detail Modal */}
             {trainerDetail.isOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-                    <div className="bg-[#1A1C23] border border-white/10 rounded-[24px] shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-200">
-                        <div className="flex items-center justify-between p-6 border-b border-white/5 sticky top-0 bg-[#1A1C23] z-10 rounded-t-[24px]">
+                <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+                    <div className="relative bg-[#1A1C23] border border-white/10 rounded-[24px] shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-200">
+                        <div className="flex items-center justify-between p-6 border-b border-white/5 sticky top-0 bg-[#1A1C23] z-20 rounded-t-[24px]">
                             <h3 className="text-lg font-black text-white uppercase tracking-wider">Trainer Details</h3>
-                            <button onClick={() => setTrainerDetail({ isOpen: false, loading: false, data: null })} className="p-2 rounded-xl text-text-main/50 hover:text-white hover:bg-white/5 transition-all">
+                            <button onClick={() => setTrainerDetail({ isOpen: false, loading: false, data: null })} className="relative z-30 p-2 rounded-xl text-text-main/50 hover:text-white hover:bg-white/5 transition-all">
                                 <X size={18} />
                             </button>
                         </div>
@@ -774,7 +774,7 @@ export default function AdminTrainersPage() {
 
             {/* Image Approval Modal */}
             {imageModal.isOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+                <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
                     <div className="bg-[#1A1C23] border border-white/10 rounded-[24px] shadow-2xl w-full max-w-lg animate-in fade-in zoom-in-95 duration-200">
                         {/* Modal Header */}
                         <div className="flex items-center justify-between p-6 border-b border-white/5">
@@ -891,7 +891,7 @@ export default function AdminTrainersPage() {
 
             {/* Documents Modal */}
             {docsModal.isOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+                <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
                     <div className="bg-[#1A1C23] border border-white/10 rounded-[24px] shadow-2xl w-full max-w-lg animate-in fade-in zoom-in-95 duration-200">
                         {/* Modal Header */}
                         <div className="flex items-center justify-between p-6 border-b border-white/5">
