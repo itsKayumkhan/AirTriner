@@ -28,31 +28,16 @@ class EmailService {
     private async getTransporter(): Promise<nodemailer.Transporter> {
         if (this.transporter) return this.transporter;
 
-        if (config.nodeEnv === 'production') {
-            // Production: use real SMTP config from environment variables
-            this.transporter = nodemailer.createTransport({
-                host: process.env.SMTP_HOST || 'smtp.gmail.com',
-                port: parseInt(process.env.SMTP_PORT || '587', 10),
-                secure: process.env.SMTP_SECURE === 'true',
-                auth: {
-                    user: process.env.SMTP_USER || '',
-                    pass: process.env.SMTP_PASS || '',
-                },
-            });
-        } else {
-            // Development: use Ethereal test account
-            const testAccount = await nodemailer.createTestAccount();
-            this.transporter = nodemailer.createTransport({
-                host: 'smtp.ethereal.email',
-                port: 587,
-                secure: false,
-                auth: {
-                    user: testAccount.user,
-                    pass: testAccount.pass,
-                },
-            });
-            logger.info(`📧 Ethereal email account created: ${testAccount.user}`);
-        }
+        // GoDaddy SMTP — used in all environments
+        this.transporter = nodemailer.createTransport({
+            host: process.env.SMTP_HOST || 'smtpout.secureserver.net',
+            port: parseInt(process.env.SMTP_PORT || '465', 10),
+            secure: process.env.SMTP_SECURE !== 'false',
+            auth: {
+                user: process.env.SMTP_USER || 'contact@airtrainr.com',
+                pass: process.env.SMTP_PASS || '',
+            },
+        });
 
         return this.transporter;
     }
@@ -101,7 +86,7 @@ class EmailService {
             `;
 
             const info = await transporter.sendMail({
-                from: '"AirTrainr" <noreply@airtrainr.com>',
+                from: '"AirTrainr" <contact@airtrainr.com>',
                 to: data.to,
                 subject: `⏰ Your ${sportName} session starts in ${timeLabel}`,
                 html,

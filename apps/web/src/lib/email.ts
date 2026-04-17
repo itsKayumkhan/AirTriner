@@ -1,7 +1,7 @@
 // ============================================
 // AirTrainr Web - Email Service
 // Sends transactional emails (receipts, etc.)
-// Uses nodemailer with SMTP in production, Ethereal in dev
+// Uses nodemailer with GoDaddy SMTP (contact@airtrainr.com)
 // ============================================
 
 import nodemailer from 'nodemailer';
@@ -11,29 +11,15 @@ let transporter: nodemailer.Transporter | null = null;
 async function getTransporter(): Promise<nodemailer.Transporter> {
     if (transporter) return transporter;
 
-    if (process.env.NODE_ENV === 'production') {
-        transporter = nodemailer.createTransport({
-            host: process.env.SMTP_HOST || 'smtp.gmail.com',
-            port: parseInt(process.env.SMTP_PORT || '587', 10),
-            secure: process.env.SMTP_SECURE === 'true',
-            auth: {
-                user: process.env.SMTP_USER || '',
-                pass: process.env.SMTP_PASS || '',
-            },
-        });
-    } else {
-        const testAccount = await nodemailer.createTestAccount();
-        transporter = nodemailer.createTransport({
-            host: 'smtp.ethereal.email',
-            port: 587,
-            secure: false,
-            auth: {
-                user: testAccount.user,
-                pass: testAccount.pass,
-            },
-        });
-        console.log(`[email] Ethereal test account: ${testAccount.user}`);
-    }
+    transporter = nodemailer.createTransport({
+        host: process.env.SMTP_HOST || 'smtpout.secureserver.net',
+        port: parseInt(process.env.SMTP_PORT || '465', 10),
+        secure: process.env.SMTP_SECURE !== 'false',
+        auth: {
+            user: process.env.SMTP_USER || 'contact@airtrainr.com',
+            pass: process.env.SMTP_PASS || '',
+        },
+    });
 
     return transporter;
 }
@@ -136,7 +122,7 @@ export async function sendAthleteReceipt(data: BookingReceiptData): Promise<void
         `;
 
         const info = await t.sendMail({
-            from: '"AirTrainr" <noreply@airtrainr.com>',
+            from: '"AirTrainr" <contact@airtrainr.com>',
             to: data.athleteEmail,
             subject: `Receipt: ${sportName} Session with ${data.trainerName}`,
             html: wrapHtml('Payment Receipt', body),
@@ -254,7 +240,7 @@ export async function sendTrainerReceipt(data: BookingReceiptData): Promise<void
         `;
 
         const info = await t.sendMail({
-            from: '"AirTrainr" <noreply@airtrainr.com>',
+            from: '"AirTrainr" <contact@airtrainr.com>',
             to: data.trainerEmail,
             subject: `Booking Paid: ${sportName} Session with ${data.athleteName}`,
             html: wrapHtml('Booking Payment Confirmation', body),

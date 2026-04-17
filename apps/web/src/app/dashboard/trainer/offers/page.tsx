@@ -45,7 +45,6 @@ export default function TrainingOffersPage() {
     const [selectedAthlete, setSelectedAthlete] = useState<Athlete | null>(null);
     const [searchTerm, setSearchTerm] = useState("");
     const [sending, setSending] = useState(false);
-    const [offerError, setOfferError] = useState("");
     const [tab, setTab] = useState<"athletes" | "sent">("athletes");
 
     // Cancel Modal State
@@ -153,7 +152,6 @@ export default function TrainingOffersPage() {
     };
 
     const sendOffer = async () => {
-        setOfferError("");
         if (!user || !selectedAthlete) return;
 
         const numericRate = parseFloat(offerData.rate);
@@ -229,8 +227,7 @@ export default function TrainingOffersPage() {
 
             // Reset
             setShowNewOffer(false);
-            setOfferError("");
-            setSelectedAthlete(null);
+                setSelectedAthlete(null);
             setSelectedCamp(null);
             setOfferData({ message: "", sessionType: "private", rate: "", introDiscount: false, discountPercent: "20", sessionDates: [{ date: "", time: "" }], sport: "" });
 
@@ -259,7 +256,7 @@ export default function TrainingOffersPage() {
             setOfferToCancel(null);
         } catch (err) {
             console.error("Failed to cancel offer:", err);
-            alert("Failed to cancel offer");
+            toast.error("Failed to cancel offer");
         } finally {
             setIsCanceling(false);
         }
@@ -323,7 +320,7 @@ export default function TrainingOffersPage() {
                     <p className="text-text-main/60 text-sm font-medium">Send personalized offers to athletes and grow your business.</p>
                 </div>
                 <button
-                    onClick={() => { setShowNewOffer(true); setTab("athletes"); }}
+                    onClick={() => { setTab("athletes"); toast.success("Select an athlete below to send an offer"); }}
                     className="px-5 py-2.5 rounded-xl bg-primary text-bg font-black text-sm hover:opacity-90 transition-all flex items-center gap-2 shrink-0"
                 >
                     <Plus size={18} strokeWidth={3} /> New Offer
@@ -580,14 +577,22 @@ export default function TrainingOffersPage() {
                                                                 setOfferData(prev => ({ ...prev, sessionType: "private", rate: "", message: prev.message }));
                                                             } else {
                                                                 setSelectedCamp(idx);
+                                                                // Auto-fill dates/times from camp schedule
+                                                                const campSchedule = (camp as any).schedule as { date: string; startTime: string }[] | undefined;
+                                                                let autoSessionDates: { date: string; time: string }[] = [];
+                                                                if (campSchedule?.length) {
+                                                                    autoSessionDates = campSchedule.map(s => ({ date: s.date, time: s.startTime }));
+                                                                } else if (camp.dates?.length) {
+                                                                    autoSessionDates = camp.dates.map(d => ({ date: d, time: camp.startTime || "" }));
+                                                                }
+                                                                if (autoSessionDates.length === 0) autoSessionDates = [{ date: "", time: "" }];
                                                                 const locationMsg = camp.location ? ` at ${camp.location}` : "";
-                                                                const timeMsg = camp.startTime && camp.endTime ? ` (${camp.startTime} - ${camp.endTime})` : "";
-                                                                const datesMsg = camp.dates && camp.dates.length > 0 ? ` Dates: ${camp.dates.slice(0, 3).join(", ")}${camp.dates.length > 3 ? "..." : ""}` : "";
                                                                 setOfferData(prev => ({
                                                                     ...prev,
                                                                     sessionType: "camp",
                                                                     rate: camp.totalPrice.toString(),
-                                                                    message: prev.message || `Join my ${camp.name} camp${locationMsg}! ${camp.hoursPerDay} hrs/day for ${camp.days} days${timeMsg}.${datesMsg}`,
+                                                                    sessionDates: autoSessionDates,
+                                                                    message: prev.message || `Join my ${camp.name} camp${locationMsg}! ${camp.hoursPerDay} hrs/day for ${camp.days} days.`,
                                                                 }));
                                                             }
                                                         }}
@@ -661,73 +666,99 @@ export default function TrainingOffersPage() {
                                     </div>
                                 </div>
 
-                                <div>
-                                    <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">
-                                        Session Date & Time
-                                    </label>
-                                    <div className="space-y-3">
-                                        {offerData.sessionDates.map((session, idx) => (
-                                            <div key={idx} className="flex items-center gap-3">
-                                                <div className="flex-1 relative">
-                                                    <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-primary/50" size={14} />
-                                                    <input
-                                                        type="date"
-                                                        value={session.date}
-                                                        min={new Date().toISOString().split('T')[0]}
-                                                        onChange={(e) => {
-                                                            const updated = [...offerData.sessionDates];
-                                                            updated[idx] = { ...updated[idx], date: e.target.value };
-                                                            setOfferData(prev => ({ ...prev, sessionDates: updated }));
-                                                        }}
-                                                        className="w-full bg-[#12141A] border border-white/5 rounded-xl pl-10 pr-3 py-3 text-white text-sm outline-none focus:border-primary/50 transition-colors"
-                                                    />
+                                {/* Session Date & Time — auto-filled when camp selected, editable for regular sessions */}
+                                {selectedCamp !== null && camps[selectedCamp] ? (
+                                    <div>
+                                        <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">
+                                            Camp Schedule (Auto-filled)
+                                        </label>
+                                        <div className="space-y-2">
+                                            {offerData.sessionDates.filter(s => s.date).map((session, idx) => (
+                                                <div key={idx} className="flex items-center gap-3 px-4 py-2.5 bg-primary/5 border border-primary/10 rounded-xl">
+                                                    <Calendar size={13} className="text-primary/60 shrink-0" />
+                                                    <span className="text-white text-sm font-medium">
+                                                        {new Date(session.date + "T00:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+                                                    </span>
+                                                    <Clock size={13} className="text-primary/60 shrink-0 ml-auto" />
+                                                    <span className="text-white text-sm font-medium">
+                                                        {session.time ? new Date(`2000-01-01T${session.time}`).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "TBD"}
+                                                    </span>
                                                 </div>
-                                                <div className="flex-1 relative">
-                                                    <Clock className="absolute left-4 top-1/2 -translate-y-1/2 text-primary/50" size={14} />
-                                                    <input
-                                                        type="time"
-                                                        value={session.time}
-                                                        onChange={(e) => {
-                                                            const updated = [...offerData.sessionDates];
-                                                            updated[idx] = { ...updated[idx], time: e.target.value };
-                                                            setOfferData(prev => ({ ...prev, sessionDates: updated }));
-                                                        }}
-                                                        className="w-full bg-[#12141A] border border-white/5 rounded-xl pl-10 pr-3 py-3 text-white text-sm outline-none focus:border-primary/50 transition-colors"
-                                                    />
-                                                </div>
-                                                {offerData.sessionDates.length > 1 && (
-                                                    <button
-                                                        onClick={(e) => {
-                                                            e.preventDefault();
-                                                            setOfferData(prev => ({
-                                                                ...prev,
-                                                                sessionDates: prev.sessionDates.filter((_, i) => i !== idx),
-                                                            }));
-                                                        }}
-                                                        className="w-9 h-9 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 flex items-center justify-center hover:bg-red-500/20 transition-colors shrink-0"
-                                                    >
-                                                        <Trash2 size={14} />
-                                                    </button>
-                                                )}
-                                            </div>
-                                        ))}
+                                            ))}
+                                        </div>
+                                        <p className="text-[10px] text-primary/50 mt-2 font-bold">
+                                            Schedule from camp &ldquo;{camps[selectedCamp].name}&rdquo; — dates & times pre-loaded
+                                        </p>
                                     </div>
-                                    <button
-                                        onClick={(e) => {
-                                            e.preventDefault();
-                                            setOfferData(prev => ({
-                                                ...prev,
-                                                sessionDates: [...prev.sessionDates, { date: "", time: "" }],
-                                            }));
-                                        }}
-                                        className="mt-3 w-full py-2.5 rounded-xl border border-dashed border-white/10 text-text-main/50 text-xs font-bold flex items-center justify-center gap-2 hover:border-primary/30 hover:text-primary/80 transition-colors"
-                                    >
-                                        <Plus size={14} /> Add Another Date & Time
-                                    </button>
-                                    <p className="text-[10px] text-text-main/30 mt-2">
-                                        Times are in your local timezone ({Intl.DateTimeFormat().resolvedOptions().timeZone})
-                                    </p>
-                                </div>
+                                ) : (
+                                    <div>
+                                        <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">
+                                            Session Date & Time
+                                        </label>
+                                        <div className="space-y-3">
+                                            {offerData.sessionDates.map((session, idx) => (
+                                                <div key={idx} className="flex items-center gap-3">
+                                                    <div className="flex-1 relative cursor-pointer" onClick={(e) => { const inp = (e.currentTarget as HTMLElement).querySelector("input"); inp?.showPicker?.(); inp?.focus(); }}>
+                                                        <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-primary/50 pointer-events-none" size={14} />
+                                                        <input
+                                                            type="date"
+                                                            value={session.date}
+                                                            min={new Date().toISOString().split('T')[0]}
+                                                            onChange={(e) => {
+                                                                const updated = [...offerData.sessionDates];
+                                                                updated[idx] = { ...updated[idx], date: e.target.value };
+                                                                setOfferData(prev => ({ ...prev, sessionDates: updated }));
+                                                            }}
+                                                            className="w-full bg-[#12141A] border border-white/5 rounded-xl pl-10 pr-3 py-3 text-white text-sm outline-none focus:border-primary/50 transition-colors cursor-pointer"
+                                                        />
+                                                    </div>
+                                                    <div className="flex-1 relative cursor-pointer" onClick={(e) => { const inp = (e.currentTarget as HTMLElement).querySelector("input"); inp?.showPicker?.(); inp?.focus(); }}>
+                                                        <Clock className="absolute left-4 top-1/2 -translate-y-1/2 text-primary/50 pointer-events-none" size={14} />
+                                                        <input
+                                                            type="time"
+                                                            value={session.time}
+                                                            onChange={(e) => {
+                                                                const updated = [...offerData.sessionDates];
+                                                                updated[idx] = { ...updated[idx], time: e.target.value };
+                                                                setOfferData(prev => ({ ...prev, sessionDates: updated }));
+                                                            }}
+                                                            className="w-full bg-[#12141A] border border-white/5 rounded-xl pl-10 pr-3 py-3 text-white text-sm outline-none focus:border-primary/50 transition-colors cursor-pointer"
+                                                        />
+                                                    </div>
+                                                    {offerData.sessionDates.length > 1 && (
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.preventDefault();
+                                                                setOfferData(prev => ({
+                                                                    ...prev,
+                                                                    sessionDates: prev.sessionDates.filter((_, i) => i !== idx),
+                                                                }));
+                                                            }}
+                                                            className="w-9 h-9 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 flex items-center justify-center hover:bg-red-500/20 transition-colors shrink-0"
+                                                        >
+                                                            <Trash2 size={14} />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <button
+                                            onClick={(e) => {
+                                                e.preventDefault();
+                                                setOfferData(prev => ({
+                                                    ...prev,
+                                                    sessionDates: [...prev.sessionDates, { date: "", time: "" }],
+                                                }));
+                                            }}
+                                            className="mt-3 w-full py-2.5 rounded-xl border border-dashed border-white/10 text-text-main/50 text-xs font-bold flex items-center justify-center gap-2 hover:border-primary/30 hover:text-primary/80 transition-colors"
+                                        >
+                                            <Plus size={14} /> Add Another Date & Time
+                                        </button>
+                                        <p className="text-[10px] text-text-main/30 mt-2">
+                                            Times are in your local timezone ({Intl.DateTimeFormat().resolvedOptions().timeZone})
+                                        </p>
+                                    </div>
+                                )}
 
                                 {/* Intro Discount Toggle */}
                                 <label className={`
