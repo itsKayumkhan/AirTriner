@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { getSession, setSession, AuthUser } from "@/lib/auth";
+import { getSession, setSession, clearSession, AuthUser } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { uploadToCloudinary } from "@/lib/cloudinary";
 import { useRouter } from "next/navigation";
@@ -30,7 +30,8 @@ import {
     Camera,
     ChevronDown,
     ChevronUp,
-    Image as ImageIcon
+    Image as ImageIcon,
+    ShieldAlert
 } from "lucide-react";
 import { toast } from "@/components/ui/Toast";
 import { detectCountry, radiusUnit, miToKm, kmToMi } from "@/lib/units";
@@ -63,6 +64,8 @@ export default function TrainerEditProfilePage() {
     const [uploading, setUploading] = useState(false);
     const [popup, setPopup] = useState<{ type: "success" | "error"; message: string } | null>(null);
     const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+    const [deleting, setDeleting] = useState(false);
 
     const [formData, setFormData] = useState({
         firstName: "",
@@ -82,6 +85,8 @@ export default function TrainerEditProfilePage() {
         phone: "",
         zipCode: "",
         country: "",
+        dateOfBirth: "",
+        sex: "",
     });
 
     const [displayRadius, setDisplayRadius] = useState("20");
@@ -154,7 +159,7 @@ export default function TrainerEditProfilePage() {
             const [settingsRes, profileRes, userRes] = await Promise.all([
                 supabase.from("platform_settings").select("require_trainer_verification").maybeSingle(),
                 supabase.from("trainer_profiles").select("*").eq("user_id", session.id).single(),
-                supabase.from("users").select("phone").eq("id", session.id).single()
+                supabase.from("users").select("phone, date_of_birth, sex").eq("id", session.id).single()
             ]);
             
             if (settingsRes.data) {
@@ -189,6 +194,8 @@ export default function TrainerEditProfilePage() {
                     preferredTrainingTimes: latestProfile.preferredTrainingTimes || ["morning", "afternoon", "evening"],
                     phone: userRes.data?.phone || "",
                     zipCode: latestProfile.zip_code || "",
+                    dateOfBirth: userRes.data?.date_of_birth || "",
+                    sex: userRes.data?.sex || "",
                 }));
                 // Show radius in km when Canadian postal code detected
                 const storedMiles = latestProfile.travel_radius_miles || 20;
@@ -278,7 +285,7 @@ export default function TrainerEditProfilePage() {
 
             const [profileRes, userRes] = await Promise.all([
                 supabase.from("trainer_profiles").update(updateData).eq("user_id", user.id),
-                supabase.from("users").update({ first_name: formData.firstName, last_name: formData.lastName, phone: formData.phone || null }).eq("id", user.id)
+                supabase.from("users").update({ first_name: formData.firstName, last_name: formData.lastName, phone: formData.phone || null, date_of_birth: formData.dateOfBirth || null, sex: formData.sex || null }).eq("id", user.id)
             ]);
 
             if (profileRes.error) throw profileRes.error;
@@ -300,6 +307,20 @@ export default function TrainerEditProfilePage() {
             setPopup({ type: "error", message: "Failed to save profile. Please try again." });
         } finally {
             setSaving(false);
+        }
+    };
+
+    const handleDeleteAccount = async () => {
+        if (!user) return;
+        setDeleting(true);
+        try {
+            await supabase.from("users").update({ deleted_at: new Date().toISOString() }).eq("id", user.id);
+            await clearSession();
+            router.push("/auth/login");
+        } catch (err) {
+            console.error("Failed to delete account:", err);
+            setDeleting(false);
+            setShowDeleteConfirm(false);
         }
     };
 
@@ -821,6 +842,34 @@ export default function TrainerEditProfilePage() {
                                 className={`w-full bg-[#12141A] border rounded-2xl px-5 py-3.5 text-white text-sm outline-none transition-colors ${fieldErrors.phone ? "border-red-500/50 focus:border-red-500/70" : "border-white/5 focus:border-primary/50"}`}
                             />
                             {fieldErrors.phone && <p className="mt-1.5 text-[11px] text-red-400 font-semibold flex items-center gap-1"><AlertTriangle size={11} /> {fieldErrors.phone}</p>}
+                        </div>
+                        <div>
+                            <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">Date of Birth</label>
+                            <input
+                                type="date"
+                                value={formData.dateOfBirth}
+                                onChange={(e) => setFormData((p) => ({ ...p, dateOfBirth: e.target.value }))}
+                                className="w-full bg-[#12141A] border border-white/5 rounded-2xl px-5 py-3.5 text-white text-sm outline-none transition-colors focus:border-primary/50 cursor-pointer"
+                            />
+                            {formData.dateOfBirth && (
+                                <p className="mt-1.5 text-[10px] text-text-main/30 font-bold uppercase tracking-widest">
+                                    Age: {new Date().getFullYear() - new Date(formData.dateOfBirth).getFullYear()} years old
+                                </p>
+                            )}
+                        </div>
+                        <div>
+                            <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">Sex</label>
+                            <select
+                                value={formData.sex}
+                                onChange={(e) => setFormData((p) => ({ ...p, sex: e.target.value }))}
+                                className="w-full bg-[#12141A] border border-white/5 rounded-2xl px-5 py-3.5 text-white text-sm outline-none transition-colors focus:border-primary/50 appearance-none cursor-pointer"
+                                style={{ colorScheme: "dark" }}
+                            >
+                                <option value="">Select Sex</option>
+                                <option value="male">Male</option>
+                                <option value="female">Female</option>
+                                <option value="other">Other</option>
+                            </select>
                         </div>
                     </div>
                 </div>
@@ -1631,6 +1680,53 @@ export default function TrainerEditProfilePage() {
 
             {/* Stripe Payout Status */}
             <StripeConnectStatus userId={user?.id} />
+
+            {/* Delete Account */}
+            <div className="bg-[#1A1C23] border border-red-500/10 rounded-[20px] p-6 lg:p-8 shadow-md">
+                <div className="flex items-center justify-between">
+                    <div>
+                        <h3 className="text-lg font-black text-red-400 mb-1">Delete Account</h3>
+                        <p className="text-text-main/50 text-sm">Permanently delete your account and all associated data.</p>
+                    </div>
+                    <button
+                        onClick={() => setShowDeleteConfirm(true)}
+                        className="px-5 py-2.5 rounded-xl border border-red-500/20 text-red-500/70 font-bold text-sm hover:bg-red-500/10 hover:text-red-400 transition-all shrink-0"
+                    >
+                        Delete Account
+                    </button>
+                </div>
+            </div>
+
+            {/* Delete Account Confirmation Modal */}
+            {showDeleteConfirm && (
+                <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-6">
+                    <div className="bg-[#1A1C23] border border-white/10 rounded-2xl p-8 w-full max-w-[400px] text-center">
+                        <div className="w-14 h-14 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center mx-auto mb-5">
+                            <ShieldAlert className="text-red-400 w-7 h-7" strokeWidth={2} />
+                        </div>
+                        <h3 className="text-xl font-black text-white mb-2">Delete Account?</h3>
+                        <p className="text-text-main/50 text-sm mb-7 leading-relaxed">
+                            This action cannot be undone. Your account and all associated data will be permanently deleted.
+                        </p>
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => setShowDeleteConfirm(false)}
+                                disabled={deleting}
+                                className="flex-1 px-5 py-3 rounded-xl border border-white/[0.08] text-text-main/70 font-bold text-sm hover:bg-white/[0.04] transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleDeleteAccount}
+                                disabled={deleting}
+                                className="flex-1 px-5 py-3 rounded-xl bg-red-500 text-white font-black text-sm hover:bg-red-400 transition-colors flex items-center justify-center"
+                            >
+                                {deleting ? <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" /> : "Delete"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Custom Popup Modal */}
             {popup && (

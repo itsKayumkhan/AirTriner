@@ -108,7 +108,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             { label: "Earnings", href: "/dashboard/earnings", icon: CreditCard },
             { label: "Payment Settings", href: "/dashboard/payments", icon: Building2 },
             { label: "Reviews", href: "/dashboard/reviews", icon: Star },
-            { label: "My Profile", href: "/dashboard/profile", icon: User },
+            { label: "My Profile", href: "/dashboard/trainer/setup", icon: User },
             {
                 label: "Subscription",
                 href: "/dashboard/subscription",

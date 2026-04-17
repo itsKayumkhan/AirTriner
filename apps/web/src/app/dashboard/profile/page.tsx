@@ -88,10 +88,14 @@ export default function ProfilePage() {
 
         const session = getSession();
         if (session) {
+            if (session.role === "trainer") {
+                router.push("/dashboard/trainer/setup");
+                return;
+            }
             setUser(session);
             loadProfile(session);
         }
-    }, []);
+    }, [router]);
 
     const [statusData, setStatusData] = useState({
         isPerformanceVerified: false,
