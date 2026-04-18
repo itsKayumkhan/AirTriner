@@ -73,9 +73,35 @@ export default function AdminTrainersPage() {
             const userIds = usersData.map(u => u.id);
             const { data: profilesData } = await supabase
                 .from("trainer_profiles")
-                .select("user_id, verification_status, sports, is_founding_50, verification_documents, latitude, longitude, city, state, profile_image_url, profile_image_status, profile_image_rejection_reason")
+                .select("user_id, verification_status, sports, is_founding_50, verification_documents, latitude, longitude, city, state, country, profile_image_url, profile_image_status, profile_image_rejection_reason")
                 .in("user_id", userIds);
             const profilesMap = new Map((profilesData || []).map(p => [p.user_id, p]));
+
+            // Back-fill lat/lng for trainers who have city but no coords. Geocodes
+            // server-side via /api/places/geocode and persists the result so the
+            // admin map (Bug #8) shows everyone. Runs in parallel, capped at 5 per load.
+            const needsGeocode = (profilesData || [])
+                .filter((p: any) => p?.city && (p.latitude == null || p.longitude == null))
+                .slice(0, 5);
+            if (needsGeocode.length > 0) {
+                await Promise.all(needsGeocode.map(async (p: any) => {
+                    try {
+                        const res = await fetch(
+                            `/api/places/geocode?city=${encodeURIComponent(p.city)}&state=${encodeURIComponent(p.state || "")}&country=${encodeURIComponent(p.country || "")}`
+                        );
+                        if (!res.ok) return;
+                        const data = await res.json();
+                        if (typeof data.lat !== "number" || typeof data.lng !== "number") return;
+                        // Mutate local map so the UI reflects it immediately
+                        profilesMap.set(p.user_id, { ...p, latitude: data.lat, longitude: data.lng });
+                        // Persist back to DB (best-effort; silently ignore if columns missing)
+                        await supabase
+                            .from("trainer_profiles")
+                            .update({ latitude: data.lat, longitude: data.lng })
+                            .eq("user_id", p.user_id);
+                    } catch { /* swallow — best-effort */ }
+                }));
+            }
 
             setTrainers(usersData.map(u => {
                 const profile = profilesMap.get(u.id);

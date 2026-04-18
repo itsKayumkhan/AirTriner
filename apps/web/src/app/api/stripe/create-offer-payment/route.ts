@@ -1,11 +1,12 @@
 // ============================================
 // Stripe Checkout — Offer Accept Payment
-// Athlete pays (price + 3% platform fee) when accepting a training offer
-// On success, webhook creates the booking and marks offer as accepted
+// Athlete pays (price + platform fee + Stripe fee + tax) when accepting an offer.
+// Trainer always receives 100% of price. On success, webhook creates booking.
 // ============================================
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
+import { calculateFees } from '@/lib/fees';
 
 function formatSportName(sport: string): string {
     return sport.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
@@ -78,17 +79,27 @@ export async function POST(req: NextRequest) {
             }
         }
 
-        // Calculate fees
-        const price = Number(offer.price);
+        // Look up trainer country for tax calculation
+        const { data: trainerProfile } = await supabase
+            .from('trainer_profiles')
+            .select('country')
+            .eq('user_id', resolvedTrainerUserId)
+            .maybeSingle();
+
+        // Look up platform fee %
         const { data: settings } = await supabase
             .from('platform_settings')
             .select('platform_fee_percentage')
             .maybeSingle();
-        const feePercent = (settings?.platform_fee_percentage ?? 3) / 100;
-        const platformFee = Math.round(price * feePercent * 100) / 100;
-        const totalAmount = price + platformFee;
-        const amountCents = Math.round(totalAmount * 100);
 
+        // Calculate full breakdown (athlete-pays-all model)
+        const fees = calculateFees({
+            price: Number(offer.price),
+            platformFeePercentage: settings?.platform_fee_percentage,
+            trainerCountry: trainerProfile?.country,
+        });
+
+        const amountCents = Math.round(fees.totalPaid * 100);
         if (amountCents < 50) {
             return NextResponse.json({ error: 'Offer amount too small' }, { status: 400 });
         }
@@ -102,6 +113,13 @@ export async function POST(req: NextRequest) {
             })
             : 'TBD';
 
+        const breakdownLines = [
+            `Session: $${fees.sessionFee.toFixed(2)}`,
+            `Platform (${fees.platformFeePct}%): $${fees.platformFee.toFixed(2)}`,
+            `Stripe: $${fees.stripeFee.toFixed(2)}`,
+        ];
+        if (fees.taxApplicable) breakdownLines.push(`${fees.taxLabel}: $${fees.taxAmount.toFixed(2)}`);
+
         const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
         const session = await stripe.checkout.sessions.create({
@@ -113,7 +131,7 @@ export async function POST(req: NextRequest) {
                         currency: 'usd',
                         product_data: {
                             name: `${formatSportName(offer.sport || 'Training')} Session with ${trainerName}`,
-                            description: `${offer.session_length_min || 60} min · ${sessionDateStr} · Funds held in escrow until session completes`,
+                            description: `${offer.session_length_min || 60} min · ${sessionDateStr} · ${breakdownLines.join(' · ')} · Funds held in escrow until session completes`,
                         },
                         unit_amount: amountCents,
                     },
@@ -131,9 +149,13 @@ export async function POST(req: NextRequest) {
                 scheduledAt: scheduledAt || '',
                 sessionLengthMin: String(offer.session_length_min || 60),
                 message: (offer.message || '').slice(0, 450),
-                price: String(price),
-                platformFee: String(platformFee),
-                totalAmount: String(totalAmount),
+                price: String(fees.sessionFee),
+                platformFee: String(fees.platformFee),
+                stripeFee: String(fees.stripeFee),
+                taxAmount: String(fees.taxAmount),
+                taxLabel: fees.taxLabel || '',
+                trainerCountry: fees.trainerCountry || '',
+                totalAmount: String(fees.totalPaid),
                 // Pass camp info if present so webhook can decrement spots
                 campName: proposed?.camp?.name || '',
             },

@@ -74,8 +74,11 @@ export interface BookingReceiptData {
     durationMinutes: number;
     sessionFee: number;    // trainer's rate (price)
     platformFee: number;   // 3% platform fee
-    totalPaid: number;     // sessionFee + platformFee
-    trainerPayout: number; // what trainer receives
+    stripeFee: number;     // Stripe 2.9% + $0.30 (paid by athlete)
+    taxAmount: number;     // Sales tax (e.g. Canadian HST); 0 if not applicable
+    taxLabel: string;      // e.g. "HST (13%)" or "" if no tax
+    totalPaid: number;     // sessionFee + platformFee + stripeFee + taxAmount
+    trainerPayout: number; // what trainer receives (= sessionFee, 100%)
     bookingId: string;
 }
 
@@ -109,6 +112,15 @@ export async function sendAthleteReceipt(data: BookingReceiptData): Promise<void
                         <td style="padding: 6px 0; color: #aaa;">Platform Fee (3%)</td>
                         <td style="padding: 6px 0; text-align: right; color: #aaa;">${formatCurrency(data.platformFee)}</td>
                     </tr>
+                    <tr>
+                        <td style="padding: 6px 0; color: #aaa;">Stripe Processing (2.9% + $0.30)</td>
+                        <td style="padding: 6px 0; text-align: right; color: #aaa;">${formatCurrency(data.stripeFee || 0)}</td>
+                    </tr>
+                    ${data.taxAmount && data.taxAmount > 0 ? `
+                    <tr>
+                        <td style="padding: 6px 0; color: #aaa;">${data.taxLabel || 'Tax'}</td>
+                        <td style="padding: 6px 0; text-align: right; color: #aaa;">${formatCurrency(data.taxAmount)}</td>
+                    </tr>` : ''}
                     <tr style="border-top: 1px solid #333;">
                         <td style="padding: 10px 0; font-weight: bold; font-size: 16px;">Total Paid</td>
                         <td style="padding: 10px 0; text-align: right; font-weight: bold; font-size: 16px; color: #a3ff12;">${formatCurrency(data.totalPaid)}</td>
@@ -228,10 +240,13 @@ export async function sendTrainerReceipt(data: BookingReceiptData): Promise<void
                         <td style="padding: 6px 0; text-align: right;">${formatCurrency(data.sessionFee)}</td>
                     </tr>
                     <tr style="border-top: 1px solid #333;">
-                        <td style="padding: 10px 0; font-weight: bold; font-size: 16px;">You'll Receive</td>
+                        <td style="padding: 10px 0; font-weight: bold; font-size: 16px;">You'll Receive (100%)</td>
                         <td style="padding: 10px 0; text-align: right; font-weight: bold; font-size: 16px; color: #a3ff12;">${formatCurrency(data.trainerPayout)}</td>
                     </tr>
                 </table>
+                <p style="margin: 14px 0 0; color: #888; font-size: 12px;">
+                    Athlete covered all fees: platform ${formatCurrency(data.platformFee)}, Stripe ${formatCurrency(data.stripeFee || 0)}${data.taxAmount && data.taxAmount > 0 ? `, ${data.taxLabel || 'Tax'} ${formatCurrency(data.taxAmount)}` : ''}. Total charged to athlete: ${formatCurrency(data.totalPaid)}.
+                </p>
             </div>
 
             <p style="color: #888; font-size: 13px;">

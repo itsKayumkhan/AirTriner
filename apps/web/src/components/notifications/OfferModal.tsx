@@ -16,6 +16,16 @@ interface OfferNotificationData {
     scheduledAt?: string;
     sessions?: { date: string; time: string }[];
     timezone?: string;
+    camp?: {
+        name?: string;
+        hoursPerDay?: number;
+        days?: number;
+        totalPrice?: number;
+        location?: string;
+        maxSpots?: number;
+        spotsRemaining?: number;
+        description?: string;
+    };
     [key: string]: unknown;
 }
 
@@ -25,13 +35,18 @@ interface OfferModalProps {
     notification: NotificationRow | null;
     onResponse: (notificationId: string, offerId: string, response: "accepted" | "declined") => Promise<void>;
     isResponding: boolean;
+    onDismiss?: (notificationId: string) => void | Promise<void>;
 }
 
-export function OfferModal({ isOpen, onClose, notification, onResponse, isResponding }: OfferModalProps) {
+export function OfferModal({ isOpen, onClose, notification, onResponse, isResponding, onDismiss }: OfferModalProps) {
     if (!isOpen || !notification) return null;
 
     const data = notification.data as OfferNotificationData;
     const trainerInitial = data?.trainer_name?.split(' ').map((n: string) => n[0]).join('') || "T";
+    const isExpired = data?.offer_status === "expired";
+    const isAccepted = data?.offer_status === "accepted";
+    const isDeclined = data?.offer_status === "declined";
+    const isTerminal = isExpired || isAccepted || isDeclined;
 
     return (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[100] p-4 sm:p-6 overflow-y-auto" onClick={onClose}>
@@ -93,6 +108,15 @@ export function OfferModal({ isOpen, onClose, notification, onResponse, isRespon
                             </div>
                         </div>
 
+                        {data?.camp?.description && (
+                            <div className="bg-[#12141A] border border-white/5 rounded-2xl p-4">
+                                <label className="block text-[9px] font-black text-text-main/30 uppercase tracking-[0.2em] mb-2">Camp Details{data.camp.name ? ` — ${data.camp.name}` : ""}</label>
+                                <p className="text-sm text-text-main/80 leading-relaxed whitespace-pre-wrap">
+                                    {data.camp.description}
+                                </p>
+                            </div>
+                        )}
+
                         {(data?.sessions && data.sessions.length > 0) ? (
                             <div className="bg-[#12141A] border border-white/5 rounded-2xl p-4">
                                 <label className="block text-[9px] font-black text-text-main/30 uppercase tracking-[0.2em] mb-3 text-center">Proposed Sessions</label>
@@ -132,22 +156,57 @@ export function OfferModal({ isOpen, onClose, notification, onResponse, isRespon
                     </div>
 
                     {/* Actions */}
-                    <div className="flex flex-col gap-3">
-                        <button
-                            onClick={() => onResponse(notification.id, data.offer_id!, "accepted")}
-                            disabled={isResponding}
-                            className="w-full py-4 rounded-2xl bg-primary text-bg font-black text-[15px] uppercase tracking-wider hover:shadow-[0_0_25px_rgba(69,208,255,0.4)] transition-all flex items-center justify-center gap-2"
-                        >
-                            {isResponding ? <div className="w-5 h-5 border-2 border-bg/30 border-t-bg rounded-full animate-spin" /> : "Accept Training Offer"}
-                        </button>
-                        <button
-                            onClick={() => onResponse(notification.id, data.offer_id!, "declined")}
-                            disabled={isResponding}
-                            className="w-full py-4 rounded-2xl border border-white/10 text-white/60 font-bold text-sm uppercase tracking-wider hover:bg-white/5 hover:text-white transition-all"
-                        >
-                            Decline Offer
-                        </button>
-                    </div>
+                    {isTerminal ? (
+                        <div className="flex flex-col gap-3">
+                            {isExpired && (
+                                <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/20 text-center">
+                                    <p className="text-[11px] font-black text-red-400 uppercase tracking-[0.2em] mb-1">Expired</p>
+                                    <p className="text-sm text-text-main/70">This offer has expired</p>
+                                </div>
+                            )}
+                            {isAccepted && (
+                                <div className="p-4 rounded-2xl bg-green-500/10 border border-green-500/20 text-center">
+                                    <p className="text-[11px] font-black text-green-400 uppercase tracking-[0.2em]">Offer Accepted</p>
+                                </div>
+                            )}
+                            {isDeclined && (
+                                <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/20 text-center">
+                                    <p className="text-[11px] font-black text-red-400 uppercase tracking-[0.2em]">Offer Declined</p>
+                                </div>
+                            )}
+                            {isExpired && onDismiss && (
+                                <button
+                                    onClick={() => onDismiss(notification.id)}
+                                    className="w-full py-4 rounded-2xl border border-white/10 text-white/60 font-bold text-sm uppercase tracking-wider hover:bg-white/5 hover:text-white transition-all"
+                                >
+                                    Dismiss
+                                </button>
+                            )}
+                            <button
+                                onClick={onClose}
+                                className="w-full py-4 rounded-2xl border border-white/10 text-white/60 font-bold text-sm uppercase tracking-wider hover:bg-white/5 hover:text-white transition-all"
+                            >
+                                Close
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="flex flex-col gap-3">
+                            <button
+                                onClick={() => onResponse(notification.id, data.offer_id!, "accepted")}
+                                disabled={isResponding}
+                                className="w-full py-4 rounded-2xl bg-primary text-bg font-black text-[15px] uppercase tracking-wider hover:shadow-[0_0_25px_rgba(69,208,255,0.4)] transition-all flex items-center justify-center gap-2"
+                            >
+                                {isResponding ? <div className="w-5 h-5 border-2 border-bg/30 border-t-bg rounded-full animate-spin" /> : "Accept Training Offer"}
+                            </button>
+                            <button
+                                onClick={() => onResponse(notification.id, data.offer_id!, "declined")}
+                                disabled={isResponding}
+                                className="w-full py-4 rounded-2xl border border-white/10 text-white/60 font-bold text-sm uppercase tracking-wider hover:bg-white/5 hover:text-white transition-all"
+                            >
+                                Decline Offer
+                            </button>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>

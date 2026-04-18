@@ -116,6 +116,9 @@ export type BookingRow = {
     trainer_notes: string | null;
     price: number;
     platform_fee: number;
+    stripe_fee: number;
+    tax_amount: number;
+    tax_label: string | null;
     total_paid: number;
     status_history: unknown;
     created_at: string;
@@ -163,6 +166,9 @@ export type PaymentTransactionRow = {
     trainer_id: string;
     amount: number;
     platform_fee: number;
+    stripe_fee: number;
+    tax_amount: number;
+    tax_label: string | null;
     trainer_payout: number;
     stripe_payment_intent_id: string | null;
     stripe_transfer_id: string | null;

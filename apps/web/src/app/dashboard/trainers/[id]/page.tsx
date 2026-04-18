@@ -620,10 +620,17 @@ export default function BookTrainerPage() {
                 .from("platform_settings")
                 .select("platform_fee_percentage")
                 .maybeSingle();
-            const feePercent = (feeSettings?.platform_fee_percentage ?? 3) / 100;
 
             const sessionPrice = (trainer.hourly_rate || 0) * (durationMinutes / 60);
-            const platformFee = Math.round(sessionPrice * feePercent * 100) / 100;
+
+            // Compute full athlete-pays-all breakdown (platform + Stripe + tax)
+            const { calculateFees } = await import("@/lib/fees");
+            const fees = calculateFees({
+                price: sessionPrice,
+                platformFeePercentage: feeSettings?.platform_fee_percentage,
+                trainerCountry: (trainer as { country?: string | null })?.country ?? null,
+            });
+
             const insertData = {
                 athlete_id: user.id,
                 trainer_id: trainer.user_id,
@@ -632,9 +639,12 @@ export default function BookTrainerPage() {
                 duration_minutes: durationMinutes,
                 training_location: selectedLocation || null,
                 status: 'pending',
-                price: sessionPrice,
-                platform_fee: platformFee,
-                total_paid: sessionPrice + platformFee
+                price: fees.sessionFee,
+                platform_fee: fees.platformFee,
+                stripe_fee: fees.stripeFee,
+                tax_amount: fees.taxAmount,
+                tax_label: fees.taxLabel || null,
+                total_paid: fees.totalPaid,
             };
 
             const { error } = await supabase.from("bookings").insert(insertData);

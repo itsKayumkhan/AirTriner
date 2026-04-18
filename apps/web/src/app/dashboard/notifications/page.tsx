@@ -46,17 +46,75 @@ export default function NotificationsPage() {
 
     const loadNotifications = async (u: AuthUser) => {
         try {
+            // 1. Auto-expire any pending offers whose session date has passed
+            try {
+                await fetch("/api/offers/expire", { method: "POST" });
+            } catch (err) {
+                console.warn("Failed to run expire offers job:", err);
+            }
+
+            // 2. Load notifications
             const { data } = await supabase
                 .from("notifications")
                 .select("*")
                 .eq("user_id", u.id)
                 .order("created_at", { ascending: false })
                 .limit(50);
-            setNotifications((data || []) as NotificationRow[]);
+
+            const notifs = (data || []) as NotificationRow[];
+
+            // 3. Hydrate each offer notification with the latest training_offers.status
+            //    so expired offers show the EXPIRED badge even if offer_status in notif data is stale.
+            const offerIds = Array.from(
+                new Set(
+                    notifs
+                        .map((n) => (n.data as OfferNotificationData)?.offer_id)
+                        .filter((id): id is string => Boolean(id))
+                )
+            );
+
+            if (offerIds.length > 0) {
+                const { data: offersData } = await supabase
+                    .from("training_offers")
+                    .select("id, status")
+                    .in("id", offerIds);
+
+                const statusMap = new Map<string, string>();
+                (offersData || []).forEach((o: { id: string; status: string }) => {
+                    statusMap.set(o.id, o.status);
+                });
+
+                for (const n of notifs) {
+                    const d = n.data as OfferNotificationData;
+                    if (d?.offer_id && statusMap.has(d.offer_id)) {
+                        const latest = statusMap.get(d.offer_id)!;
+                        // Only overwrite if the latest status is terminal/different
+                        if (d.offer_status !== latest && (latest === "expired" || latest === "accepted" || latest === "declined")) {
+                            n.data = { ...d, offer_status: latest };
+                        }
+                    }
+                }
+            }
+
+            setNotifications(notifs);
         } catch (err) {
             console.error("Failed to load notifications:", err);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const dismissNotification = async (notificationId: string) => {
+        try {
+            await supabase.from("notifications").delete().eq("id", notificationId);
+            setNotifications((prev) => prev.filter((n) => n.id !== notificationId));
+            // Close modal if we just dismissed the one being viewed
+            if (selectedNotification?.id === notificationId) {
+                setShowOfferModal(false);
+                setSelectedNotification(null);
+            }
+        } catch (err) {
+            console.error("Failed to dismiss notification:", err);
         }
     };
 
@@ -298,13 +356,37 @@ export default function NotificationsPage() {
                                         </button>
                                     </div>
                                 )}
-                                {(n.data as OfferNotificationData)?.offer_status && (
-                                    <div className="mt-3">
-                                        <span className={`inline-block px-3 py-1 text-[10px] uppercase font-black tracking-wider rounded-lg border ${(n.data as OfferNotificationData).offer_status === 'accepted' ? 'text-green-500 bg-green-500/10 border-green-500/20' : 'text-red-500 bg-red-500/10 border-red-500/20'}`}>
-                                            Offer {(n.data as OfferNotificationData).offer_status}
-                                        </span>
-                                    </div>
-                                )}
+                                {(n.data as OfferNotificationData)?.offer_status && (() => {
+                                    const status = (n.data as OfferNotificationData).offer_status;
+                                    const isExpired = status === "expired";
+                                    const isAccepted = status === "accepted";
+                                    const badgeClass = isAccepted
+                                        ? "text-green-500 bg-green-500/10 border-green-500/20"
+                                        : isExpired
+                                            ? "text-red-500 bg-red-500/10 border-red-500/20"
+                                            : "text-red-500 bg-red-500/10 border-red-500/20";
+                                    return (
+                                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                                            <span className={`inline-block px-3 py-1 text-[10px] uppercase font-black tracking-wider rounded-lg border ${badgeClass}`}>
+                                                {isExpired ? "Expired" : `Offer ${status}`}
+                                            </span>
+                                            {isExpired && (
+                                                <span className="text-xs text-text-main/50 italic">This offer has expired</span>
+                                            )}
+                                            {isExpired && (
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        dismissNotification(n.id);
+                                                    }}
+                                                    className="ml-auto px-3 py-1 rounded-lg border border-white/10 text-text-main/60 text-[10px] font-bold uppercase tracking-wider hover:text-red-400 hover:border-red-500/30 transition-colors"
+                                                >
+                                                    Dismiss
+                                                </button>
+                                            )}
+                                        </div>
+                                    );
+                                })()}
                             </div>
                             <span className="text-[10px] text-text-main/40 uppercase tracking-widest font-bold whitespace-nowrap mt-1">
                                 {timeAgo(n.created_at)}
@@ -321,6 +403,7 @@ export default function NotificationsPage() {
                 notification={selectedNotification}
                 onResponse={handleOfferResponse}
                 isResponding={isResponding}
+                onDismiss={dismissNotification}
             />
         </div>
     );

@@ -21,6 +21,16 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "Invalid action. Must be 'approve' or 'reject'" }, { status: 400 });
         }
 
+        // Look up the pending image URL so we can sync it to users.avatar_url
+        // (Bug #9: trainer detail page reads users.avatar_url, so approval must
+        // propagate the URL there — matching the upload-time sync in trainer/setup.)
+        const { data: profile } = await adminSupabase
+            .from("trainer_profiles")
+            .select("profile_image_url")
+            .eq("user_id", trainerId)
+            .maybeSingle();
+        const pendingImageUrl = profile?.profile_image_url || null;
+
         if (action === "approve") {
             const { error } = await adminSupabase
                 .from("trainer_profiles")
@@ -31,6 +41,16 @@ export async function POST(req: NextRequest) {
                 .eq("user_id", trainerId);
 
             if (error) throw error;
+
+            // Sync approved image to users.avatar_url so it shows on trainer detail,
+            // search cards, nav bar, etc. (which all read avatar_url).
+            if (pendingImageUrl) {
+                const { error: avatarError } = await adminSupabase
+                    .from("users")
+                    .update({ avatar_url: pendingImageUrl })
+                    .eq("id", trainerId);
+                if (avatarError) console.error("[admin/approve-trainer-image] avatar sync failed:", avatarError);
+            }
         } else {
             const { error } = await adminSupabase
                 .from("trainer_profiles")
@@ -41,6 +61,17 @@ export async function POST(req: NextRequest) {
                 .eq("user_id", trainerId);
 
             if (error) throw error;
+
+            // Rejected image must not continue to display publicly — clear avatar_url
+            // if it was previously set to this rejected image.
+            if (pendingImageUrl) {
+                const { error: avatarError } = await adminSupabase
+                    .from("users")
+                    .update({ avatar_url: null })
+                    .eq("id", trainerId)
+                    .eq("avatar_url", pendingImageUrl);
+                if (avatarError) console.error("[admin/approve-trainer-image] avatar clear failed:", avatarError);
+            }
         }
 
         return NextResponse.json({ success: true });

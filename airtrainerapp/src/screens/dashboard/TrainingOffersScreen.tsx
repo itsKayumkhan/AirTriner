@@ -92,6 +92,7 @@ type Camp = {
     dates: string[];
     maxSpots: number;
     spotsRemaining: number;
+    description?: string;
     schedule?: { date: string; startTime: string }[];
 };
 
@@ -719,7 +720,16 @@ export default function TrainingOffersScreen({ navigation }: any) {
                                                             </View>
                                                         )}
                                                     </View>
-                                                    <Text style={styles.campMeta}>
+                                                    {camp.description ? (
+                                                        <Text
+                                                            style={[styles.campMeta, { marginTop: 4, fontStyle: 'italic' }]}
+                                                            numberOfLines={2}
+                                                            ellipsizeMode="tail"
+                                                        >
+                                                            {camp.description}
+                                                        </Text>
+                                                    ) : null}
+                                                    <Text style={[styles.campMeta, camp.description ? { marginTop: 4 } : null]}>
                                                         {camp.hoursPerDay} hrs/day x {camp.days} days
                                                     </Text>
                                                     {camp.location ? (

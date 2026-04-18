@@ -40,7 +40,10 @@ export async function POST(req: NextRequest) {
         }
 
         // Get metadata from session
-        const { athleteId, trainerId, amount, platformFee, trainerPayout } = session.metadata || {};
+        const {
+            athleteId, trainerId, amount, platformFee,
+            stripeFee, taxAmount, taxLabel, trainerPayout,
+        } = session.metadata || {};
 
         // Determine hold period
         const { data: trainerBookings } = await supabase
@@ -60,6 +63,9 @@ export async function POST(req: NextRequest) {
                 stripe_payment_intent_id: session.payment_intent as string || null,
                 amount: Number(amount),
                 platform_fee: Number(platformFee),
+                stripe_fee: Number(stripeFee || 0),
+                tax_amount: Number(taxAmount || 0),
+                tax_label: taxLabel || null,
                 trainer_payout: Number(trainerPayout),
                 status: 'held',
                 hold_until: holdUntil.toISOString(),

@@ -79,6 +79,8 @@ export default function TrainerEditProfilePage() {
         certifications: "",
         city: "",
         state: "",
+        latitude: null as number | null,
+        longitude: null as number | null,
         travelRadius: "20",
         targetSkillLevels: ["beginner", "intermediate", "advanced", "pro"] as ("beginner"|"intermediate"|"advanced"|"pro")[],
         preferredTrainingTimes: ["morning", "afternoon", "evening"] as ("morning"|"afternoon"|"evening")[],
@@ -101,11 +103,11 @@ export default function TrainerEditProfilePage() {
     const [customDuration, setCustomDuration] = useState("");
 
     // Multi-day camp offerings (Change 1) — non-consecutive days with individual times
-    const [campOfferings, setCampOfferings] = useState<Array<{ name: string; hoursPerDay: number; days: number; totalPrice: number; location: string; startTime: string; endTime: string; dates: string[]; maxSpots: number; spotsRemaining: number; schedule?: Array<{ date: string; startTime: string }> }>>([]);
+    const [campOfferings, setCampOfferings] = useState<Array<{ name: string; hoursPerDay: number; days: number; totalPrice: number; location: string; startTime: string; endTime: string; dates: string[]; maxSpots: number; spotsRemaining: number; description?: string; schedule?: Array<{ date: string; startTime: string }> }>>([]);
     const [showCampSection, setShowCampSection] = useState(false);
     const [showCampForm, setShowCampForm] = useState(false);
     const [editingCampIndex, setEditingCampIndex] = useState<number | null>(null);
-    const [campForm, setCampForm] = useState({ name: "", hoursPerDay: "", totalPrice: "", location: "", maxSpots: "" });
+    const [campForm, setCampForm] = useState({ name: "", hoursPerDay: "", totalPrice: "", location: "", maxSpots: "", description: "" });
     const [campSchedule, setCampSchedule] = useState<Array<{ date: string; startTime: string }>>([{ date: "", startTime: "" }]);
 
     // Profile image upload with admin approval (Change 3)
@@ -189,6 +191,8 @@ export default function TrainerEditProfilePage() {
                     certifications: initialCerts,
                     city: latestProfile.city || "",
                     state: latestProfile.state || "",
+                    latitude: (latestProfile as any).latitude ?? null,
+                    longitude: (latestProfile as any).longitude ?? null,
                     travelRadius: latestProfile.travel_radius_miles?.toString() || "20",
                     targetSkillLevels: latestProfile.target_skill_levels || ["beginner", "intermediate", "advanced", "pro"],
                     preferredTrainingTimes: latestProfile.preferredTrainingTimes || ["morning", "afternoon", "evening"],
@@ -283,10 +287,45 @@ export default function TrainerEditProfilePage() {
                 camp_offerings: campOfferings,
             };
 
-            const [profileRes, userRes] = await Promise.all([
-                supabase.from("trainer_profiles").update(updateData).eq("user_id", user.id),
-                supabase.from("users").update({ first_name: formData.firstName, last_name: formData.lastName, phone: formData.phone || null, date_of_birth: formData.dateOfBirth || null, sex: formData.sex || null }).eq("id", user.id)
-            ]);
+            // Persist location coords if provided. If lat/lng are missing but we have
+            // city/state, geocode server-side so the admin map (Bug #8) always renders.
+            let lat = formData.latitude;
+            let lng = formData.longitude;
+            if ((lat == null || lng == null) && formData.city) {
+                try {
+                    const res = await fetch(
+                        `/api/places/geocode?city=${encodeURIComponent(formData.city)}&state=${encodeURIComponent(formData.state || "")}&country=${encodeURIComponent(formData.country || "")}`
+                    );
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (typeof data.lat === "number" && typeof data.lng === "number") {
+                            lat = data.lat;
+                            lng = data.lng;
+                        }
+                    }
+                } catch { /* best-effort geocoding; ignore failures */ }
+            }
+            if (lat != null && lng != null) {
+                updateData.latitude = lat;
+                updateData.longitude = lng;
+            }
+            if (formData.country) updateData.country = formData.country;
+
+            const doProfileUpdate = async (payload: Record<string, unknown>) =>
+                supabase.from("trainer_profiles").update(payload).eq("user_id", user.id);
+
+            let profileRes = await doProfileUpdate(updateData);
+            // If the DB is missing latitude/longitude/country columns, retry without them
+            if (profileRes.error && (profileRes.error.message?.includes("column") || profileRes.error.code === "42703")) {
+                console.warn("trainer_profiles missing latitude/longitude/country columns — saving without them. Run migration to add these columns.");
+                const { latitude: _lat, longitude: _lng, country: _c, ...rest } = updateData;
+                void _lat; void _lng; void _c;
+                profileRes = await doProfileUpdate(rest);
+            }
+            const userRes = await supabase
+                .from("users")
+                .update({ first_name: formData.firstName, last_name: formData.lastName, phone: formData.phone || null, date_of_birth: formData.dateOfBirth || null, sex: formData.sex || null })
+                .eq("id", user.id);
 
             if (profileRes.error) throw profileRes.error;
             if (userRes.error) throw userRes.error;
@@ -552,7 +591,8 @@ export default function TrainerEditProfilePage() {
         const dates = [firstEntry.date, ...(lastEntry.date !== firstEntry.date ? [lastEntry.date] : [])];
 
         const existingSpotsRemaining = editingCampIndex !== null ? campOfferings[editingCampIndex].spotsRemaining : maxSpots;
-        const camp = { name, hoursPerDay, days, totalPrice, location, startTime, endTime, dates, maxSpots, spotsRemaining: editingCampIndex !== null ? Math.min(existingSpotsRemaining, maxSpots) : maxSpots, schedule: sortedSchedule };
+        const description = campForm.description.trim().slice(0, 500);
+        const camp = { name, hoursPerDay, days, totalPrice, location, startTime, endTime, dates, maxSpots, spotsRemaining: editingCampIndex !== null ? Math.min(existingSpotsRemaining, maxSpots) : maxSpots, description, schedule: sortedSchedule };
 
         if (editingCampIndex !== null) {
             setCampOfferings(prev => prev.map((c, i) => i === editingCampIndex ? camp : c));
@@ -560,7 +600,7 @@ export default function TrainerEditProfilePage() {
         } else {
             setCampOfferings(prev => [...prev, camp]);
         }
-        setCampForm({ name: "", hoursPerDay: "", totalPrice: "", location: "", maxSpots: "" });
+        setCampForm({ name: "", hoursPerDay: "", totalPrice: "", location: "", maxSpots: "", description: "" });
         setCampSchedule([{ date: "", startTime: "" }]);
         setShowCampForm(false);
     };
@@ -573,6 +613,7 @@ export default function TrainerEditProfilePage() {
             totalPrice: camp.totalPrice.toString(),
             location: camp.location || "",
             maxSpots: camp.maxSpots?.toString() || "",
+            description: camp.description || "",
         });
         // Load schedule if present, otherwise reconstruct from legacy fields
         if (camp.schedule && camp.schedule.length > 0) {
@@ -1010,7 +1051,7 @@ export default function TrainerEditProfilePage() {
                             <div className="md:col-span-2">
                                 <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">City</label>
                                 <LocationAutocomplete
-                                    value={formData.city ? { city: formData.city, state: formData.state || "", country: "", lat: null, lng: null } : null}
+                                    value={formData.city ? { city: formData.city, state: formData.state || "", country: formData.country || "", lat: formData.latitude, lng: formData.longitude } : null}
                                     onChange={(loc: LocationValue) => {
                                         if (loc) {
                                             const newZip = loc.zipCode || formData.zipCode;
@@ -1030,6 +1071,8 @@ export default function TrainerEditProfilePage() {
                                                 city: loc.city,
                                                 state: loc.state,
                                                 country: loc.country || p.country,
+                                                latitude: loc.lat ?? null,
+                                                longitude: loc.lng ?? null,
                                                 ...(loc.zipCode ? { zipCode: loc.zipCode } : {}),
                                             }));
                                         }
@@ -1437,6 +1480,21 @@ export default function TrainerEditProfilePage() {
                                                         </div>
                                                     </div>
 
+                                                    {/* Description (truncated to 2 lines) */}
+                                                    {camp.description && (
+                                                        <p
+                                                            className="text-text-main/60 text-xs leading-relaxed mb-4 overflow-hidden"
+                                                            style={{
+                                                                display: "-webkit-box",
+                                                                WebkitLineClamp: 2,
+                                                                WebkitBoxOrient: "vertical",
+                                                            }}
+                                                            title={camp.description}
+                                                        >
+                                                            {camp.description}
+                                                        </p>
+                                                    )}
+
                                                     {/* Info grid */}
                                                     <div className="grid grid-cols-2 gap-3 mb-4">
                                                         <div className="bg-white/[0.03] rounded-xl px-3 py-2.5 border border-white/[0.04]">
@@ -1552,6 +1610,28 @@ export default function TrainerEditProfilePage() {
                                                         placeholder="e.g. XYZ Arena, Toronto"
                                                     />
                                                 </div>
+                                                <div className="sm:col-span-2">
+                                                    <div className="flex items-center justify-between mb-1.5">
+                                                        <label className="block text-[10px] font-bold text-text-main/50 uppercase tracking-wider">Description</label>
+                                                        <span className={`text-[10px] font-bold tabular-nums ${
+                                                            campForm.description.length >= 500
+                                                                ? "text-red-400"
+                                                                : campForm.description.length >= 400
+                                                                    ? "text-amber-400"
+                                                                    : "text-text-main/30"
+                                                        }`}>
+                                                            {campForm.description.length}/500
+                                                        </span>
+                                                    </div>
+                                                    <textarea
+                                                        value={campForm.description}
+                                                        onChange={(e) => setCampForm(p => ({ ...p, description: e.target.value.slice(0, 500) }))}
+                                                        maxLength={500}
+                                                        rows={3}
+                                                        placeholder="e.g. Pad 2 at the Lindsay Rec Center, dress in full hockey gear"
+                                                        className="w-full bg-[#1A1C23] border border-white/5 rounded-xl px-4 py-2.5 text-white text-sm outline-none focus:border-primary/50 transition-colors placeholder:text-text-main/30 resize-none"
+                                                    />
+                                                </div>
                                             </div>
 
                                             {/* Schedule: individual day + time rows */}
@@ -1627,7 +1707,7 @@ export default function TrainerEditProfilePage() {
                                                 </button>
                                                 <button
                                                     type="button"
-                                                    onClick={() => { setShowCampForm(false); setEditingCampIndex(null); setCampForm({ name: "", hoursPerDay: "", totalPrice: "", location: "", maxSpots: "" }); setCampSchedule([{ date: "", startTime: "" }]); }}
+                                                    onClick={() => { setShowCampForm(false); setEditingCampIndex(null); setCampForm({ name: "", hoursPerDay: "", totalPrice: "", location: "", maxSpots: "", description: "" }); setCampSchedule([{ date: "", startTime: "" }]); }}
                                                     className="px-4 py-2 rounded-xl text-text-main/50 text-xs font-bold hover:text-white transition-all"
                                                 >
                                                     Cancel
@@ -1639,7 +1719,7 @@ export default function TrainerEditProfilePage() {
                                     {!showCampForm && (
                                         <button
                                             type="button"
-                                            onClick={() => { setShowCampForm(true); setEditingCampIndex(null); setCampForm({ name: "", hoursPerDay: "", totalPrice: "", location: "", maxSpots: "" }); setCampSchedule([{ date: "", startTime: "" }]); }}
+                                            onClick={() => { setShowCampForm(true); setEditingCampIndex(null); setCampForm({ name: "", hoursPerDay: "", totalPrice: "", location: "", maxSpots: "", description: "" }); setCampSchedule([{ date: "", startTime: "" }]); }}
                                             className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/4 border border-white/10 text-text-main/60 text-xs font-bold hover:border-primary/30 hover:text-primary transition-all"
                                         >
                                             <Plus size={14} /> Add Camp

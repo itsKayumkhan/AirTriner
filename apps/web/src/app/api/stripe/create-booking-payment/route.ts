@@ -1,10 +1,15 @@
 // ============================================
 // Stripe Checkout — Athlete Booking Payment
 // One-time payment with escrow (held until session completes)
+//
+// Fee model (athlete-pays-all):
+//   athlete pays  = price + platformFee (3%) + stripeFee (2.9% + $0.30) + tax (HST 13% if CA)
+//   trainer gets  = 100% of price, no deductions
 // ============================================
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
+import { calculateFees } from '@/lib/fees';
 
 function formatSportName(sport: string): string {
     return sport.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
@@ -64,7 +69,37 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'This booking has already been paid' }, { status: 400 });
         }
 
-        const amountCents = Math.round(Number(booking.total_paid) * 100);
+        // ── Recalculate fees using the full athlete-pays-all model ──
+        const { data: settings } = await supabase
+            .from('platform_settings')
+            .select('platform_fee_percentage')
+            .maybeSingle();
+
+        const { data: trainerProfile } = await supabase
+            .from('trainer_profiles')
+            .select('country')
+            .eq('user_id', booking.trainer_id)
+            .maybeSingle();
+
+        const fees = calculateFees({
+            price: Number(booking.price),
+            platformFeePercentage: settings?.platform_fee_percentage,
+            trainerCountry: trainerProfile?.country,
+        });
+
+        // Persist authoritative breakdown back onto the booking so receipts/UI match
+        await supabase
+            .from('bookings')
+            .update({
+                platform_fee: fees.platformFee,
+                stripe_fee: fees.stripeFee,
+                tax_amount: fees.taxAmount,
+                tax_label: fees.taxLabel || null,
+                total_paid: fees.totalPaid,
+            })
+            .eq('id', bookingId);
+
+        const amountCents = Math.round(fees.totalPaid * 100);
         if (amountCents < 50) {
             return NextResponse.json({ error: 'Booking amount too small' }, { status: 400 });
         }
@@ -79,6 +114,14 @@ export async function POST(req: NextRequest) {
 
         const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
+        // Build line item description with transparent fee breakdown
+        const breakdownLines = [
+            `Session: $${fees.sessionFee.toFixed(2)}`,
+            `Platform (${fees.platformFeePct}%): $${fees.platformFee.toFixed(2)}`,
+            `Stripe: $${fees.stripeFee.toFixed(2)}`,
+        ];
+        if (fees.taxApplicable) breakdownLines.push(`${fees.taxLabel}: $${fees.taxAmount.toFixed(2)}`);
+
         const session = await stripe.checkout.sessions.create({
             mode: 'payment',
             customer_email: athleteEmail,
@@ -88,7 +131,7 @@ export async function POST(req: NextRequest) {
                         currency: 'usd',
                         product_data: {
                             name: `${formatSportName(booking.sport)} Session with ${trainerName}`,
-                            description: `${booking.duration_minutes} min · ${sessionDate} · Funds held in escrow until session completes`,
+                            description: `${booking.duration_minutes} min · ${sessionDate} · ${breakdownLines.join(' · ')} · Funds held in escrow until session completes`,
                         },
                         unit_amount: amountCents,
                     },
@@ -102,9 +145,14 @@ export async function POST(req: NextRequest) {
                 bookingId,
                 athleteId,
                 trainerId: booking.trainer_id,
-                amount: booking.total_paid,
-                platformFee: booking.platform_fee,
-                trainerPayout: String(booking.price),
+                amount: String(fees.totalPaid),
+                sessionFee: String(fees.sessionFee),
+                platformFee: String(fees.platformFee),
+                stripeFee: String(fees.stripeFee),
+                taxAmount: String(fees.taxAmount),
+                taxLabel: fees.taxLabel || '',
+                trainerCountry: fees.trainerCountry || '',
+                trainerPayout: String(fees.trainerPayout),
             },
         });
 

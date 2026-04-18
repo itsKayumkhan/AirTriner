@@ -436,6 +436,17 @@ export default function NotificationsScreen({ navigation }: any) {
                                         <Text style={[styles.offerValue, { flex: 1 }]}>{selectedOffer.message}</Text>
                                     </View>
                                 ) : null}
+                                {selectedOffer.proposed_dates?.camp?.description ? (
+                                    <View style={styles.offerDetailRow}>
+                                        <Text style={styles.offerLabel}>
+                                            Camp Details{selectedOffer.proposed_dates.camp.name ? ` — ${selectedOffer.proposed_dates.camp.name}` : ''}
+                                        </Text>
+                                        <Text style={[styles.offerValue, { flex: 1 }]}>
+                                            {selectedOffer.proposed_dates.camp.description}
+                                        </Text>
+                                    </View>
+                                ) : null}
+
                                 {selectedOffer.proposed_dates && (
                                     <View style={styles.offerDetailRow}>
                                         <Text style={styles.offerLabel}>Proposed Dates</Text>

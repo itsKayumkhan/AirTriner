@@ -30,7 +30,7 @@ interface Offer {
     message: string;
     session_type: string;
     rate: number;
-    status: "pending" | "accepted" | "declined";
+    status: "pending" | "accepted" | "declined" | "expired";
     created_at: string;
 }
 
@@ -89,6 +89,13 @@ export default function TrainingOffersPage() {
 
     const loadData = async (session: AuthUser) => {
         try {
+            // Auto-expire pending offers whose proposed session date has passed
+            try {
+                await fetch("/api/offers/expire", { method: "POST" });
+            } catch (err) {
+                console.warn("Failed to run expire offers job:", err);
+            }
+
             // Load trainer's camp offerings
             const { data: trainerProfile } = await supabase
                 .from("trainer_profiles")
@@ -112,18 +119,17 @@ export default function TrainingOffersPage() {
                     first_name: a.first_name as string,
                     last_name: a.last_name as string,
                     avatar_url: a.avatar_url as string | null,
-                    athlete_profile: a.athlete_profiles 
+                    athlete_profile: a.athlete_profiles
                         ? (Array.isArray(a.athlete_profiles) ? a.athlete_profiles[0] : a.athlete_profiles) as Athlete['athlete_profile']
                         : null,
                 })));
             }
 
-            // Load sent offers (from training_offers)
+            // Load sent offers (from training_offers) — include ALL statuses so trainer can see history
             const { data: offersData } = await supabase
                 .from("training_offers")
                 .select("*")
                 .eq("trainer_id", session.id)
-                .neq("status", "expired")
                 .order("created_at", { ascending: false });
 
             if (offersData) {
@@ -252,7 +258,7 @@ export default function TrainingOffersPage() {
         setIsCanceling(true);
         try {
             await supabase.from("training_offers").update({ status: 'expired' }).eq("id", offerToCancel);
-            setOffers(prev => prev.filter(o => o.id !== offerToCancel));
+            setOffers(prev => prev.map(o => o.id === offerToCancel ? { ...o, status: 'expired' } : o));
             setOfferToCancel(null);
         } catch (err) {
             console.error("Failed to cancel offer:", err);
@@ -442,9 +448,10 @@ export default function TrainingOffersPage() {
                                         w-12 h-12 rounded-2xl flex items-center justify-center border shrink-0
                                         ${offer.status === "accepted" ? "bg-green-500/10 text-green-500 border-green-500/20" :
                                             offer.status === "declined" ? "bg-red-500/10 text-red-500 border-red-500/20" :
-                                                "bg-[#272A35] text-text-main/50 border-white/5"}
+                                                offer.status === "expired" ? "bg-orange-500/10 text-orange-400 border-orange-500/20" :
+                                                    "bg-[#272A35] text-text-main/50 border-white/5"}
                                     `}>
-                                        {offer.status === "accepted" ? <Award size={22} /> : offer.status === "declined" ? <X size={22} /> : <Clock size={22} />}
+                                        {offer.status === "accepted" ? <Award size={22} /> : offer.status === "declined" ? <X size={22} /> : offer.status === "expired" ? <Clock size={22} /> : <Clock size={22} />}
                                     </div>
                                     <div>
                                         <h3 className="font-bold text-[17px] text-white mb-1">Offer sent to {offer.athlete_name}</h3>
@@ -469,7 +476,8 @@ export default function TrainingOffersPage() {
                                         px-4 py-1.5 rounded-full text-[11px] font-black uppercase tracking-wider border
                                         ${offer.status === "accepted" ? "bg-green-500/10 text-green-500 border-green-500/20" :
                                             offer.status === "declined" ? "bg-red-500/10 text-red-500 border-red-500/20" :
-                                                "bg-[#272A35] text-text-main/70 border-white/5"}
+                                                offer.status === "expired" ? "bg-orange-500/10 text-orange-400 border-orange-500/20" :
+                                                    "bg-[#272A35] text-text-main/70 border-white/5"}
                                     `}>
                                         {offer.status}
                                     </span>

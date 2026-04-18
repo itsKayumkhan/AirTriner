@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Mail, Trash2, Loader2, Search, X } from "lucide-react";
+import { Mail, MailOpen, Trash2, Loader2, Search, X, Check, CheckCheck } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
 export default function AdminContactsPage() {
@@ -9,6 +9,9 @@ export default function AdminContactsPage() {
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState("");
     const [deleting, setDeleting] = useState<string | null>(null);
+    const [markingId, setMarkingId] = useState<string | null>(null);
+    const [markingAll, setMarkingAll] = useState(false);
+    const [filter, setFilter] = useState<"all" | "unread" | "read">("all");
 
     useEffect(() => { loadMessages(); }, []);
 
@@ -46,7 +49,47 @@ export default function AdminContactsPage() {
         }
     };
 
+    const handleMarkRead = async (id: string, nextRead: boolean) => {
+        setMarkingId(id);
+        try {
+            const { error } = await supabase
+                .from("contact_messages")
+                .update({ is_read: nextRead })
+                .eq("id", id);
+
+            if (error) throw error;
+            setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, is_read: nextRead } : m)));
+        } catch (err) {
+            console.error("Failed to update read state:", err);
+        } finally {
+            setMarkingId(null);
+        }
+    };
+
+    const handleMarkAllRead = async () => {
+        const unreadIds = messages.filter((m) => !m.is_read).map((m) => m.id);
+        if (unreadIds.length === 0) return;
+        setMarkingAll(true);
+        try {
+            const { error } = await supabase
+                .from("contact_messages")
+                .update({ is_read: true })
+                .in("id", unreadIds);
+
+            if (error) throw error;
+            setMessages((prev) => prev.map((m) => ({ ...m, is_read: true })));
+        } catch (err) {
+            console.error("Failed to mark all read:", err);
+        } finally {
+            setMarkingAll(false);
+        }
+    };
+
+    const unreadCount = messages.filter((m) => !m.is_read).length;
+
     const filtered = messages.filter((m) => {
+        if (filter === "unread" && m.is_read) return false;
+        if (filter === "read" && !m.is_read) return false;
         if (!searchQuery) return true;
         const q = searchQuery.toLowerCase();
         return (
@@ -85,12 +128,12 @@ export default function AdminContactsPage() {
                     <div>
                         <h1 className="text-2xl font-black text-text-main">Contact Messages</h1>
                         <p className="text-text-main/50 text-sm font-medium">
-                            {messages.length} total message{messages.length !== 1 ? "s" : ""}
+                            {messages.length} total{unreadCount > 0 ? ` · ${unreadCount} unread` : ""}
                         </p>
                     </div>
-                    {messages.length > 0 && (
-                        <span className="ml-2 px-2.5 py-0.5 rounded-full bg-primary/10 text-primary text-xs font-black">
-                            {messages.length}
+                    {unreadCount > 0 && (
+                        <span className="ml-2 px-2.5 py-0.5 rounded-full bg-primary/15 text-primary text-xs font-black">
+                            {unreadCount} NEW
                         </span>
                     )}
                 </div>
@@ -113,12 +156,51 @@ export default function AdminContactsPage() {
                 </div>
             </div>
 
+            {/* Filter tabs + Mark all read */}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex gap-1 bg-surface border border-white/5 rounded-xl p-1">
+                    {(["all", "unread", "read"] as const).map((f) => (
+                        <button
+                            key={f}
+                            onClick={() => setFilter(f)}
+                            className={`px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors ${
+                                filter === f
+                                    ? "bg-white/10 text-text-main"
+                                    : "text-text-main/50 hover:text-text-main"
+                            }`}
+                        >
+                            {f}
+                            {f === "unread" && unreadCount > 0 && (
+                                <span className="ml-1.5 text-primary">({unreadCount})</span>
+                            )}
+                        </button>
+                    ))}
+                </div>
+
+                {unreadCount > 0 && (
+                    <button
+                        onClick={handleMarkAllRead}
+                        disabled={markingAll}
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary/10 text-primary text-xs font-black uppercase tracking-wider hover:bg-primary/20 transition-colors disabled:opacity-50"
+                    >
+                        {markingAll ? <Loader2 size={12} className="animate-spin" /> : <CheckCheck size={14} />}
+                        Mark all read
+                    </button>
+                )}
+            </div>
+
             {/* Table */}
             {filtered.length === 0 ? (
                 <div className="text-center py-20">
                     <Mail size={40} className="mx-auto mb-3 text-text-main/10" />
                     <p className="text-text-main/40 font-medium">
-                        {searchQuery ? "No messages match your search" : "No contact messages yet"}
+                        {searchQuery
+                            ? "No messages match your search"
+                            : filter === "unread"
+                                ? "No unread messages"
+                                : filter === "read"
+                                    ? "No read messages yet"
+                                    : "No contact messages yet"}
                     </p>
                 </div>
             ) : (
@@ -127,48 +209,85 @@ export default function AdminContactsPage() {
                         <table className="w-full text-sm">
                             <thead>
                                 <tr className="border-b border-white/5">
+                                    <th className="text-left px-5 py-4 text-text-main/40 font-bold text-xs uppercase tracking-wider w-10"></th>
                                     <th className="text-left px-5 py-4 text-text-main/40 font-bold text-xs uppercase tracking-wider">Date</th>
                                     <th className="text-left px-5 py-4 text-text-main/40 font-bold text-xs uppercase tracking-wider">Email</th>
                                     <th className="text-left px-5 py-4 text-text-main/40 font-bold text-xs uppercase tracking-wider">Subject</th>
                                     <th className="text-left px-5 py-4 text-text-main/40 font-bold text-xs uppercase tracking-wider">Message</th>
                                     <th className="text-left px-5 py-4 text-text-main/40 font-bold text-xs uppercase tracking-wider">User ID</th>
-                                    <th className="text-right px-5 py-4 text-text-main/40 font-bold text-xs uppercase tracking-wider">Action</th>
+                                    <th className="text-right px-5 py-4 text-text-main/40 font-bold text-xs uppercase tracking-wider">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {filtered.map((msg) => (
-                                    <tr key={msg.id} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors">
-                                        <td className="px-5 py-4 text-text-main/60 whitespace-nowrap">
-                                            {formatDate(msg.created_at)}
-                                        </td>
-                                        <td className="px-5 py-4 text-text-main font-semibold">
-                                            {msg.email}
-                                        </td>
-                                        <td className="px-5 py-4 text-text-main/80">
-                                            {msg.subject || "General"}
-                                        </td>
-                                        <td className="px-5 py-4 text-text-main/60 max-w-xs truncate">
-                                            {msg.message}
-                                        </td>
-                                        <td className="px-5 py-4 text-text-main/40 font-mono text-xs">
-                                            {msg.user_id ? msg.user_id.substring(0, 8) + "..." : "—"}
-                                        </td>
-                                        <td className="px-5 py-4 text-right">
-                                            <button
-                                                onClick={() => handleDelete(msg.id)}
-                                                disabled={deleting === msg.id}
-                                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 text-red-400 text-xs font-bold hover:bg-red-500/20 transition-colors disabled:opacity-50"
-                                            >
-                                                {deleting === msg.id ? (
-                                                    <Loader2 size={12} className="animate-spin" />
+                                {filtered.map((msg) => {
+                                    const isUnread = !msg.is_read;
+                                    return (
+                                        <tr
+                                            key={msg.id}
+                                            className={`border-b border-white/5 transition-colors ${
+                                                isUnread ? "bg-primary/3 hover:bg-primary/6" : "hover:bg-white/2"
+                                            }`}
+                                        >
+                                            <td className="px-5 py-4">
+                                                {isUnread ? (
+                                                    <span className="block w-2 h-2 rounded-full bg-primary" title="Unread" />
                                                 ) : (
-                                                    <Trash2 size={12} />
+                                                    <span className="block w-2 h-2 rounded-full bg-transparent" />
                                                 )}
-                                                Delete
-                                            </button>
-                                        </td>
-                                    </tr>
-                                ))}
+                                            </td>
+                                            <td className="px-5 py-4 text-text-main/60 whitespace-nowrap">
+                                                {formatDate(msg.created_at)}
+                                            </td>
+                                            <td className={`px-5 py-4 ${isUnread ? "text-text-main font-black" : "text-text-main font-semibold"}`}>
+                                                {msg.email}
+                                            </td>
+                                            <td className={`px-5 py-4 ${isUnread ? "text-text-main font-bold" : "text-text-main/80"}`}>
+                                                {msg.subject || "General"}
+                                            </td>
+                                            <td className="px-5 py-4 text-text-main/60 max-w-xs truncate">
+                                                {msg.message}
+                                            </td>
+                                            <td className="px-5 py-4 text-text-main/40 font-mono text-xs">
+                                                {msg.user_id ? msg.user_id.substring(0, 8) + "..." : "—"}
+                                            </td>
+                                            <td className="px-5 py-4 text-right whitespace-nowrap">
+                                                <div className="inline-flex items-center gap-2">
+                                                    <button
+                                                        onClick={() => handleMarkRead(msg.id, isUnread)}
+                                                        disabled={markingId === msg.id}
+                                                        title={isUnread ? "Mark as read" : "Mark as unread"}
+                                                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors disabled:opacity-50 ${
+                                                            isUnread
+                                                                ? "bg-primary/10 text-primary hover:bg-primary/20"
+                                                                : "bg-white/5 text-text-main/60 hover:bg-white/10"
+                                                        }`}
+                                                    >
+                                                        {markingId === msg.id ? (
+                                                            <Loader2 size={12} className="animate-spin" />
+                                                        ) : isUnread ? (
+                                                            <Check size={12} />
+                                                        ) : (
+                                                            <MailOpen size={12} />
+                                                        )}
+                                                        {isUnread ? "Mark read" : "Read"}
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleDelete(msg.id)}
+                                                        disabled={deleting === msg.id}
+                                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 text-red-400 text-xs font-bold hover:bg-red-500/20 transition-colors disabled:opacity-50"
+                                                    >
+                                                        {deleting === msg.id ? (
+                                                            <Loader2 size={12} className="animate-spin" />
+                                                        ) : (
+                                                            <Trash2 size={12} />
+                                                        )}
+                                                        Delete
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
                             </tbody>
                         </table>
                     </div>

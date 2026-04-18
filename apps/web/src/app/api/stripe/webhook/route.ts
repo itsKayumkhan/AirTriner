@@ -57,7 +57,11 @@ export async function POST(req: NextRequest) {
 
                 // ── Booking payment ──
                 if (metaType === 'booking') {
-                    const { bookingId, athleteId, trainerId, amount, platformFee, trainerPayout } = session.metadata || {};
+                    const {
+                        bookingId, athleteId, trainerId,
+                        amount, sessionFee, platformFee, stripeFee, taxAmount, taxLabel,
+                        trainerPayout,
+                    } = session.metadata || {};
 
                     if (!bookingId) {
                         console.error('[webhook] booking payment: missing bookingId');
@@ -92,6 +96,9 @@ export async function POST(req: NextRequest) {
                             stripe_payment_intent_id: session.payment_intent ? String(session.payment_intent) : null,
                             amount: Number(amount),
                             platform_fee: Number(platformFee),
+                            stripe_fee: Number(stripeFee || 0),
+                            tax_amount: Number(taxAmount || 0),
+                            tax_label: taxLabel || null,
                             trainer_payout: Number(trainerPayout),
                             status: 'held',
                             hold_until: holdUntil.toISOString(),
@@ -119,7 +126,7 @@ export async function POST(req: NextRequest) {
                                 .from('bookings')
                                 .select(`
                                     sport, duration_minutes, scheduled_at,
-                                    price, platform_fee, total_paid
+                                    price, platform_fee, stripe_fee, tax_amount, tax_label, total_paid
                                 `)
                                 .eq('id', bookingId)
                                 .single();
@@ -149,6 +156,9 @@ export async function POST(req: NextRequest) {
                                     durationMinutes: booking.duration_minutes,
                                     sessionFee: Number(booking.price),
                                     platformFee: Number(booking.platform_fee),
+                                    stripeFee: Number(booking.stripe_fee ?? stripeFee ?? 0),
+                                    taxAmount: Number(booking.tax_amount ?? taxAmount ?? 0),
+                                    taxLabel: (booking.tax_label ?? taxLabel ?? '') as string,
                                     totalPaid: Number(booking.total_paid),
                                     trainerPayout: Number(trainerPayout),
                                     bookingId,
@@ -171,6 +181,9 @@ export async function POST(req: NextRequest) {
                                         recipient_email: athlete.email,
                                         session_fee: Number(booking.price),
                                         platform_fee: Number(booking.platform_fee),
+                                        stripe_fee: Number(booking.stripe_fee ?? stripeFee ?? 0),
+                                        tax_amount: Number(booking.tax_amount ?? taxAmount ?? 0),
+                                        tax_label: (booking.tax_label ?? taxLabel ?? null) as string | null,
                                         total_amount: Number(booking.total_paid),
                                         trainer_payout: Number(trainerPayout),
                                         sport: booking.sport,
@@ -184,6 +197,9 @@ export async function POST(req: NextRequest) {
                                         recipient_email: trainer.email,
                                         session_fee: Number(booking.price),
                                         platform_fee: Number(booking.platform_fee),
+                                        stripe_fee: Number(booking.stripe_fee ?? stripeFee ?? 0),
+                                        tax_amount: Number(booking.tax_amount ?? taxAmount ?? 0),
+                                        tax_label: (booking.tax_label ?? taxLabel ?? null) as string | null,
                                         total_amount: Number(booking.total_paid),
                                         trainer_payout: Number(trainerPayout),
                                         sport: booking.sport,
@@ -217,7 +233,8 @@ export async function POST(req: NextRequest) {
                     const {
                         offerId, athleteId, trainerId, sport,
                         scheduledAt, sessionLengthMin, message,
-                        price, platformFee, totalAmount, campName,
+                        price, platformFee, stripeFee, taxAmount, taxLabel,
+                        totalAmount, campName,
                     } = session.metadata || {};
 
                     if (!offerId) {
@@ -249,6 +266,9 @@ export async function POST(req: NextRequest) {
                             duration_minutes: Number(sessionLengthMin) || 60,
                             price: Number(price),
                             platform_fee: Number(platformFee),
+                            stripe_fee: Number(stripeFee || 0),
+                            tax_amount: Number(taxAmount || 0),
+                            tax_label: taxLabel || null,
                             total_paid: Number(totalAmount),
                             status: 'pending',
                             athlete_notes: `Accepted offer: ${message || ''}`,
@@ -289,6 +309,9 @@ export async function POST(req: NextRequest) {
                             stripe_payment_intent_id: session.payment_intent ? String(session.payment_intent) : null,
                             amount: Number(totalAmount),
                             platform_fee: Number(platformFee),
+                            stripe_fee: Number(stripeFee || 0),
+                            tax_amount: Number(taxAmount || 0),
+                            tax_label: taxLabel || null,
                             trainer_payout: Number(price),
                             status: 'held',
                             hold_until: holdUntil.toISOString(),
@@ -394,6 +417,9 @@ export async function POST(req: NextRequest) {
                                 durationMinutes: Number(sessionLengthMin) || 60,
                                 sessionFee: Number(price),
                                 platformFee: Number(platformFee),
+                                stripeFee: Number(stripeFee || 0),
+                                taxAmount: Number(taxAmount || 0),
+                                taxLabel: taxLabel || '',
                                 totalPaid: Number(totalAmount),
                                 trainerPayout: Number(price),
                                 bookingId: newBooking.id,

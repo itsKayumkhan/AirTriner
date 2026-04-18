@@ -32,6 +32,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     const [showNotifications, setShowNotifications] = useState(false);
     const [notifications, setNotifications] = useState<any[]>([]);
     const [unreadCount, setUnreadCount] = useState(0);
+    const [unreadContacts, setUnreadContacts] = useState(0);
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const notifRef = useRef<HTMLDivElement>(null);
     const router = useRouter();
@@ -79,6 +80,18 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                     .order("created_at", { ascending: false })
                     .limit(3);
 
+                const { data: recentContacts } = await supabase
+                    .from("contact_messages")
+                    .select("id, email, subject, message, is_read, created_at")
+                    .order("created_at", { ascending: false })
+                    .limit(5);
+
+                // Full unread count (not capped at 5) for the sidebar badge
+                const { count: totalUnreadContacts } = await supabase
+                    .from("contact_messages")
+                    .select("id", { count: "exact", head: true })
+                    .eq("is_read", false);
+
                 const items: any[] = [];
 
                 (recentBookings || []).forEach((b: any) => {
@@ -104,8 +117,26 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                     });
                 });
 
+                (recentContacts || []).forEach((c: any) => {
+                    items.push({
+                        id: `c-${c.id}`,
+                        type: 'contact',
+                        title: `Contact: ${c.subject || 'General'}`,
+                        desc: `${c.email} — ${(c.message || '').substring(0, 60)}${(c.message || '').length > 60 ? '...' : ''}`,
+                        time: new Date(c.created_at),
+                        read: !!c.is_read,
+                        href: '/admin/contacts',
+                    });
+                });
+
+                setUnreadContacts(
+                    typeof totalUnreadContacts === "number"
+                        ? totalUnreadContacts
+                        : (recentContacts || []).filter((c: any) => !c.is_read).length
+                );
+
                 items.sort((a, b) => b.time.getTime() - a.time.getTime());
-                setNotifications(items.slice(0, 8));
+                setNotifications(items.slice(0, 10));
                 setUnreadCount(items.filter(n => !n.read).length);
             } catch (err) {
                 console.error('Failed to load notifications:', err);
@@ -113,7 +144,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         };
 
         loadNotifications();
-    }, []);
+    }, [pathname]);
 
     // Close on outside click
     useEffect(() => {
@@ -147,7 +178,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
     if (!user) return null;
 
-    const menuItems = [
+    const menuItems: Array<{ icon: ReactNode; label: string; href: string; badge?: number }> = [
         { icon: <LayoutDashboard size={20} />, label: "Dashboard", href: "/admin" },
         { icon: <ShieldAlert size={20} />, label: "Disputes", href: "/admin/disputes" },
         { icon: <Dumbbell size={20} />, label: "Trainers", href: "/admin/trainers" },
@@ -156,7 +187,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         { icon: <Trophy size={20} />, label: "Sports", href: "/admin/sports" },
         { icon: <CreditCard size={20} />, label: "Payments", href: "/admin/payments" },
         { icon: <Crown size={20} />, label: "Subscriptions", href: "/admin/subscriptions" },
-        { icon: <Mail size={20} />, label: "Contact Messages", href: "/admin/contacts" },
+        { icon: <Mail size={20} />, label: "Contact Messages", href: "/admin/contacts", badge: unreadContacts },
     ];
 
     const SidebarContent = ({ onNavClick }: { onNavClick?: () => void }) => (
@@ -186,7 +217,12 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                                 }`}
                         >
                             <span className={isActive ? "text-primary/80" : "text-text-main/40"}>{item.icon}</span>
-                            {item.label}
+                            <span className="flex-1">{item.label}</span>
+                            {item.badge && item.badge > 0 ? (
+                                <span className="ml-auto min-w-5 h-5 px-1.5 rounded-full bg-primary text-[10px] font-black flex items-center justify-center" style={{ color: '#0A0D14' }}>
+                                    {item.badge > 99 ? '99+' : item.badge}
+                                </span>
+                            ) : null}
                         </Link>
                     )
                 })}
@@ -299,21 +335,36 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                                             notifications.map(n => (
                                                 <div
                                                     key={n.id}
-                                                    onClick={() => {
+                                                    onClick={async () => {
                                                         if (!n.read) {
                                                             const readIds = new Set<string>(JSON.parse(localStorage.getItem('admin_notif_read') || '[]'));
                                                             readIds.add(n.id);
                                                             localStorage.setItem('admin_notif_read', JSON.stringify(Array.from(readIds)));
                                                             setNotifications(prev => prev.map(x => x.id === n.id ? { ...x, read: true } : x));
                                                             setUnreadCount(prev => Math.max(0, prev - 1));
+
+                                                            // Contact messages: persist is_read to DB + sync sidebar badge
+                                                            if (n.type === 'contact') {
+                                                                const realId = n.id.startsWith('c-') ? n.id.substring(2) : n.id;
+                                                                await supabase.from('contact_messages').update({ is_read: true }).eq('id', realId);
+                                                                setUnreadContacts(prev => Math.max(0, prev - 1));
+                                                            }
+                                                        }
+                                                        if (n.href) {
+                                                            setShowNotifications(false);
+                                                            router.push(n.href);
                                                         }
                                                     }}
                                                     className={`flex items-start gap-3 px-5 py-4 border-b border-white/5 hover:bg-white/5 transition-colors cursor-pointer ${!n.read ? 'bg-primary/5' : ''}`}
                                                 >
                                                     <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${
-                                                        n.type === 'dispute' ? 'bg-red-500/10 text-red-500' : 'bg-primary/10 text-primary'
+                                                        n.type === 'dispute' ? 'bg-red-500/10 text-red-500' :
+                                                        n.type === 'contact' ? 'bg-blue-500/10 text-blue-400' :
+                                                        'bg-primary/10 text-primary'
                                                     }`}>
-                                                        {n.type === 'dispute' ? <AlertCircle size={14} /> : <CheckCircle2 size={14} />}
+                                                        {n.type === 'dispute' ? <AlertCircle size={14} /> :
+                                                         n.type === 'contact' ? <Mail size={14} /> :
+                                                         <CheckCircle2 size={14} />}
                                                     </div>
                                                     <div className="flex-1 min-w-0">
                                                         <div className="flex items-center justify-between gap-2">

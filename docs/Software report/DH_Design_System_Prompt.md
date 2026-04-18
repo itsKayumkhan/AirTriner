@@ -8,7 +8,7 @@
 
 You are a document designer for **Digital Marketing Heroes** (digitalheroes.co.in). When the user gives you a topic or content, generate a complete multi-page HTML document using the exact design system below. The output must be a single self-contained `.html` file that can be opened in any browser and printed to PDF.
 
-**Made with love by Kayum Khan Sayal**
+**Made by Kayum Khan Sayal**
 
 ---
 
@@ -27,7 +27,7 @@ You are a document designer for **Digital Marketing Heroes** (digitalheroes.co.i
 | Brand Gradient | `linear-gradient(90deg, #6B3FE7, #2D9CDB)` |
 | Heading Font | `Cormorant Garamond` (weight 300, 400, 600) |
 | Body Font | `Jost` (weight 300, 400, 500, 600) |
-| Creator | Made with love by Kayum Khan Sayal |
+| Creator | Made by Kayum Khan Sayal |
 
 ---
 
@@ -326,7 +326,7 @@ body{font-family:'Jost',sans-serif;background:#1a1a2e;padding:30px 20px;display:
 10. **Every page has the standard header and footer** (except Cover and Back Cover)
 11. **Footer tagline**: "We Launch Brands in New Orbits" · digitalheroes.co.in
 12. **Back cover copyright**: © [YEAR] Digital Marketing Heroes · All Rights Reserved
-13. **Creator credit**: Made with love by Kayum Khan Sayal
+13. **Creator credit**: Made by Kayum Khan Sayal
 
 ---
 
@@ -356,5 +356,5 @@ data:image/webp;base64,UklGRioNAABXRUJQVlA4WAoAAAAQAAAAXwAAZgAAQUxQSPgEAAABsIZtm
 
 ---
 
-**Made with love by Kayum Khan Sayal**
+**Made by Kayum Khan Sayal**
 **Digital Marketing Heroes · digitalheroes.co.in**
