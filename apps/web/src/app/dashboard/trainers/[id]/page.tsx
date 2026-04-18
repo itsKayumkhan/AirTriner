@@ -171,6 +171,7 @@ export default function BookTrainerPage() {
     const [slotsLoading, setSlotsLoading] = useState(false);
     const [durationMinutes, setDurationMinutes] = useState(60);
     const [selectedLocation, setSelectedLocation] = useState('');
+    const [platformFeePct, setPlatformFeePct] = useState<number>(3);
 
     useEffect(() => {
         const session = getSession();
@@ -180,6 +181,16 @@ export default function BookTrainerPage() {
         }
         setUser(session);
         if (trainerId) loadTrainer();
+        // Load platform fee % for the fee breakdown preview
+        (async () => {
+            const { data: s } = await supabase
+                .from("platform_settings")
+                .select("platform_fee_percentage")
+                .maybeSingle();
+            if (s?.platform_fee_percentage != null) {
+                setPlatformFeePct(Number(s.platform_fee_percentage));
+            }
+        })();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [trainerId, router]);
 
@@ -1053,6 +1064,41 @@ export default function BookTrainerPage() {
                                 </div>
                             )}
                         </div>
+
+                        {/* Fee Breakdown Preview */}
+                        {user?.id !== trainer?.user_id && (() => {
+                            const sessionPrice = (trainer.hourly_rate || 0) * (durationMinutes / 60);
+                            const pct = platformFeePct / 100;
+                            const platformFeeAmt = Math.round(sessionPrice * pct * 100) / 100;
+                            const stripeFeeAmt = Math.round(((sessionPrice + platformFeeAmt) * 0.029 + 0.30) * 100) / 100;
+                            const isCA = /^(ca|can|canada)$/i.test(((trainer as unknown as { country?: string | null })?.country || "").trim());
+                            const taxAmt = isCA
+                                ? Math.round((sessionPrice + platformFeeAmt + stripeFeeAmt) * 0.13 * 100) / 100
+                                : 0;
+                            const total = sessionPrice + platformFeeAmt + stripeFeeAmt + taxAmt;
+                            const fmt = (n: number) => `$${n.toFixed(2)}`;
+                            return (
+                                <div className="mb-4 bg-[#12141A] border border-white/5 rounded-2xl px-4 py-3 text-[12px]">
+                                    <div className="flex justify-between text-white/80 py-1">
+                                        <span>Session fee</span><span>{fmt(sessionPrice)}</span>
+                                    </div>
+                                    <div className="flex justify-between text-white/50 py-1">
+                                        <span>Platform ({platformFeePct}%)</span><span>{fmt(platformFeeAmt)}</span>
+                                    </div>
+                                    <div className="flex justify-between text-white/50 py-1">
+                                        <span>Stripe (2.9% + $0.30)</span><span>{fmt(stripeFeeAmt)}</span>
+                                    </div>
+                                    {isCA && (
+                                        <div className="flex justify-between text-white/50 py-1">
+                                            <span>HST (13%)</span><span>{fmt(taxAmt)}</span>
+                                        </div>
+                                    )}
+                                    <div className="flex justify-between text-white font-black text-[13px] pt-2 mt-1 border-t border-white/10">
+                                        <span>Total</span><span>{fmt(total)}</span>
+                                    </div>
+                                </div>
+                            );
+                        })()}
 
                         {/* Actions */}
                         <div className="space-y-4">

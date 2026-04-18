@@ -1224,6 +1224,8 @@ function getStatusConfig(status: string): { label: string; color: string; bg: st
         case 'declined':
         case 'rejected':
             return { label: 'Declined', color: Colors.error, bg: Colors.errorLight };
+        case 'expired':
+            return { label: 'Expired', color: '#F59E0B', bg: 'rgba(245, 158, 11, 0.1)' };
         case 'pending':
         default:
             return { label: 'Pending', color: Colors.warning, bg: Colors.warningLight };

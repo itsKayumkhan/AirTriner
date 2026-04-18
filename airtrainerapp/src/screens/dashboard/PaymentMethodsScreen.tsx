@@ -402,6 +402,34 @@ export default function PaymentMethodsScreen({ navigation }: any) {
                         </>
                     )}
 
+                    {/* Fee breakdown: trainer keeps 100% */}
+                    <Card style={styles.feeBreakdownCard}>
+                        <View style={styles.feeHeaderRow}>
+                            <Ionicons name="cash-outline" size={20} color={Colors.success} />
+                            <Text style={styles.feeHeaderTitle}>You Keep 100%</Text>
+                        </View>
+                        <Text style={styles.feeHeaderSubtitle}>
+                            Athletes cover all platform and processing fees. You receive your full rate.
+                        </Text>
+                        <View style={styles.feeDivider} />
+                        <View style={styles.feeRow}>
+                            <Text style={styles.feeRowLabel}>Session rate</Text>
+                            <Text style={styles.feeRowValue}>100% to you</Text>
+                        </View>
+                        <View style={styles.feeRow}>
+                            <Text style={styles.feeRowLabel}>AirTrainr platform fee (3%)</Text>
+                            <Text style={styles.feeRowValueMuted}>Athlete pays</Text>
+                        </View>
+                        <View style={styles.feeRow}>
+                            <Text style={styles.feeRowLabel}>Stripe processing (2.9% + $0.30)</Text>
+                            <Text style={styles.feeRowValueMuted}>Athlete pays</Text>
+                        </View>
+                        <View style={styles.feeRow}>
+                            <Text style={styles.feeRowLabel}>Sales tax (HST for CA)</Text>
+                            <Text style={styles.feeRowValueMuted}>Athlete pays</Text>
+                        </View>
+                    </Card>
+
                     {/* Payout info strip */}
                     <Card style={styles.payoutInfoStrip}>
                         <View style={styles.payoutInfoRow}>
@@ -678,6 +706,51 @@ const styles = StyleSheet.create({
     poweredByText: {
         fontSize: FontSize.xs,
         color: Colors.textSecondary + '80',
+    },
+
+    // Fee breakdown (trainer keeps 100%)
+    feeBreakdownCard: {
+        marginBottom: Spacing.md,
+    },
+    feeHeaderRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.sm,
+        marginBottom: Spacing.xs,
+    },
+    feeHeaderTitle: {
+        fontSize: FontSize.md,
+        fontWeight: FontWeight.bold,
+        color: Colors.text,
+    },
+    feeHeaderSubtitle: {
+        fontSize: FontSize.xs,
+        color: Colors.textSecondary,
+        lineHeight: 18,
+    },
+    feeDivider: {
+        height: 1,
+        backgroundColor: Colors.border,
+        marginVertical: Spacing.md,
+    },
+    feeRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingVertical: Spacing.xs,
+    },
+    feeRowLabel: {
+        fontSize: FontSize.sm,
+        color: Colors.text,
+    },
+    feeRowValue: {
+        fontSize: FontSize.sm,
+        fontWeight: FontWeight.semibold,
+        color: Colors.success,
+    },
+    feeRowValueMuted: {
+        fontSize: FontSize.xs,
+        color: Colors.textSecondary,
     },
 
     // Payout info strip

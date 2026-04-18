@@ -78,6 +78,11 @@ export default function NotificationsScreen({ navigation }: any) {
     const fetchNotifications = useCallback(async () => {
         if (!user) return;
         try {
+            // Auto-expire offers whose session time has passed
+            try {
+                await fetch(`${Config.appUrl}/api/offers/expire`, { method: 'POST' });
+            } catch {}
+
             const { data, error } = await supabase
                 .from('notifications')
                 .select('*')
@@ -86,7 +91,37 @@ export default function NotificationsScreen({ navigation }: any) {
                 .limit(50);
 
             if (error) throw error;
-            setNotifications(data || []);
+
+            const notifs = (data || []) as NotificationRow[];
+
+            // Hydrate offer notifications with latest training_offers.status
+            const offerIds = Array.from(new Set(
+                notifs
+                    .map((n) => (n.data as any)?.offer_id)
+                    .filter((id): id is string => Boolean(id))
+            ));
+
+            if (offerIds.length > 0) {
+                const { data: offersData } = await supabase
+                    .from('training_offers')
+                    .select('id, status')
+                    .in('id', offerIds);
+
+                const statusMap = new Map<string, string>();
+                (offersData || []).forEach((o: any) => statusMap.set(o.id, o.status));
+
+                for (const n of notifs) {
+                    const d = n.data as any;
+                    if (d?.offer_id && statusMap.has(d.offer_id)) {
+                        const latest = statusMap.get(d.offer_id)!;
+                        if (d.offer_status !== latest && (latest === 'expired' || latest === 'accepted' || latest === 'declined')) {
+                            n.data = { ...d, offer_status: latest };
+                        }
+                    }
+                }
+            }
+
+            setNotifications(notifs);
         } catch (error) {
             console.error('Error fetching notifications:', error);
         } finally {
@@ -268,6 +303,37 @@ export default function NotificationsScreen({ navigation }: any) {
         } catch (err) {
             console.error('Error declining offer:', err);
             Alert.alert('Error', 'Could not decline the offer. Please try again.');
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
+    const handleDismissExpired = async (offer: any) => {
+        setActionLoading(true);
+        try {
+            const offerId = offer.id;
+            const { error } = await supabase
+                .from('notifications')
+                .delete()
+                .eq('user_id', user?.id)
+                .contains('data', { offerId });
+            if (error) {
+                await supabase
+                    .from('notifications')
+                    .update({ read: true })
+                    .eq('user_id', user?.id)
+                    .contains('data', { offerId });
+            }
+            setNotifications((prev) =>
+                prev.filter((n: any) => {
+                    const d = (n.data || {}) as any;
+                    return d.offerId !== offerId && d.offer_id !== offerId;
+                })
+            );
+            setSelectedOffer(null);
+        } catch (err) {
+            console.error('Error dismissing expired offer:', err);
+            Alert.alert('Error', 'Could not dismiss. Please try again.');
         } finally {
             setActionLoading(false);
         }
@@ -458,7 +524,27 @@ export default function NotificationsScreen({ navigation }: any) {
                                     </View>
                                 )}
 
-                                {selectedOffer.status === 'accepted' || selectedOffer.status === 'declined' ? (
+                                {selectedOffer.status === 'expired' ? (
+                                    <View style={{ gap: Spacing.md }}>
+                                        <View style={styles.statusBadgeContainer}>
+                                            <Badge
+                                                label="Expired"
+                                                color={Colors.warning}
+                                                bgColor={Colors.warningLight}
+                                                size="md"
+                                                dot
+                                            />
+                                        </View>
+                                        <Button
+                                            title="Dismiss"
+                                            onPress={() => handleDismissExpired(selectedOffer)}
+                                            variant="secondary"
+                                            icon="close"
+                                            loading={actionLoading}
+                                            disabled={actionLoading}
+                                        />
+                                    </View>
+                                ) : selectedOffer.status === 'accepted' || selectedOffer.status === 'declined' ? (
                                     <View style={styles.statusBadgeContainer}>
                                         <Badge
                                             label={selectedOffer.status === 'accepted' ? 'Accepted' : 'Declined'}
