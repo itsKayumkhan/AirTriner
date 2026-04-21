@@ -20,6 +20,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
+import { Config } from '../../lib/config';
 import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows } from '../../theme';
 import ScreenWrapper from '../../components/ui/ScreenWrapper';
 import ScreenHeader from '../../components/ui/ScreenHeader';
@@ -159,6 +160,18 @@ export default function TrainingOffersScreen({ navigation }: any) {
     const [sentOffers, setSentOffers] = useState<SentOffer[]>([]);
     const [isSentLoading, setIsSentLoading] = useState(false);
 
+    // View / Edit Sent Offer modal state
+    const [viewingOffer, setViewingOffer] = useState<SentOffer | null>(null);
+    const [isEditingOffer, setIsEditingOffer] = useState(false);
+    const [editDraft, setEditDraft] = useState<{
+        rate: string;
+        session_type: string;
+        proposed_at: string;
+        proposed_time: string;
+        notes: string;
+    }>({ rate: '', session_type: 'private', proposed_at: '', proposed_time: '', notes: '' });
+    const [isSavingEdit, setIsSavingEdit] = useState(false);
+
     // Subscription check
     const [subscriptionStatus, setSubscriptionStatus] = useState<string | null>(null);
 
@@ -255,6 +268,90 @@ export default function TrainingOffersScreen({ navigation }: any) {
         }
         setRefreshing(false);
     };
+
+    // View / Edit Sent Offer handlers
+
+    const openViewOffer = useCallback((offer: SentOffer) => {
+        const firstSession = Array.isArray(offer.proposed_dates?.sessions)
+            ? offer.proposed_dates.sessions[0]
+            : null;
+        setEditDraft({
+            rate: offer.price != null ? String(offer.price) : '',
+            session_type: offer.proposed_dates?.session_type || 'private',
+            proposed_at: firstSession?.date || offer.proposed_dates?.scheduledAt || '',
+            proposed_time: firstSession?.time || '',
+            notes: offer.message || '',
+        });
+        setIsEditingOffer(false);
+        setViewingOffer(offer);
+    }, []);
+
+    const closeViewOffer = useCallback(() => {
+        setViewingOffer(null);
+        setIsEditingOffer(false);
+        setIsSavingEdit(false);
+    }, []);
+
+    const enterEditMode = useCallback(() => {
+        if (!viewingOffer || viewingOffer.status !== 'pending') return;
+        setIsEditingOffer(true);
+    }, [viewingOffer]);
+
+    const cancelEditMode = useCallback(() => {
+        if (!viewingOffer) return;
+        const firstSession = Array.isArray(viewingOffer.proposed_dates?.sessions)
+            ? viewingOffer.proposed_dates.sessions[0]
+            : null;
+        setEditDraft({
+            rate: viewingOffer.price != null ? String(viewingOffer.price) : '',
+            session_type: viewingOffer.proposed_dates?.session_type || 'private',
+            proposed_at: firstSession?.date || viewingOffer.proposed_dates?.scheduledAt || '',
+            proposed_time: firstSession?.time || '',
+            notes: viewingOffer.message || '',
+        });
+        setIsEditingOffer(false);
+    }, [viewingOffer]);
+
+    const saveEditedOffer = useCallback(async () => {
+        if (!viewingOffer || !user?.id) return;
+        const numericRate = parseFloat(editDraft.rate);
+        if (isNaN(numericRate) || numericRate < 0) {
+            Alert.alert('Invalid rate', 'Please enter a valid non-negative rate.');
+            return;
+        }
+        if (!editDraft.proposed_at) {
+            Alert.alert('Missing date', 'Please provide a proposed date (YYYY-MM-DD).');
+            return;
+        }
+        setIsSavingEdit(true);
+        try {
+            const res = await fetch(`${Config.appUrl}/api/offers/${viewingOffer.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    userId: user.id,
+                    rate: numericRate,
+                    session_type: editDraft.session_type,
+                    proposed_at: editDraft.proposed_at,
+                    proposed_time: editDraft.proposed_time,
+                    notes: editDraft.notes,
+                }),
+            });
+            const json = await res.json();
+            if (!res.ok) {
+                throw new Error(json?.error || 'Failed to save');
+            }
+            Alert.alert('Saved', 'Offer updated successfully.');
+            setViewingOffer(null);
+            setIsEditingOffer(false);
+            await fetchSentOffers();
+        } catch (err: any) {
+            console.error('saveEditedOffer:', err);
+            Alert.alert('Error', err?.message || 'Could not update the offer.');
+        } finally {
+            setIsSavingEdit(false);
+        }
+    }, [viewingOffer, user?.id, editDraft, fetchSentOffers]);
 
     // Athlete search
 
@@ -922,7 +1019,11 @@ export default function TrainingOffersScreen({ navigation }: any) {
                         />
                     ) : (
                         sentOffers.map((offer) => (
-                            <SentOfferCard key={offer.id} offer={offer} />
+                            <SentOfferCard
+                                key={offer.id}
+                                offer={offer}
+                                onPress={() => openViewOffer(offer)}
+                            />
                         ))
                     )}
 
@@ -939,6 +1040,19 @@ export default function TrainingOffersScreen({ navigation }: any) {
                 onChange={(field, value) => setForm((prev) => ({ ...prev, [field]: value }))}
                 onClose={() => setShowModal(false)}
                 onSave={handleSave}
+            />
+
+            {/* View / Edit Sent Offer Modal */}
+            <ViewEditOfferModal
+                offer={viewingOffer}
+                isEditing={isEditingOffer}
+                draft={editDraft}
+                isSaving={isSavingEdit}
+                onChange={(field, value) => setEditDraft((prev) => ({ ...prev, [field]: value }))}
+                onClose={closeViewOffer}
+                onEnterEdit={enterEditMode}
+                onCancelEdit={cancelEditMode}
+                onSave={saveEditedOffer}
             />
         </View>
     );
@@ -975,7 +1089,7 @@ function AthleteCard({
     );
 }
 
-function SentOfferCard({ offer }: { offer: SentOffer }) {
+function SentOfferCard({ offer, onPress }: { offer: SentOffer; onPress?: () => void }) {
     const athleteName = offer.athlete
         ? `${offer.athlete.first_name} ${offer.athlete.last_name}`
         : 'Unknown Athlete';
@@ -988,7 +1102,7 @@ function SentOfferCard({ offer }: { offer: SentOffer }) {
     const offerSessionType = offer.proposed_dates?.session_type;
 
     return (
-        <Card style={styles.sentCard}>
+        <Card style={styles.sentCard} onPress={onPress}>
             <View style={styles.sentCardTop}>
                 <View style={{ flex: 1 }}>
                     <Text style={styles.sentAthleteName}>{athleteName}</Text>
@@ -1197,6 +1311,240 @@ function CreateOfferModal({
                 </KeyboardAvoidingView>
             </View>
         </Modal>
+    );
+}
+
+function ViewEditOfferModal({
+    offer,
+    isEditing,
+    draft,
+    isSaving,
+    onChange,
+    onClose,
+    onEnterEdit,
+    onCancelEdit,
+    onSave,
+}: {
+    offer: SentOffer | null;
+    isEditing: boolean;
+    draft: { rate: string; session_type: string; proposed_at: string; proposed_time: string; notes: string };
+    isSaving: boolean;
+    onChange: (
+        field: 'rate' | 'session_type' | 'proposed_at' | 'proposed_time' | 'notes',
+        value: string
+    ) => void;
+    onClose: () => void;
+    onEnterEdit: () => void;
+    onCancelEdit: () => void;
+    onSave: () => void;
+}) {
+    if (!offer) return null;
+    const athleteName = offer.athlete
+        ? `${offer.athlete.first_name} ${offer.athlete.last_name}`
+        : 'Unknown Athlete';
+    const statusConfig = getStatusConfig(offer.status);
+    const firstSession = Array.isArray(offer.proposed_dates?.sessions)
+        ? offer.proposed_dates.sessions[0]
+        : null;
+    const viewSessionType = offer.proposed_dates?.session_type || '—';
+    const viewProposedAt = firstSession?.date || offer.proposed_dates?.scheduledAt || '—';
+    const viewProposedTime = firstSession?.time || '—';
+    const createdStr = new Date(offer.created_at).toLocaleString([], {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+    });
+    const canEdit = offer.status === 'pending';
+
+    return (
+        <Modal
+            visible={!!offer}
+            animationType="slide"
+            transparent
+            statusBarTranslucent
+            onRequestClose={onClose}
+        >
+            <View style={styles.modalOverlay}>
+                <KeyboardAvoidingView
+                    behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                    style={styles.modalKAV}
+                >
+                    <View style={styles.modalSheet}>
+                        <View style={styles.modalHandle} />
+
+                        <View style={styles.modalHeader}>
+                            <Text style={styles.modalTitle}>
+                                {isEditing ? 'Edit Offer' : 'Offer Details'}
+                            </Text>
+                            <TouchableOpacity onPress={onClose} style={styles.modalClose}>
+                                <Ionicons name="close" size={22} color={Colors.textSecondary} />
+                            </TouchableOpacity>
+                        </View>
+
+                        <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                            {!isEditing ? (
+                                <View style={{ gap: Spacing.md }}>
+                                    <ViewEditRow label="Athlete" value={athleteName} />
+                                    <ViewEditRow label="Sport" value={offer.sport || '—'} />
+                                    <ViewEditRow
+                                        label="Session type"
+                                        value={String(viewSessionType).replace('_', ' ')}
+                                    />
+                                    <ViewEditRow
+                                        label="Rate"
+                                        value={`$${Number(offer.price).toFixed(0)}`}
+                                    />
+                                    <ViewEditRow
+                                        label="Proposed date"
+                                        value={viewProposedAt}
+                                    />
+                                    <ViewEditRow
+                                        label="Proposed time"
+                                        value={viewProposedTime}
+                                    />
+                                    <ViewEditRow
+                                        label="Status"
+                                        value={statusConfig.label}
+                                        valueColor={statusConfig.color}
+                                    />
+                                    <ViewEditRow label="Sent" value={createdStr} />
+                                    <View>
+                                        <Text style={styles.viewEditLabel}>Message</Text>
+                                        <Text style={styles.viewEditNotes}>
+                                            {offer.message || '—'}
+                                        </Text>
+                                    </View>
+
+                                    <View style={{ height: Spacing.lg }} />
+
+                                    {canEdit ? (
+                                        <Button
+                                            title="Edit offer"
+                                            onPress={onEnterEdit}
+                                            icon="create-outline"
+                                            size="lg"
+                                        />
+                                    ) : (
+                                        <Text style={styles.viewEditCaption}>
+                                            Only pending offers can be edited.
+                                        </Text>
+                                    )}
+
+                                    <View style={{ height: 32 }} />
+                                </View>
+                            ) : (
+                                <View>
+                                    <Input
+                                        label="Rate (USD) *"
+                                        icon="cash-outline"
+                                        value={draft.rate}
+                                        onChangeText={(v: string) => onChange('rate', v)}
+                                        keyboardType="decimal-pad"
+                                        placeholder="50"
+                                    />
+
+                                    <Text style={styles.fieldLabel}>Session type</Text>
+                                    <View style={styles.sessionTypeRow}>
+                                        {SESSION_TYPES.map((opt) => {
+                                            const active = draft.session_type === opt.key;
+                                            return (
+                                                <TouchableOpacity
+                                                    key={opt.key}
+                                                    onPress={() => onChange('session_type', opt.key)}
+                                                    style={[
+                                                        styles.sessionTypeChip,
+                                                        active && styles.sessionTypeChipActive,
+                                                    ]}
+                                                >
+                                                    <Text
+                                                        style={[
+                                                            styles.sessionTypeChipText,
+                                                            active && styles.sessionTypeChipTextActive,
+                                                        ]}
+                                                    >
+                                                        {opt.label}
+                                                    </Text>
+                                                </TouchableOpacity>
+                                            );
+                                        })}
+                                    </View>
+
+                                    <Input
+                                        label="Proposed date * (YYYY-MM-DD)"
+                                        icon="calendar-outline"
+                                        value={draft.proposed_at}
+                                        onChangeText={(v: string) => onChange('proposed_at', v)}
+                                        placeholder="2026-05-01"
+                                        autoCapitalize="none"
+                                    />
+
+                                    <Input
+                                        label="Proposed time (HH:MM)"
+                                        icon="time-outline"
+                                        value={draft.proposed_time}
+                                        onChangeText={(v: string) => onChange('proposed_time', v)}
+                                        placeholder="14:30"
+                                        autoCapitalize="none"
+                                    />
+
+                                    <Input
+                                        label="Message / notes"
+                                        value={draft.notes}
+                                        onChangeText={(v: string) => onChange('notes', v)}
+                                        multiline
+                                        numberOfLines={4}
+                                        placeholder="Optional message to the athlete"
+                                    />
+
+                                    <View style={styles.viewEditActionsRow}>
+                                        <View style={{ flex: 1 }}>
+                                            <Button
+                                                title="Cancel"
+                                                onPress={onCancelEdit}
+                                                variant="secondary"
+                                                size="lg"
+                                                disabled={isSaving}
+                                            />
+                                        </View>
+                                        <View style={{ width: Spacing.md }} />
+                                        <View style={{ flex: 1 }}>
+                                            <Button
+                                                title="Save"
+                                                onPress={onSave}
+                                                icon="checkmark-circle"
+                                                loading={isSaving}
+                                                disabled={isSaving}
+                                                size="lg"
+                                            />
+                                        </View>
+                                    </View>
+
+                                    <View style={{ height: 32 }} />
+                                </View>
+                            )}
+                        </ScrollView>
+                    </View>
+                </KeyboardAvoidingView>
+            </View>
+        </Modal>
+    );
+}
+
+function ViewEditRow({
+    label,
+    value,
+    valueColor,
+}: {
+    label: string;
+    value: string;
+    valueColor?: string;
+}) {
+    return (
+        <View style={styles.viewEditRow}>
+            <Text style={styles.viewEditLabel}>{label}</Text>
+            <Text style={[styles.viewEditValue, valueColor ? { color: valueColor } : null]}>
+                {value}
+            </Text>
+        </View>
     );
 }
 
@@ -1685,5 +2033,68 @@ const styles = StyleSheet.create({
     row: {
         flexDirection: 'row',
         alignItems: 'flex-start',
+    },
+
+    // View / Edit Offer modal
+    viewEditRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'flex-start',
+        gap: Spacing.md,
+    },
+    viewEditLabel: {
+        fontSize: FontSize.sm,
+        color: Colors.textSecondary,
+        fontWeight: FontWeight.medium,
+    },
+    viewEditValue: {
+        fontSize: FontSize.sm,
+        color: Colors.text,
+        fontWeight: FontWeight.semibold,
+        flexShrink: 1,
+        textAlign: 'right',
+        textTransform: 'capitalize',
+    },
+    viewEditNotes: {
+        fontSize: FontSize.sm,
+        color: Colors.text,
+        marginTop: Spacing.xs,
+    },
+    viewEditCaption: {
+        fontSize: FontSize.xs,
+        color: Colors.textTertiary,
+        textAlign: 'center',
+        fontStyle: 'italic',
+    },
+    viewEditActionsRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginTop: Spacing.md,
+    },
+    sessionTypeRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: Spacing.sm,
+        marginBottom: Spacing.lg,
+    },
+    sessionTypeChip: {
+        paddingHorizontal: Spacing.md,
+        paddingVertical: Spacing.sm,
+        borderRadius: BorderRadius.md,
+        borderWidth: 1,
+        borderColor: Colors.border,
+        backgroundColor: Colors.card,
+    },
+    sessionTypeChipActive: {
+        borderColor: Colors.borderActive,
+        backgroundColor: Colors.primaryGlow,
+    },
+    sessionTypeChipText: {
+        fontSize: FontSize.sm,
+        color: Colors.textSecondary,
+    },
+    sessionTypeChipTextActive: {
+        color: Colors.primary,
+        fontWeight: FontWeight.semibold,
     },
 });

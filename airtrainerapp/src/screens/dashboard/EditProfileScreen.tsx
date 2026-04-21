@@ -421,6 +421,7 @@ export default function EditProfileScreen({ navigation }: any) {
                         user_id: user.id,
                         sports: selectedSports,
                         skill_level: skillLevel,
+                        bio: bio.trim() || null,
                         address_line1: addressLine1.trim() || null,
                         city: city.trim() || null,
                         state: stateVal.trim() || null,
