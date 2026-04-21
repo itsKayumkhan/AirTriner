@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
     View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator,
-    Modal, TextInput, Platform, Pressable,
+    Modal, TextInput, Platform, Pressable, Image,
 } from 'react-native';
 import Animated, {
     FadeInDown, FadeInUp, useSharedValue, useAnimatedStyle, withSpring,
@@ -129,11 +129,29 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
     // Session duration for pricing display
     const [pricingDuration, setPricingDuration] = useState(60);
 
+    // Admin-uploaded sport images keyed by slug (see sports.image_url)
+    const [sportImages, setSportImages] = useState<Record<string, string>>({});
+
     useEffect(() => {
         fetchReviews();
         fetchAvailableDays();
         loadAvailableDates();
+        fetchSportImages();
     }, []);
+
+    const fetchSportImages = async () => {
+        const { data, error } = await supabase
+            .from('sports')
+            .select('slug, image_url')
+            .eq('is_active', true);
+        if (!error && data) {
+            const map: Record<string, string> = {};
+            (data as { slug: string; image_url: string | null }[]).forEach((s) => {
+                if (s.image_url) map[s.slug] = s.image_url;
+            });
+            setSportImages(map);
+        }
+    };
 
     const fetchReviews = async () => {
         const { data } = await supabase
@@ -618,15 +636,23 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
                     {trainer.is_verified && (
                         <Badge label="Verified" color={Colors.textInverse} bgColor={Colors.success} size="md" />
                     )}
-                    {sports.map((sport: string) => (
-                        <Badge
-                            key={sport}
-                            label={formatSportName(sport)}
-                            color={Colors.primary}
-                            bgColor={Colors.primaryGlow}
-                            size="md"
-                        />
-                    ))}
+                    {sports.map((sport: string) => {
+                        const slug = String(sport).toLowerCase().replace(/\s+/g, '_').replace(/-/g, '_');
+                        const imageUrl = sportImages[slug];
+                        return (
+                            <View key={sport} style={styles.sportBadgeRow}>
+                                {imageUrl ? (
+                                    <Image source={{ uri: imageUrl }} style={styles.sportBadgeImage} />
+                                ) : null}
+                                <Badge
+                                    label={formatSportName(sport)}
+                                    color={Colors.primary}
+                                    bgColor={Colors.primaryGlow}
+                                    size="md"
+                                />
+                            </View>
+                        );
+                    })}
                     {isPerformanceVerified && (
                         <Badge label="Performance Verified" color={Colors.success} bgColor={Colors.successLight} size="md" />
                     )}
@@ -1416,6 +1442,17 @@ const styles = StyleSheet.create({
         gap: Spacing.sm,
         flexWrap: 'wrap',
         justifyContent: 'center',
+    },
+    sportBadgeRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+    },
+    sportBadgeImage: {
+        width: 24,
+        height: 24,
+        borderRadius: 12,
+        backgroundColor: Colors.primaryGlow,
     },
 
     // ─── Stats Row ───

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
     View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl,
     FlatList, Modal, Dimensions, TextInput, Pressable, Animated as RNAnimated,
-    Platform,
+    Platform, Image,
 } from 'react-native';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
@@ -231,6 +231,8 @@ export default function DiscoverScreen({ navigation }: any) {
     // Sport categories from DB
     const [sportOptions, setSportOptions] = useState(FALLBACK_SPORT_OPTIONS);
     const [sportLabels, setSportLabels] = useState<Record<string, string>>({});
+    // Admin-uploaded sport images keyed by slug (see sports.image_url)
+    const [sportImages, setSportImages] = useState<Record<string, string>>({});
 
     // ─── Filters ───
     const [searchQuery, setSearchQuery] = useState('');
@@ -257,18 +259,21 @@ export default function DiscoverScreen({ navigation }: any) {
         const fetchSports = async () => {
             const { data, error } = await supabase
                 .from('sports')
-                .select('id, name, slug')
+                .select('id, name, slug, image_url')
                 .eq('is_active', true)
                 .order('name');
             if (!error && data && data.length > 0) {
-                const opts = (data as { id: string; name: string; slug: string }[]).map((s) => ({
-                    slug: s.slug,
-                    name: s.name,
-                }));
+                const rows = data as { id: string; name: string; slug: string; image_url: string | null }[];
+                const opts = rows.map((s) => ({ slug: s.slug, name: s.name }));
                 setSportOptions(opts);
                 const labels: Record<string, string> = {};
-                opts.forEach((s) => { labels[s.slug] = s.name; });
+                const images: Record<string, string> = {};
+                rows.forEach((s) => {
+                    labels[s.slug] = s.name;
+                    if (s.image_url) images[s.slug] = s.image_url;
+                });
                 setSportLabels(labels);
+                setSportImages(images);
             } else {
                 const labels: Record<string, string> = {};
                 FALLBACK_SPORT_OPTIONS.forEach((s) => { labels[s.slug] = s.name; });
@@ -696,8 +701,15 @@ export default function DiscoverScreen({ navigation }: any) {
                     <View style={styles.sportTagsRow}>
                         {(item.sports || []).slice(0, 3).map((sport) => {
                             const slug = normalizeSport(sport);
+                            const imageUrl = sportImages[slug];
                             return (
                                 <View key={sport} style={styles.sportTag}>
+                                    {imageUrl ? (
+                                        <Image
+                                            source={{ uri: imageUrl }}
+                                            style={styles.sportTagImage}
+                                        />
+                                    ) : null}
                                     <Text style={styles.sportTagText}>
                                         {sportLabels[slug] || formatSportName(sport)}
                                     </Text>
@@ -1547,12 +1559,19 @@ const styles = StyleSheet.create({
     sportTag: {
         flexDirection: 'row',
         alignItems: 'center',
+        gap: 6,
         paddingHorizontal: 10,
         paddingVertical: 5,
         borderRadius: BorderRadius.pill,
         borderWidth: 1,
         backgroundColor: 'rgba(255,255,255,0.05)',
         borderColor: 'rgba(255,255,255,0.10)',
+    },
+    sportTagImage: {
+        width: 18,
+        height: 18,
+        borderRadius: 9,
+        backgroundColor: 'rgba(255,255,255,0.08)',
     },
     sportTagText: {
         fontSize: 11,

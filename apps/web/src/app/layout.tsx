@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import "./app.css";
 import { GlobalToast } from "@/components/ui/Toast";
 
@@ -57,6 +58,12 @@ export default function RootLayout({
           rel="preconnect"
           href="https://fonts.gstatic.com"
           crossOrigin="anonymous"
+        />
+        <Script
+          async
+          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1884287795178980"
+          crossOrigin="anonymous"
+          strategy="afterInteractive"
         />
       </head>
       <body>{children}<GlobalToast /></body>

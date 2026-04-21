@@ -32,6 +32,8 @@ interface Offer {
     rate: number;
     status: "pending" | "accepted" | "declined" | "expired";
     created_at: string;
+    proposed_date: string;
+    proposed_time: string;
 }
 
 export default function TrainingOffersPage() {
@@ -50,6 +52,18 @@ export default function TrainingOffersPage() {
     // Cancel Modal State
     const [offerToCancel, setOfferToCancel] = useState<string | null>(null);
     const [isCanceling, setIsCanceling] = useState(false);
+
+    // View / Edit Sent Offer Modal State
+    const [viewingOffer, setViewingOffer] = useState<Offer | null>(null);
+    const [isEditingOffer, setIsEditingOffer] = useState(false);
+    const [editDraft, setEditDraft] = useState<{ rate: string; session_type: string; proposed_at: string; proposed_time: string; notes: string }>({
+        rate: "",
+        session_type: "private",
+        proposed_at: "",
+        proposed_time: "",
+        notes: "",
+    });
+    const [isSavingEdit, setIsSavingEdit] = useState(false);
 
     // Camps
     const [camps, setCamps] = useState<Array<{ name: string; hoursPerDay: number; days: number; totalPrice: number; location: string; startTime: string; endTime: string; dates: string[]; maxSpots: number; spotsRemaining: number }>>([]);
@@ -137,6 +151,7 @@ export default function TrainingOffersPage() {
                     const foundAthlete = athleteData?.find((a: any) => a.id === o.athlete_id) as Record<string, unknown> | undefined;
                     const athleteName = foundAthlete ? `${foundAthlete.first_name} ${foundAthlete.last_name}` : "Unknown";
                     const proposed = o.proposed_dates || {};
+                    const firstSession = Array.isArray(proposed.sessions) && proposed.sessions.length > 0 ? proposed.sessions[0] : {};
                     return {
                         id: o.id,
                         athlete_id: o.athlete_id,
@@ -147,6 +162,8 @@ export default function TrainingOffersPage() {
                         rate: o.price ? Number(o.price) : 0,
                         status: o.status || "pending",
                         created_at: o.created_at,
+                        proposed_date: firstSession.date || proposed.scheduledAt || "",
+                        proposed_time: firstSession.time || "",
                     };
                 }));
             }
@@ -265,6 +282,83 @@ export default function TrainingOffersPage() {
             toast.error("Failed to cancel offer");
         } finally {
             setIsCanceling(false);
+        }
+    };
+
+    const openOfferDetails = (offer: Offer) => {
+        setViewingOffer(offer);
+        setIsEditingOffer(false);
+        setEditDraft({
+            rate: offer.rate ? String(offer.rate) : "",
+            session_type: offer.session_type || "private",
+            proposed_at: offer.proposed_date || "",
+            proposed_time: offer.proposed_time || "",
+            notes: offer.message || "",
+        });
+    };
+
+    const closeOfferDetails = () => {
+        setViewingOffer(null);
+        setIsEditingOffer(false);
+    };
+
+    const startEditOffer = () => {
+        if (!viewingOffer || viewingOffer.status !== "pending") return;
+        setIsEditingOffer(true);
+    };
+
+    const cancelEditOffer = () => {
+        if (!viewingOffer) return;
+        setIsEditingOffer(false);
+        // revert draft back to current offer values
+        setEditDraft({
+            rate: viewingOffer.rate ? String(viewingOffer.rate) : "",
+            session_type: viewingOffer.session_type || "private",
+            proposed_at: viewingOffer.proposed_date || "",
+            proposed_time: viewingOffer.proposed_time || "",
+            notes: viewingOffer.message || "",
+        });
+    };
+
+    const saveOfferEdit = async () => {
+        if (!viewingOffer || !user) return;
+        const numericRate = parseFloat(editDraft.rate);
+        if (isNaN(numericRate) || numericRate < 1) {
+            toast.error("Please enter a valid rate.");
+            return;
+        }
+        if (!editDraft.proposed_at) {
+            toast.error("Please set a session date.");
+            return;
+        }
+
+        setIsSavingEdit(true);
+        try {
+            const res = await fetch(`/api/offers/${viewingOffer.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    userId: user.id,
+                    rate: numericRate,
+                    session_type: editDraft.session_type,
+                    proposed_at: editDraft.proposed_at,
+                    proposed_time: editDraft.proposed_time,
+                    notes: editDraft.notes,
+                }),
+            });
+            const json = await res.json();
+            if (!res.ok) {
+                throw new Error(json?.error || "Failed to save offer changes");
+            }
+            toast.success("Offer updated");
+            closeOfferDetails();
+            if (user) loadData(user);
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : "Failed to save";
+            console.error("Failed to update offer:", err);
+            toast.error(msg);
+        } finally {
+            setIsSavingEdit(false);
         }
     };
 
@@ -442,7 +536,14 @@ export default function TrainingOffersPage() {
                         </div>
                     ) : (
                         offers.map((offer) => (
-                            <div key={offer.id} className="bg-[#1A1C23] border border-white/5 rounded-[20px] p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-md hover:border-white/10 transition-colors">
+                            <div
+                                key={offer.id}
+                                onClick={() => openOfferDetails(offer)}
+                                role="button"
+                                tabIndex={0}
+                                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openOfferDetails(offer); } }}
+                                className="bg-[#1A1C23] border border-white/5 rounded-[20px] p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-md hover:border-white/10 transition-colors cursor-pointer focus:outline-none focus:border-primary/50"
+                            >
                                 <div className="flex items-center gap-5">
                                     <div className={`
                                         w-12 h-12 rounded-2xl flex items-center justify-center border shrink-0
@@ -483,7 +584,7 @@ export default function TrainingOffersPage() {
                                     </span>
                                     {offer.status === "pending" && (
                                         <button
-                                            onClick={() => cancelOffer(offer.id)}
+                                            onClick={(e) => { e.stopPropagation(); cancelOffer(offer.id); }}
                                             className="px-4 py-1.5 rounded-full border border-red-500/20 bg-red-500/10 text-red-500 font-bold text-[11px] uppercase tracking-wider hover:bg-red-500 hover:text-bg transition-colors whitespace-nowrap"
                                         >
                                             Cancel
@@ -861,6 +962,188 @@ export default function TrainingOffersPage() {
                                     "Yes, Cancel Offer"
                                 )}
                             </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* View / Edit Sent Offer Modal */}
+            {viewingOffer && (
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 sm:p-6 overflow-y-auto">
+                    <div className="bg-[#1A1C23] border border-white/10 rounded-[24px] w-full max-w-[560px] shadow-2xl relative my-auto">
+                        <div className="p-5 sm:p-6">
+                            <div className="flex items-center justify-between mb-5">
+                                <h2 className="text-[22px] font-black font-display text-white tracking-wide uppercase">
+                                    {isEditingOffer ? "Edit Offer" : "Offer Details"}
+                                </h2>
+                                <button
+                                    onClick={closeOfferDetails}
+                                    className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center text-text-main/50 hover:bg-white/10 hover:text-white transition-colors"
+                                >
+                                    <X size={16} strokeWidth={3} />
+                                </button>
+                            </div>
+
+                            {/* Athlete + status line */}
+                            <div className="flex items-center justify-between gap-3 p-3 bg-[#12141A] border border-white/5 rounded-xl mb-5">
+                                <div>
+                                    <p className="text-[11px] text-text-main/50 uppercase tracking-[0.15em] font-bold mb-1">Athlete</p>
+                                    <p className="text-white font-bold">{viewingOffer.athlete_name}</p>
+                                </div>
+                                <span className={`
+                                    px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider border whitespace-nowrap
+                                    ${viewingOffer.status === "accepted" ? "bg-green-500/10 text-green-500 border-green-500/20" :
+                                        viewingOffer.status === "declined" ? "bg-red-500/10 text-red-500 border-red-500/20" :
+                                            viewingOffer.status === "expired" ? "bg-orange-500/10 text-orange-400 border-orange-500/20" :
+                                                "bg-[#272A35] text-text-main/70 border-white/5"}
+                                `}>
+                                    {viewingOffer.status}
+                                </span>
+                            </div>
+
+                            {!isEditingOffer ? (
+                                // ============== VIEW MODE ==============
+                                <div className="space-y-4">
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="p-3 bg-[#12141A] border border-white/5 rounded-xl">
+                                            <p className="text-[11px] text-text-main/50 uppercase tracking-[0.15em] font-bold mb-1">Rate</p>
+                                            <p className="text-white font-bold">${viewingOffer.rate?.toFixed(0)}/hr</p>
+                                        </div>
+                                        <div className="p-3 bg-[#12141A] border border-white/5 rounded-xl">
+                                            <p className="text-[11px] text-text-main/50 uppercase tracking-[0.15em] font-bold mb-1">Session Type</p>
+                                            <p className="text-white font-bold capitalize">{viewingOffer.session_type.replace('_', ' ')}</p>
+                                        </div>
+                                        <div className="p-3 bg-[#12141A] border border-white/5 rounded-xl">
+                                            <p className="text-[11px] text-text-main/50 uppercase tracking-[0.15em] font-bold mb-1">Sport</p>
+                                            <p className="text-white font-bold">{viewingOffer.sport ? formatSportName(viewingOffer.sport) : "—"}</p>
+                                        </div>
+                                        <div className="p-3 bg-[#12141A] border border-white/5 rounded-xl">
+                                            <p className="text-[11px] text-text-main/50 uppercase tracking-[0.15em] font-bold mb-1">Proposed Session</p>
+                                            <p className="text-white font-bold">
+                                                {viewingOffer.proposed_date
+                                                    ? `${viewingOffer.proposed_date}${viewingOffer.proposed_time ? ` @ ${viewingOffer.proposed_time}` : ""}`
+                                                    : "—"}
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <div className="p-3 bg-[#12141A] border border-white/5 rounded-xl">
+                                        <p className="text-[11px] text-text-main/50 uppercase tracking-[0.15em] font-bold mb-1">Notes / Message</p>
+                                        <p className="text-white text-sm whitespace-pre-wrap">{viewingOffer.message || "—"}</p>
+                                    </div>
+
+                                    <div className="p-3 bg-[#12141A] border border-white/5 rounded-xl">
+                                        <p className="text-[11px] text-text-main/50 uppercase tracking-[0.15em] font-bold mb-1">Created</p>
+                                        <p className="text-white text-sm">
+                                            {new Date(viewingOffer.created_at).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}
+                                        </p>
+                                    </div>
+
+                                    {viewingOffer.status !== "pending" && (
+                                        <p className="text-[12px] text-orange-400/80 font-medium text-center">
+                                            Only pending offers can be edited.
+                                        </p>
+                                    )}
+
+                                    <div className="flex items-center gap-3 pt-2">
+                                        <button
+                                            onClick={closeOfferDetails}
+                                            className="flex-1 py-3 rounded-xl border border-white/10 bg-transparent text-white font-bold text-sm hover:bg-white/5 transition-colors"
+                                        >
+                                            Close
+                                        </button>
+                                        {viewingOffer.status === "pending" && (
+                                            <button
+                                                onClick={startEditOffer}
+                                                className="flex-1 py-3 rounded-xl bg-primary text-bg font-black text-sm hover:opacity-90 transition-colors"
+                                            >
+                                                Edit Offer
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            ) : (
+                                // ============== EDIT MODE ==============
+                                <div className="space-y-4">
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-2">Rate ($/hr)</label>
+                                            <input
+                                                type="number"
+                                                value={editDraft.rate}
+                                                onChange={(e) => setEditDraft(prev => ({ ...prev, rate: e.target.value }))}
+                                                className="w-full bg-[#12141A] border border-white/5 rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-primary/50 transition-colors"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-2">Session Type</label>
+                                            <select
+                                                value={editDraft.session_type}
+                                                onChange={(e) => setEditDraft(prev => ({ ...prev, session_type: e.target.value }))}
+                                                className="w-full bg-[#12141A] border border-white/5 rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-primary/50 transition-colors appearance-none"
+                                                style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center' }}
+                                            >
+                                                <option value="private">Private (1-on-1)</option>
+                                                <option value="semi_private">Semi-Private</option>
+                                                <option value="group">Group</option>
+                                                <option value="camp">Camp</option>
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-2">Session Date</label>
+                                            <input
+                                                type="date"
+                                                value={editDraft.proposed_at}
+                                                onChange={(e) => setEditDraft(prev => ({ ...prev, proposed_at: e.target.value }))}
+                                                className="w-full bg-[#12141A] border border-white/5 rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-primary/50 transition-colors"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-2">Session Time</label>
+                                            <input
+                                                type="time"
+                                                value={editDraft.proposed_time}
+                                                onChange={(e) => setEditDraft(prev => ({ ...prev, proposed_time: e.target.value }))}
+                                                className="w-full bg-[#12141A] border border-white/5 rounded-xl px-4 py-3 text-white text-sm outline-none focus:border-primary/50 transition-colors"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-2">Notes / Message</label>
+                                        <textarea
+                                            value={editDraft.notes}
+                                            onChange={(e) => setEditDraft(prev => ({ ...prev, notes: e.target.value }))}
+                                            rows={3}
+                                            className="w-full bg-[#12141A] border border-white/5 rounded-xl p-4 text-white text-sm outline-none focus:border-primary/50 resize-none transition-colors placeholder:text-text-main/30"
+                                        />
+                                    </div>
+
+                                    <div className="flex items-center gap-3 pt-2">
+                                        <button
+                                            onClick={cancelEditOffer}
+                                            disabled={isSavingEdit}
+                                            className="flex-1 py-3 rounded-xl border border-white/10 bg-transparent text-white font-bold text-sm hover:bg-white/5 transition-colors"
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            onClick={saveOfferEdit}
+                                            disabled={isSavingEdit}
+                                            className={`flex-[1.2] py-3 rounded-xl font-black text-sm transition-colors flex items-center justify-center gap-2 ${isSavingEdit ? "bg-primary/50 text-bg/50 cursor-not-allowed" : "bg-primary text-bg hover:opacity-90"}`}
+                                        >
+                                            {isSavingEdit ? (
+                                                <><div className="w-4 h-4 border-2 border-bg/30 border-t-bg rounded-full animate-spin" /> Saving...</>
+                                            ) : (
+                                                "Save Changes"
+                                            )}
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>

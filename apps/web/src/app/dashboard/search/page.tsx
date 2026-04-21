@@ -11,6 +11,7 @@ import { detectCountry, radiusUnit, formatRadius, miToKm } from "@/lib/units";
 import dynamic from "next/dynamic";
 import type { TrainerPin } from "@/components/search/FindTrainerMap";
 import { formatSportName } from "@/lib/format";
+import LocationAutocomplete, { type LocationValue } from "@/components/forms/LocationAutocomplete";
 
 const FindTrainerMap = dynamic(() => import("@/components/search/FindTrainerMap"), { ssr: false });
 
@@ -62,8 +63,18 @@ const SPORT_IMAGES: Record<string, string[]> = {
     ]
 };
 
-const getSportImage = (sports: string[]) => {
-    if (!sports || sports.length === 0) return SPORT_IMAGES.default[0];
+const getSportImage = (sports: string[], slugToImage: Record<string, string> = {}) => {
+    if (!sports || sports.length === 0) {
+        const fb = SPORT_IMAGES.default;
+        return fb[Math.floor(Math.random() * fb.length)];
+    }
+    // 1. Prefer an admin-uploaded image for any of the trainer's sports.
+    for (const s of sports) {
+        const slug = s.toLowerCase().replace(/\s+&\s+/g, "_and_").replace(/\s+/g, "_");
+        if (slugToImage[slug]) return slugToImage[slug];
+        if (slugToImage[s]) return slugToImage[s];
+    }
+    // 2. Fallback to hardcoded Unsplash safety net.
     const sportStr = sports[0].toLowerCase().replace(/\s+&\s+/g, "_and_").replace(/\s+/g, "_");
     const arr = SPORT_IMAGES[sportStr] || SPORT_IMAGES.default;
     return arr[Math.floor(Math.random() * arr.length)];
@@ -127,7 +138,7 @@ function FilterDropdown({ value, onChange, options, active }: {
                 <ChevronDown size={12} className={`transition-transform ${open ? "rotate-180" : ""}`} />
             </button>
             {open && (
-                <div className="absolute top-full left-0 mt-1.5 z-50 bg-[#13151b] border border-white/[0.10] rounded-2xl shadow-xl overflow-hidden min-w-[160px]">
+                <div className="absolute top-full left-0 mt-1.5 z-[9999] bg-[#13151b] border border-white/[0.10] rounded-2xl shadow-xl overflow-hidden min-w-[160px]">
                     <div className="overflow-y-auto max-h-[220px] py-1">
                         {options.map(o => (
                             <button
@@ -170,6 +181,14 @@ export default function SearchTrainersPage() {
     const [nameFilter, setNameFilter] = useState<string>("");
     const [durationFilter, setDurationFilter] = useState<number | null>(null);
 
+    // Radius search (Issue C)
+    // radiusKm === null means "Any distance" (no radius filter)
+    const [radiusKm, setRadiusKm] = useState<number | null>(null);
+    const [radiusLocation, setRadiusLocation] = useState<LocationValue>(null);
+
+    // Admin-uploaded sport images (Issue A)
+    const [slugToImage, setSlugToImage] = useState<Record<string, string>>({});
+
     // Pagination
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 8;
@@ -191,18 +210,21 @@ export default function SearchTrainersPage() {
         const fetchSports = async () => {
             const { data, error } = await supabase
                 .from("sports")
-                .select("id, name, slug")
+                .select("id, name, slug, image_url")
                 .eq("is_active", true)
                 .order("name");
             if (!error && data && data.length > 0) {
                 const labels: Record<string, string> = {};
                 const options: { value: string; label: string }[] = [];
-                (data as { id: string; name: string; slug: string }[]).forEach((s) => {
+                const imageMap: Record<string, string> = {};
+                (data as { id: string; name: string; slug: string; image_url: string | null }[]).forEach((s) => {
                     labels[s.slug] = s.name;
                     options.push({ value: s.slug, label: s.name });
+                    if (s.image_url) imageMap[s.slug] = s.image_url;
                 });
                 setSportLabels(labels);
                 setSportsOptions(options);
+                setSlugToImage(imageMap);
             }
         };
 
@@ -338,7 +360,7 @@ export default function SearchTrainersPage() {
                     avg_rating: rating,
                     review_count: p.total_reviews || 0,
                     matchScore: Math.min(100, matchScore),
-                    cover_image: getSportImage(p.sports),
+                    cover_image: getSportImage(p.sports, slugToImage),
                     dispute_count: disputeCount,
                     is_performance_verified: isPerformanceVerified
                 };
@@ -352,7 +374,23 @@ export default function SearchTrainersPage() {
         }
     };
 
+    // Re-assign cover images when admin-uploaded sport image map becomes available
+    // (sports fetch and trainer fetch happen in parallel — trainers may load first)
+    useEffect(() => {
+        if (Object.keys(slugToImage).length === 0) return;
+        setTrainers((prev) => prev.map((t) => ({
+            ...t,
+            cover_image: getSportImage(t.sports, slugToImage),
+        })));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [slugToImage]);
+
     const normalizeSport = (s: string) => s.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z_]/g, '');
+
+    // Resolve radius search center point: explicit typed location > athlete profile
+    const radiusCenterLat = radiusLocation?.lat ?? user?.athleteProfile?.latitude ?? null;
+    const radiusCenterLng = radiusLocation?.lng ?? user?.athleteProfile?.longitude ?? null;
+    const radiusEnabled = radiusKm !== null && radiusCenterLat !== null && radiusCenterLng !== null;
 
     const filteredTrainers = useMemo(() => {
         const result = trainers.filter((t) => {
@@ -373,6 +411,14 @@ export default function SearchTrainersPage() {
                 const loc = `${t.city || ""} ${t.state || ""}`.toLowerCase();
                 if (!loc.includes(locationFilter.toLowerCase())) return false;
             }
+
+            // Radius filter (Issue C) — Haversine distance in km
+            if (radiusEnabled && radiusKm !== null) {
+                if (!t.latitude || !t.longitude) return false;
+                const miles = calculateDistance(radiusCenterLat, radiusCenterLng, t.latitude, t.longitude);
+                const km = miles * 1.60934;
+                if (km > radiusKm) return false;
+            }
             return true;
         });
 
@@ -391,12 +437,12 @@ export default function SearchTrainersPage() {
         });
 
         return result;
-    }, [trainers, sportFilter, maxRate, minRating, locationFilter, sortBy, skillFilter, timeFilter, nameFilter, durationFilter]);
+    }, [trainers, sportFilter, maxRate, minRating, locationFilter, sortBy, skillFilter, timeFilter, nameFilter, durationFilter, radiusEnabled, radiusKm, radiusCenterLat, radiusCenterLng]);
 
     // Reset to page 1 when filters change
     useEffect(() => {
         setCurrentPage(1);
-    }, [sportFilter, maxRate, minRating, locationFilter, sortBy, skillFilter, timeFilter, nameFilter, durationFilter]);
+    }, [sportFilter, maxRate, minRating, locationFilter, sortBy, skillFilter, timeFilter, nameFilter, durationFilter, radiusKm, radiusCenterLat, radiusCenterLng]);
 
     const totalPages = Math.ceil(filteredTrainers.length / itemsPerPage);
     const paginatedTrainers = filteredTrainers.slice(
@@ -412,15 +458,15 @@ export default function SearchTrainersPage() {
         );
     }
 
-    const activeFiltersCount = [sportFilter !== "All Sports", locationFilter, skillFilter !== "any", timeFilter !== "any", minRating > 0, maxRate < 300, durationFilter !== null].filter(Boolean).length
+    const activeFiltersCount = [sportFilter !== "All Sports", locationFilter, skillFilter !== "any", timeFilter !== "any", minRating > 0, maxRate < 300, durationFilter !== null, radiusKm !== null].filter(Boolean).length
 
-    const clearAll = () => { setSportFilter("All Sports"); setLocationFilter(""); setSkillFilter("any"); setTimeFilter("any"); setMinRating(0); setMaxRate(300); setNameFilter(""); setDurationFilter(null); }
+    const clearAll = () => { setSportFilter("All Sports"); setLocationFilter(""); setSkillFilter("any"); setTimeFilter("any"); setMinRating(0); setMaxRate(300); setNameFilter(""); setDurationFilter(null); setRadiusKm(null); setRadiusLocation(null); }
 
     return (
         <div className="max-w-[1400px] mx-auto pb-12">
 
             {/* ── Search header ── */}
-            <div className="mb-6 mt-1 space-y-4">
+            <div className="mb-6 mt-1 space-y-4 relative z-[1000]">
 
                 {/* Title row */}
                 <div className="flex items-center justify-between">
@@ -486,7 +532,7 @@ export default function SearchTrainersPage() {
                         options={[{ value: "All Sports", label: "All Sports" }, ...sportsOptions]}
                     />
 
-                    {/* Location */}
+                    {/* Location (text filter — matches trainer city/state) */}
                     <div className="relative">
                         <MapPin size={13} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-main/30 pointer-events-none" />
                         <input type="text" value={locationFilter} onChange={(e) => setLocationFilter(e.target.value)}
@@ -495,6 +541,38 @@ export default function SearchTrainersPage() {
                                        placeholder-text-main/30
                                        ${locationFilter ? "border-primary/50 text-primary bg-primary/5" : "border-white/[0.08] text-text-main/60 hover:border-white/[0.14] focus:border-white/20"}`} />
                     </div>
+
+                    {/* Radius search (Issue C) */}
+                    {(() => {
+                        const hasProfileLatLng = athleteLat !== undefined && athleteLng !== undefined;
+                        const hasCenter = radiusLocation !== null || hasProfileLatLng;
+                        return (
+                            <div className="flex items-center gap-2" title={!hasCenter ? "Set your location in profile to search by radius" : undefined}>
+                                <FilterDropdown
+                                    value={radiusKm === null ? "any" : String(radiusKm)}
+                                    onChange={(v) => setRadiusKm(v === "any" ? null : Number(v))}
+                                    active={radiusKm !== null}
+                                    options={[
+                                        { value: "any", label: hasCenter ? "Any distance" : "Radius (set location)" },
+                                        { value: "5", label: "Within 5 km" },
+                                        { value: "10", label: "Within 10 km" },
+                                        { value: "25", label: "Within 25 km" },
+                                        { value: "50", label: "Within 50 km" },
+                                        { value: "100", label: "Within 100 km" },
+                                    ]}
+                                />
+                                {radiusKm !== null && (
+                                    <div className="w-48">
+                                        <LocationAutocomplete
+                                            value={radiusLocation}
+                                            onChange={setRadiusLocation}
+                                            placeholder={hasProfileLatLng ? "Using profile location" : "Search near..."}
+                                        />
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })()}
 
                     {/* Skill */}
                     <FilterDropdown
@@ -702,6 +780,17 @@ export default function SearchTrainersPage() {
                                     {trainer.user?.first_name} {trainer.user?.last_name}
                                 </h3>
                                 {trainer.is_founding_50 && <FoundingBadgeTooltip size={18} />}
+                                {radiusCenterLat !== null && radiusCenterLng !== null && trainer.latitude && trainer.longitude && (() => {
+                                    const miles = calculateDistance(radiusCenterLat, radiusCenterLng, trainer.latitude, trainer.longitude);
+                                    if (miles >= 9999) return null;
+                                    const km = miles * 1.60934;
+                                    const display = unit === "km" ? `${km.toFixed(km < 10 ? 1 : 0)} km` : `${miles.toFixed(miles < 10 ? 1 : 0)} mi`;
+                                    return (
+                                        <span className="ml-auto text-[10px] font-bold text-primary/80 whitespace-nowrap">
+                                            {display} away
+                                        </span>
+                                    );
+                                })()}
                             </div>
 
                             {/* Sport tags — min-height keeps button aligned */}
