@@ -199,8 +199,11 @@ export default function EarningsPage() {
     const totalEscrow = pendingPayout + heldCompletedPayout;
     const totalEscrowSessions = upcomingPaid.length + heldCompletedTransactions.length;
 
-    // Athlete stats — use completed bookings as source of truth (matches dashboard "Total Spent")
-    const athleteTotalPaid = completedBookings.reduce((s, b) => s + Number(b.total_paid || b.price), 0);
+    // Athlete stats — sum from the same transactions shown in the Payment History table
+    // (excluding refunded) so the stat card and visible rows always reconcile.
+    const athleteTotalPaid = athleteTransactions
+        .filter((t) => t.status !== "refunded")
+        .reduce((s, t) => s + Number(t.amount), 0);
     const athleteRefunded = athleteTransactions.filter((t) => t.status === "refunded").reduce((s, t) => s + Number(t.amount), 0);
     const athleteInEscrow = athleteTransactions.filter((t) => t.status === "held").reduce((s, t) => s + Number(t.amount), 0);
 

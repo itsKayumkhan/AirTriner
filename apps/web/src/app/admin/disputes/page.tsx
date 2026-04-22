@@ -175,7 +175,7 @@ export default function AdminDisputesPage() {
         { label: "TOTAL CASES",  value: totalDisputes,              icon: <Scale size={16} />,     accent: "default" },
         { label: "NEEDS ACTION", value: needsAction,                 icon: <Zap size={16} />,       accent: "primary" },
         { label: "REFUNDED",     value: `$${refundedTotal.toFixed(0)}`, icon: <TrendingUp size={16} />, accent: "default" },
-        { label: "HIGH RISK",    value: String(highRisk).padStart(2,'0'), icon: <ShieldAlert size={16} />, accent: "red"  },
+        { label: "HIGH RISK",    value: highRisk, icon: <ShieldAlert size={16} />, accent: "red"  },
     ];
 
     return (

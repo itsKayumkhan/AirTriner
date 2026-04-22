@@ -380,7 +380,7 @@ export default function TrainingOffersPage() {
 
     if (!isSubscriptionActive) {
         return (
-            <div className="max-w-[1000px] w-full pb-12">
+            <div className="max-w-[1000px] w-full mx-auto pb-12">
                 {/* Header */}
                 <div className="mb-8">
                     <h1 className="text-[32px] font-black font-display italic tracking-wide text-white uppercase mb-1 leading-none drop-shadow-sm">Training Offers</h1>

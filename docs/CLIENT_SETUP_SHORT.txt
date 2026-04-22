@@ -1,0 +1,42 @@
+AirTrainer — Quick Start for Testing
+=====================================
+
+1. WEB APP (any device, any browser)
+   URL: https://airtrainr.com
+   Log in with the test accounts we shared (athlete / trainer / admin).
+   Admin email: kayum@gmail.com (password sent separately).
+   Or click Sign Up to create fresh accounts.
+
+2. ANDROID APP (phone install)
+   Download link:
+   https://expo.dev/accounts/kayumkhansayal/projects/AirTrainrApp/builds/6ab2e596-c378-40a3-8c14-047264706321
+
+   Steps:
+   a) Open the link on your Android phone in Chrome.
+   b) Tap "Install" / "Download" to get the APK file.
+   c) Open the downloaded APK. If Android warns about "unknown source",
+      tap Settings > toggle "Allow from this source" ON > go back.
+   d) Tap Install, then Open.
+   e) Log in with test credentials OR Sign Up as a new user.
+   f) Allow location, camera and notification permissions when asked.
+
+3. iOS (iPhone)
+   Not ready yet. Please use the web app on iPhone for now.
+
+4. WHAT TO TEST
+   - Sign up (athlete and trainer)
+   - Create / edit profile, upload photo
+   - Search trainers, filter by sport and location
+   - Send a training offer, edit it, accept / decline as trainer
+   - Book and pay (use test card we shared)
+   - Chat / send messages and images
+   - Leave a review after a session
+   - Check notifications arrive
+
+5. REPORTING BUGS
+   Email: support@digitalheroes.co.in
+   Please include: what you were doing, what went wrong,
+   a screenshot, your phone model or browser, and the
+   account email you used.
+
+Full guide with troubleshooting: docs/CLIENT_SETUP_INSTRUCTIONS.md

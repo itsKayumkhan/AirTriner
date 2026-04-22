@@ -48,7 +48,7 @@ export default function AdminSettingsPage() {
         require_trainer_verification: true,
         cancellation_policy_hours: 24,
         dispute_resolution_days: 7,
-        support_email: "support@airtrainer.com",
+        support_email: "support@airtrainr.com",
         maintenance_mode: false,
         allowed_countries: ["US", "CA"],
     });

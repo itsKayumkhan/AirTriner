@@ -331,14 +331,14 @@ export default function NotificationsPage() {
                             <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2 mb-1">
                                     <span className={`text-sm ${n.read ? "font-medium text-text-main/60" : "font-bold text-text-main"}`}>
-                                        {n.title}
+                                        {n.title?.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
                                     </span>
                                     {!n.read && (
                                         <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${typeDot[n.type] || "bg-primary"}`} />
                                     )}
                                 </div>
                                 <p className="text-sm text-text-main/60 font-medium leading-relaxed max-w-xl">
-                                    {n.body}
+                                    {n.body?.replace(/_/g, ' ')}
                                 </p>
 
                                 {n.type === "MESSAGE_RECEIVED" && (n.data as OfferNotificationData)?.offer_id && !(n.data as OfferNotificationData)?.offer_status && (

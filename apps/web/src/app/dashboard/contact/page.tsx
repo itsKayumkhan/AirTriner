@@ -89,7 +89,7 @@ export default function ContactPage() {
     }
 
     return (
-        <div className="max-w-xl mx-auto">
+        <div className="w-full max-w-xl mx-auto">
             {/* Header */}
             <div className="mb-8">
                 <h1 className="text-[32px] font-black font-display italic tracking-wide text-white uppercase mb-1 leading-none drop-shadow-sm">

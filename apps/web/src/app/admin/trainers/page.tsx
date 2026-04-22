@@ -7,8 +7,11 @@ import { supabase } from "@/lib/supabase";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { FoundingBadgeTooltip } from "@/components/ui/FoundingBadge";
 import dynamic from "next/dynamic";
+import { SortableTh, SortState, nextSortDir, compareValues } from "@/components/admin/SortableTh";
 
 const LocationMap = dynamic(() => import("@/components/admin/LocationMap"), { ssr: false });
+
+type TrainerSortKey = "name" | "location" | "specialty" | "status" | "founding50" | "docs" | "date";
 
 type DocsModalState = {
     isOpen: boolean;
@@ -122,6 +125,7 @@ export default function AdminTrainersPage() {
                     isDeclined,
                     isFounding50: profile?.is_founding_50 ?? false,
                     docs,
+                    createdAt: u.created_at,
                     lat: profile?.latitude,
                     lng: profile?.longitude,
                     city: profile?.city,
@@ -299,6 +303,16 @@ export default function AdminTrainersPage() {
         setCurrentPage(1);
     };
 
+    const [sort, setSort] = useState<SortState<TrainerSortKey>>({ key: null, dir: null });
+    const handleSort = (key: TrainerSortKey) => {
+        setCurrentPage(1);
+        setSort(prev => {
+            if (prev.key !== key) return { key, dir: "asc" };
+            const next = nextSortDir(prev.dir);
+            return next === null ? { key: null, dir: null } : { key, dir: next };
+        });
+    };
+
     const filteredTrainers = trainers.filter(t => {
         if (activeTab === "Verified" && !t.isVerified) return false;
         if (activeTab === "Declined" && !t.isDeclined) return false;
@@ -309,9 +323,24 @@ export default function AdminTrainersPage() {
         return !searchQuery || t.name.toLowerCase().includes(searchLower) || t.email.toLowerCase().includes(searchLower);
     });
 
+    const sortedTrainers = [...filteredTrainers];
+    if (sort.key && sort.dir) {
+        const key = sort.key;
+        const mult = sort.dir === "asc" ? 1 : -1;
+        sortedTrainers.sort((a, b) => {
+            let av: any, bv: any;
+            if (key === "date") { av = a.createdAt; bv = b.createdAt; }
+            else if (key === "location") { av = [a.city, a.state].filter(Boolean).join(", "); bv = [b.city, b.state].filter(Boolean).join(", "); }
+            else if (key === "founding50") { av = a.isFounding50 ? 1 : 0; bv = b.isFounding50 ? 1 : 0; }
+            else if (key === "docs") { av = (a.docs || []).length; bv = (b.docs || []).length; }
+            else { av = (a as any)[key]; bv = (b as any)[key]; }
+            return compareValues(av, bv) * mult;
+        });
+    }
+
     // Pagination logic
-    const totalPages = Math.ceil(filteredTrainers.length / itemsPerPage);
-    const paginatedTrainers = filteredTrainers.slice(
+    const totalPages = Math.ceil(sortedTrainers.length / itemsPerPage);
+    const paginatedTrainers = sortedTrainers.slice(
         (currentPage - 1) * itemsPerPage,
         currentPage * itemsPerPage
     );
@@ -378,7 +407,7 @@ export default function AdminTrainersPage() {
                 }))}
                 title="Trainer Locations"
                 subtitle="Track where trainers are concentrated and where coverage is lacking"
-                onPinClick={(pin) => router.push(`/dashboard/trainers/${pin.id}`)}
+                onPinClick={(pin) => openTrainerDetail(pin.id)}
             />
 
             {/* Search & Tabs */}
@@ -431,25 +460,26 @@ export default function AdminTrainersPage() {
                     <table className="w-full text-left border-collapse whitespace-nowrap">
                         <thead>
                             <tr className="border-b border-white/5 text-[10px] uppercase font-black tracking-widest text-text-main/40 bg-white/5">
-                                <th className="px-6 py-5 pl-8">Trainer Name</th>
-                                <th className="px-6 py-5">Location</th>
-                                <th className="px-6 py-5">Specialty</th>
-                                <th className="px-6 py-5">Status</th>
-                                <th className="px-6 py-5">Founding 50</th>
-                                <th className="px-6 py-5">Documents</th>
+                                <SortableTh className="px-6 py-5 pl-8" label="Trainer Name" sortKey="name" sort={sort} onSort={handleSort} />
+                                <SortableTh className="px-6 py-5" label="Location" sortKey="location" sort={sort} onSort={handleSort} />
+                                <SortableTh className="px-6 py-5" label="Specialty" sortKey="specialty" sort={sort} onSort={handleSort} />
+                                <SortableTh className="px-6 py-5" label="Status" sortKey="status" sort={sort} onSort={handleSort} />
+                                <SortableTh className="px-6 py-5" label="Joined" sortKey="date" sort={sort} onSort={handleSort} />
+                                <SortableTh className="px-6 py-5" label="Founding 50" sortKey="founding50" sort={sort} onSort={handleSort} />
+                                <SortableTh className="px-6 py-5" label="Documents" sortKey="docs" sort={sort} onSort={handleSort} />
                                 <th className="px-6 py-5 pr-8 text-right">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="text-sm">
                             {loading ? (
                                 <tr>
-                                    <td colSpan={7} className="py-10 text-center text-text-main/50 font-bold">
+                                    <td colSpan={8} className="py-10 text-center text-text-main/50 font-bold">
                                         Loading trainers...
                                     </td>
                                 </tr>
                             ) : paginatedTrainers.length === 0 ? (
                                 <tr>
-                                    <td colSpan={7} className="py-10 text-center text-text-main/50 font-bold">
+                                    <td colSpan={8} className="py-10 text-center text-text-main/50 font-bold">
                                         No trainers found matching your filters.
                                         {searchQuery && (
                                             <button onClick={clearFilters} className="ml-2 text-primary hover:underline">Clear Search</button>
@@ -521,6 +551,11 @@ export default function AdminTrainersPage() {
                                                     Image: {t.profileImageStatus}
                                                 </button>
                                             )}
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-5">
+                                        <div className="text-text-main/80 font-bold text-xs tracking-wide">
+                                            {t.createdAt ? new Date(t.createdAt).toLocaleDateString() : "—"}
                                         </div>
                                     </td>
                                     <td className="px-6 py-5" onClick={e => e.stopPropagation()}>

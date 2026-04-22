@@ -78,7 +78,9 @@ export default function MessagesPage() {
 
     useEffect(() => {
         if (!user || conversations.length === 0) return;
-        const bookingIds = conversations.map(c => c.bookingId);
+        // Include ALL booking IDs across merged conversations (not just the primary one),
+        // otherwise realtime INSERTs on secondary bookings with the same other-user get dropped.
+        const bookingIds = conversations.flatMap(c => c.allBookingIds);
         const subscription = supabase
             .channel(`all_messages:${user.id}`)
             .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, async (payload) => {
@@ -250,31 +252,24 @@ export default function MessagesPage() {
         );
     }
 
-    return (
-        <div className="h-[calc(100vh-120px)] flex flex-col">
-            {/* Page title — compact */}
-            <div className="shrink-0 mb-4 flex items-center justify-between">
-                <div>
-                    <h1 className="text-[32px] font-black font-display italic tracking-wide text-white uppercase mb-1 leading-none drop-shadow-sm">Messages</h1>
-                    <p className="text-text-main/40 text-xs font-medium mt-1">
-                        {conversations.length} conversation{conversations.length !== 1 ? "s" : ""}
-                        {conversations.reduce((s, c) => s + c.unreadCount, 0) > 0 &&
-                            <span className="ml-2 text-primary font-bold">· {conversations.reduce((s, c) => s + c.unreadCount, 0)} unread</span>
-                        }
-                    </p>
-                </div>
-            </div>
+    const totalUnread = conversations.reduce((s, c) => s + c.unreadCount, 0);
+    const sidebarLabel = user?.role === "trainer" ? "Athletes" : user?.role === "admin" ? "Conversations" : "Trainers";
 
-            {/* Chat layout */}
-            <div className="flex-1 flex min-h-0 rounded-2xl overflow-hidden border border-white/7 bg-[#0F1118]">
+    return (
+        <div className="fixed inset-y-0 right-0 left-0 md:left-[260px] top-[calc(64px+var(--banner-h,0px))] md:top-[calc(72px+var(--banner-h,0px))] flex flex-col bg-[#0A0C12] z-20">
+            {/* Chat layout — full remaining viewport */}
+            <div className="flex-1 flex min-h-0 overflow-hidden bg-[#0F1118]">
 
                 {/* ── Sidebar ── */}
-                <div className={`w-full md:w-[300px] shrink-0 flex-col border-r border-white/6 ${showSidebar ? "flex" : "hidden md:flex"}`}>
+                <div className={`w-full md:w-[280px] lg:w-[300px] shrink-0 flex-col border-r border-white/8 bg-[#0B0D13] ${showSidebar ? "flex" : "hidden md:flex"}`}>
                     {/* Sidebar header */}
-                    <div className="px-4 py-4 border-b border-white/6 shrink-0">
-                        <p className="text-[10px] font-black text-text-main/30 uppercase tracking-[0.2em]">
-                            {user?.role === "trainer" ? "Athletes" : "Trainers"}
+                    <div className="px-4 py-3.5 border-b border-white/8 shrink-0 flex items-center justify-between">
+                        <p className="text-[10px] font-black text-white/55 uppercase tracking-[0.2em]">
+                            {sidebarLabel}
                         </p>
+                        <span className="text-[10px] font-bold text-text-main/40 bg-white/[0.05] px-2 py-0.5 rounded-full">
+                            {conversations.length}
+                        </span>
                     </div>
 
                     {/* Conversation list */}
@@ -285,21 +280,23 @@ export default function MessagesPage() {
                                 <button
                                     key={c.bookingId}
                                     onClick={() => selectConversation(c.bookingId)}
-                                    className={`w-full text-left px-4 py-3.5 flex gap-3 items-start transition-all border-b border-white/[0.04] relative ${
+                                    aria-label={`Open conversation with ${c.otherUserName}${c.unreadCount > 0 ? `, ${c.unreadCount} unread` : ""}`}
+                                    className={`w-full text-left px-3.5 py-3 flex gap-2.5 items-start transition-all border-b border-white/[0.04] relative group ${
                                         isActive
-                                            ? "bg-white/[0.06] border-l-2 border-l-white/20"
+                                            ? "bg-primary/[0.08]"
                                             : "hover:bg-white/[0.03]"
                                     }`}
                                 >
+                                    {isActive && <span className="absolute left-0 top-0 bottom-0 w-[2px] bg-primary" />}
                                     {/* Avatar */}
                                     <div className="relative shrink-0">
-                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center font-black text-sm ${
-                                            isActive ? "bg-white/[0.10] text-text-main" : "bg-white/[0.06] text-text-main/70"
+                                        <div className={`w-9 h-9 rounded-full flex items-center justify-center font-black text-[11px] transition-colors ${
+                                            isActive ? "bg-primary/20 text-primary" : "bg-white/[0.08] text-text-main/80 group-hover:bg-white/[0.12]"
                                         }`}>
                                             {c.otherUserInitials}
                                         </div>
                                         {c.unreadCount > 0 && (
-                                            <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-primary text-bg text-[9px] font-black flex items-center justify-center border border-[#0F1118]">
+                                            <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-primary text-bg text-[9px] font-black flex items-center justify-center border border-[#0B0D13]">
                                                 {c.unreadCount}
                                             </span>
                                         )}
@@ -307,20 +304,20 @@ export default function MessagesPage() {
 
                                     {/* Info */}
                                     <div className="flex-1 min-w-0">
-                                        <div className="flex items-center justify-between gap-1 mb-0.5">
-                                            <span className={`text-sm font-bold truncate flex items-center gap-1 ${isActive ? "text-white" : "text-text-main/80"}`}>
+                                        <div className="flex items-center justify-between gap-1.5 mb-0.5">
+                                            <span className={`text-[13px] font-bold truncate flex items-center gap-1 ${isActive ? "text-white" : "text-text-main/90"}`}>
                                                 {c.otherUserName}
-                                                {c.otherUserFounding50 && <FoundingBadge size={16} />}
-                                                {c.otherUserVerified && !c.otherUserFounding50 && <ShieldCheck size={14} className="text-primary shrink-0" />}
+                                                {c.otherUserFounding50 && <FoundingBadge size={13} />}
+                                                {c.otherUserVerified && !c.otherUserFounding50 && <ShieldCheck size={12} className="text-primary shrink-0" />}
                                             </span>
-                                            <span className="text-[10px] text-text-main/30 font-medium shrink-0">
+                                            <span className={`text-[10px] font-semibold shrink-0 ${c.unreadCount > 0 ? "text-primary" : "text-text-main/40"}`}>
                                                 {timeFormat(c.lastMessageAt)}
                                             </span>
                                         </div>
-                                        <p className={`text-[12px] truncate ${c.unreadCount > 0 ? "text-text-main/70 font-semibold" : "text-text-main/35 font-medium"}`}>
+                                        <p className={`text-[11.5px] truncate leading-snug ${c.unreadCount > 0 ? "text-white/80 font-semibold" : "text-text-main/50 font-medium"}`}>
                                             {c.lastMessage}
                                         </p>
-                                        <span className="inline-flex items-center gap-1 mt-1.5 text-[9px] font-black uppercase tracking-wider text-text-main/40 bg-white/[0.05] px-2 py-0.5 rounded-full border border-white/[0.06]">
+                                        <span className="inline-flex items-center gap-1 mt-1.5 text-[9px] font-black uppercase tracking-wider text-text-main/50 bg-white/[0.06] px-1.5 py-0.5 rounded-full border border-white/[0.06]">
                                             <Activity size={8} />
                                             {formatSportName(c.sport)}
                                         </span>
@@ -336,60 +333,61 @@ export default function MessagesPage() {
 
                     {/* Chat header */}
                     {selectedConvo ? (
-                        <div className="px-5 py-4 border-b border-white/6 flex items-center gap-3 shrink-0 bg-[#0F1118]">
+                        <div className="px-5 py-3.5 border-b border-white/8 flex items-center gap-3 shrink-0 bg-[#0F1118]">
                             {/* Mobile back */}
                             <button
                                 onClick={() => setShowSidebar(true)}
-                                className="md:hidden w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-text-main/50 hover:text-white transition-colors"
+                                aria-label="Back to conversations"
+                                className="md:hidden w-8 h-8 rounded-lg bg-white/5 hover:bg-white/10 flex items-center justify-center text-text-main/70 hover:text-white transition-colors"
                             >
                                 <ArrowLeft size={16} />
                             </button>
 
-                            <div className="w-9 h-9 rounded-full bg-white/[0.08] border border-white/[0.10] flex items-center justify-center font-black text-sm text-text-main shrink-0">
+                            <div className="w-9 h-9 rounded-full bg-primary/15 border border-primary/25 flex items-center justify-center font-black text-[11px] text-primary shrink-0">
                                 {selectedConvo.otherUserInitials}
                             </div>
                             <div className="flex-1 min-w-0">
-                                <p className="text-[14px] font-bold text-white leading-tight truncate flex items-center gap-1.5">
+                                <p className="text-[14px] font-bold text-white leading-tight truncate flex items-center gap-1">
                                     {selectedConvo.otherUserName}
-                                    {selectedConvo.otherUserFounding50 && <FoundingBadge size={18} />}
-                                    {selectedConvo.otherUserVerified && !selectedConvo.otherUserFounding50 && <ShieldCheck size={15} className="text-primary shrink-0" />}
+                                    {selectedConvo.otherUserFounding50 && <FoundingBadge size={14} />}
+                                    {selectedConvo.otherUserVerified && !selectedConvo.otherUserFounding50 && <ShieldCheck size={13} className="text-primary shrink-0" />}
                                 </p>
-                                <div className="flex items-center gap-1.5 mt-0.5">
-                                    <Activity size={9} className="text-primary/50" />
-                                    <p className="text-[10px] text-text-main/40 font-semibold uppercase tracking-wider">
+                                <div className="flex items-center gap-1 mt-0.5">
+                                    <Activity size={9} className="text-primary/60" />
+                                    <p className="text-[10px] text-text-main/55 font-semibold uppercase tracking-wider">
                                         {formatSportName(selectedConvo.sport)} Session
                                     </p>
                                 </div>
                             </div>
                         </div>
                     ) : (
-                        <div className="px-5 py-4 border-b border-white/6 shrink-0" />
+                        <div className="px-5 py-3.5 border-b border-white/8 shrink-0" />
                     )}
 
                     {/* Messages */}
-                    <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-1">
+                    <div className="flex-1 overflow-y-auto px-4 md:px-6 py-4 flex flex-col gap-0.5 bg-[#0A0C12]">
                         {messages.length === 0 ? (
-                            <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center py-16">
-                                <div className="w-14 h-14 rounded-2xl bg-white/4 border border-white/8 flex items-center justify-center">
-                                    <MessageSquare size={22} className="text-text-main/25" strokeWidth={1.5} />
+                            <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center py-12">
+                                <div className="w-14 h-14 rounded-2xl bg-white/[0.04] border border-white/[0.08] flex items-center justify-center">
+                                    <MessageSquare size={24} className="text-text-main/30" strokeWidth={1.5} />
                                 </div>
                                 <div>
-                                    <p className="text-sm font-bold text-text-main/40">No messages yet</p>
-                                    <p className="text-xs text-text-main/25 mt-0.5">Start the conversation below</p>
+                                    <p className="text-sm font-bold text-white/70">No messages yet</p>
+                                    <p className="text-xs text-text-main/40 mt-0.5">Start the conversation below</p>
                                 </div>
                             </div>
                         ) : (
                             grouped.map((group) => (
                                 <div key={group.date}>
                                     {/* Date separator */}
-                                    <div className="flex items-center gap-3 my-4">
-                                        <div className="flex-1 h-px bg-white/6" />
-                                        <span className="text-[10px] font-bold text-text-main/25 uppercase tracking-widest">{group.date}</span>
-                                        <div className="flex-1 h-px bg-white/6" />
+                                    <div className="flex items-center gap-2 my-3.5">
+                                        <div className="flex-1 h-px bg-white/[0.08]" />
+                                        <span className="text-[10px] font-bold text-text-main/40 uppercase tracking-widest bg-[#0A0C12] px-2.5">{group.date}</span>
+                                        <div className="flex-1 h-px bg-white/[0.08]" />
                                     </div>
 
                                     {/* Messages in group */}
-                                    <div className="flex flex-col gap-1.5">
+                                    <div className="flex flex-col gap-1">
                                         {group.msgs.map((m, idx) => {
                                             const isOwn = m.sender_id === user?.id;
                                             const prevMsg = idx > 0 ? group.msgs[idx - 1] : null;
@@ -399,17 +397,23 @@ export default function MessagesPage() {
                                             const time = new Date(m.created_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
 
                                             return (
-                                                <div key={m.id} className={`flex ${isOwn ? "justify-end" : "justify-start"} ${isFirst ? "mt-2" : ""}`}>
-                                                    <div className={`max-w-[72%] flex flex-col ${isOwn ? "items-end" : "items-start"}`}>
-                                                        <div className={`px-4 py-2.5 text-[13px] leading-relaxed ${
+                                                <div key={m.id} className={`flex ${isOwn ? "justify-end" : "justify-start"} ${isFirst ? "mt-2" : ""} items-end gap-1.5`}>
+                                                    {/* Small avatar bubble for other user, hidden on grouped messages */}
+                                                    {!isOwn && (
+                                                        <div className={`w-6 h-6 rounded-full bg-white/[0.08] flex items-center justify-center font-black text-[9px] text-text-main/70 shrink-0 ${isLast ? "" : "invisible"}`}>
+                                                            {selectedConvo?.otherUserInitials}
+                                                        </div>
+                                                    )}
+                                                    <div className={`max-w-[78%] md:max-w-[60%] flex flex-col ${isOwn ? "items-end" : "items-start"}`}>
+                                                        <div className={`px-3 py-2 text-[13px] leading-snug break-words ${
                                                             isOwn
-                                                                ? `bg-primary text-bg font-medium shadow-[0_4px_12px_rgba(69,208,255,0.2)] ${
+                                                                ? `bg-primary text-bg font-medium shadow-[0_2px_12px_rgba(69,208,255,0.2)] ${
                                                                     isFirst && isLast ? "rounded-2xl" :
                                                                     isFirst ? "rounded-2xl rounded-br-md" :
                                                                     isLast ? "rounded-2xl rounded-tr-md" :
                                                                     "rounded-2xl rounded-r-md"
                                                                   }`
-                                                                : `bg-[#1C1F2E] text-text-main/85 border border-white/7 ${
+                                                                : `bg-[#1C1F2E] text-white border border-white/[0.08] ${
                                                                     isFirst && isLast ? "rounded-2xl" :
                                                                     isFirst ? "rounded-2xl rounded-bl-md" :
                                                                     isLast ? "rounded-2xl rounded-tl-md" :
@@ -419,9 +423,9 @@ export default function MessagesPage() {
                                                             {m.content}
                                                         </div>
                                                         {isLast && (
-                                                            <div className={`flex items-center gap-1 mt-1 ${isOwn ? "flex-row-reverse" : ""}`}>
-                                                                <span className="text-[10px] text-text-main/25 font-medium">{time}</span>
-                                                                {isOwn && <CheckCheck size={11} className="text-primary/40" />}
+                                                            <div className={`flex items-center gap-1 mt-1 px-0.5 ${isOwn ? "flex-row-reverse" : ""}`}>
+                                                                <span className="text-[10px] text-text-main/40 font-medium">{time}</span>
+                                                                {isOwn && <CheckCheck size={10} className={m.read_at ? "text-primary" : "text-text-main/30"} />}
                                                             </div>
                                                         )}
                                                     </div>
@@ -436,29 +440,31 @@ export default function MessagesPage() {
                     </div>
 
                     {/* Input bar */}
-                    <div className="px-4 py-3.5 border-t border-white/6 shrink-0 bg-[#0F1118]">
-                        <div className="flex items-center gap-3 bg-[#1A1D29] border border-white/8 rounded-2xl px-4 py-2.5 focus-within:border-primary/30 transition-all">
+                    <div className="px-4 md:px-5 py-3 border-t border-white/8 shrink-0 bg-[#0F1118]">
+                        <div className="flex items-center gap-2.5 bg-[#1A1D29] border border-white/[0.10] rounded-xl px-3.5 py-2.5 focus-within:border-primary/40 focus-within:shadow-[0_0_0_3px_rgba(69,208,255,0.08)] transition-all">
                             <input
                                 ref={inputRef}
                                 value={newMessage}
                                 onChange={(e) => setNewMessage(e.target.value)}
                                 onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
                                 placeholder="Type a message..."
-                                className="flex-1 bg-transparent outline-none text-[13px] text-text-main placeholder:text-text-main/25 font-medium"
+                                aria-label="Message input"
+                                className="flex-1 bg-transparent outline-none text-[13px] text-white placeholder:text-text-main/35 font-medium"
                             />
                             <button
                                 onClick={sendMessage}
                                 disabled={sending || !newMessage.trim()}
-                                className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all shrink-0 ${
+                                aria-label="Send message"
+                                className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all shrink-0 ${
                                     newMessage.trim()
-                                        ? "bg-primary text-bg hover:shadow-[0_0_12px_rgba(69,208,255,0.4)] hover:scale-105 active:scale-95"
-                                        : "bg-white/5 text-text-main/20 cursor-not-allowed"
+                                        ? "bg-primary text-bg hover:shadow-[0_0_12px_rgba(69,208,255,0.45)] hover:scale-105 active:scale-95"
+                                        : "bg-white/[0.06] text-text-main/25 cursor-not-allowed"
                                 }`}
                             >
-                                <Send size={14} className={newMessage.trim() ? "translate-x-px -translate-y-px" : ""} strokeWidth={2.5} />
+                                <Send size={14} strokeWidth={2.5} className={newMessage.trim() ? "translate-x-px -translate-y-px" : ""} />
                             </button>
                         </div>
-                        <p className="text-[10px] text-text-main/20 text-center mt-2 font-medium">Press Enter to send</p>
+                        <p className="text-[10px] text-text-main/25 text-center mt-1.5 font-medium">Press Enter to send</p>
                     </div>
                 </div>
             </div>

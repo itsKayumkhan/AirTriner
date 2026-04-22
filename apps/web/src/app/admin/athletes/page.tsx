@@ -5,14 +5,18 @@ import { Search, Users, Activity, CheckCircle, XCircle, ChevronLeft, ChevronRigh
 import { supabase } from "@/lib/supabase";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import dynamic from "next/dynamic";
+import { SortableTh, SortState, nextSortDir, compareValues } from "@/components/admin/SortableTh";
 
 const LocationMap = dynamic(() => import("@/components/admin/LocationMap"), { ssr: false });
+
+type AthleteSortKey = "name" | "location" | "date" | "status" | "sessions";
 
 interface Athlete {
     id: string;
     name: string;
     email: string;
     date: string;
+    createdAt: string;
     status: "Active" | "Suspended";
     sessions: number;
     initials: string;
@@ -113,6 +117,7 @@ export default function AdminAthletesPage() {
                             name: `${u.first_name || ""} ${u.last_name || ""}`.trim() || u.email.split('@')[0],
                             email: u.email,
                             date: new Date(u.created_at).toLocaleDateString(),
+                            createdAt: u.created_at,
                             status: u.is_suspended ? "Suspended" : "Active",
                             sessions: sessionCountMap[u.id] ?? 0,
                             initials: `${u.first_name?.[0] || ""}${u.last_name?.[0] || ""}`.toUpperCase() || u.email[0].toUpperCase(),
@@ -136,6 +141,16 @@ export default function AdminAthletesPage() {
         loadAthletes();
     }, []);
 
+    const [sort, setSort] = useState<SortState<AthleteSortKey>>({ key: "date", dir: "desc" });
+    const handleSort = (key: AthleteSortKey) => {
+        setCurrentPage(1);
+        setSort(prev => {
+            if (prev.key !== key) return { key, dir: "asc" };
+            const next = nextSortDir(prev.dir);
+            return next === null ? { key: null, dir: null } : { key, dir: next };
+        });
+    };
+
     const filteredAthletes = athletes.filter(a => {
         if (statusFilter !== "All" && a.status !== statusFilter) return false;
 
@@ -143,9 +158,22 @@ export default function AdminAthletesPage() {
         return !searchQuery || a.name.toLowerCase().includes(searchLower) || a.email.toLowerCase().includes(searchLower);
     });
 
+    const sortedAthletes = [...filteredAthletes];
+    if (sort.key && sort.dir) {
+        const key = sort.key;
+        const mult = sort.dir === "asc" ? 1 : -1;
+        sortedAthletes.sort((a, b) => {
+            let av: any, bv: any;
+            if (key === "date") { av = a.createdAt; bv = b.createdAt; }
+            else if (key === "location") { av = [a.city, a.state, a.country].filter(Boolean).join(", "); bv = [b.city, b.state, b.country].filter(Boolean).join(", "); }
+            else { av = (a as any)[key]; bv = (b as any)[key]; }
+            return compareValues(av, bv) * mult;
+        });
+    }
+
     // Pagination logic
-    const totalPages = Math.ceil(filteredAthletes.length / itemsPerPage);
-    const paginatedAthletes = filteredAthletes.slice(
+    const totalPages = Math.ceil(sortedAthletes.length / itemsPerPage);
+    const paginatedAthletes = sortedAthletes.slice(
         (currentPage - 1) * itemsPerPage,
         currentPage * itemsPerPage
     );
@@ -303,11 +331,11 @@ export default function AdminAthletesPage() {
                     <table className="w-full text-left border-collapse whitespace-nowrap">
                         <thead>
                             <tr className="border-b border-white/5 text-[10px] uppercase font-black tracking-widest text-text-main/40 bg-white/5">
-                                <th className="px-6 py-5 pl-8">Athlete Name</th>
-                                <th className="px-6 py-5">Location</th>
-                                <th className="px-6 py-5">Joined Date</th>
-                                <th className="px-6 py-5">Status</th>
-                                <th className="px-6 py-5">Sessions</th>
+                                <SortableTh className="px-6 py-5 pl-8" label="Athlete Name" sortKey="name" sort={sort} onSort={handleSort} />
+                                <SortableTh className="px-6 py-5" label="Location" sortKey="location" sort={sort} onSort={handleSort} />
+                                <SortableTh className="px-6 py-5" label="Joined Date" sortKey="date" sort={sort} onSort={handleSort} />
+                                <SortableTh className="px-6 py-5" label="Status" sortKey="status" sort={sort} onSort={handleSort} />
+                                <SortableTh className="px-6 py-5" label="Sessions" sortKey="sessions" sort={sort} onSort={handleSort} />
                                 <th className="px-6 py-5 pr-8 text-right">Actions</th>
                             </tr>
                         </thead>

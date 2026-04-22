@@ -197,7 +197,10 @@ function DashboardLayoutContent({ user, mobileMenuOpen, setMobileMenuOpen, navIt
     if (!hydrated) return null;
 
     return (
-        <div className="h-[100dvh] overflow-hidden bg-bg font-sans flex text-text-main selection:bg-primary/30">
+        <div
+            className="h-[100dvh] overflow-hidden bg-bg font-sans flex text-text-main selection:bg-primary/30"
+            style={{ ["--banner-h" as any]: showExpiryBanner ? "52px" : "0px" }}
+        >
             {/* Mobile Overlay */}
             {mobileMenuOpen && (
                 <div

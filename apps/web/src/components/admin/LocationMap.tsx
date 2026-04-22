@@ -129,9 +129,13 @@ export default function LocationMap({ pins, title = "Location Heatmap", subtitle
                     { className: "dark-popup", closeButton: false }
                 );
                 if (onPinClick) {
-                    marker.on("popupopen", () => {
-                        const btn = document.querySelector(`button[data-pin-id="${p.id}"]`);
-                        if (btn) btn.addEventListener("click", () => onPinClick(p));
+                    marker.on("popupopen", (e: any) => {
+                        const popupEl: HTMLElement | undefined = e?.popup?.getElement?.();
+                        const btn = popupEl?.querySelector(`button[data-pin-id="${p.id}"]`);
+                        if (btn) {
+                            const handler = () => onPinClick(p);
+                            btn.addEventListener("click", handler, { once: true });
+                        }
                     });
                 }
             });
