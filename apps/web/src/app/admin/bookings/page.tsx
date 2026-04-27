@@ -35,7 +35,7 @@ export default function AdminBookingsPage() {
     useEffect(() => {
         const loadBookings = async () => {
             try {
-                const { data: bData } = await supabase.from("bookings").select("*").order("scheduled_at", { ascending: false });
+                const { data: bData } = await supabase.from("bookings").select("*").order("created_at", { ascending: false });
                 if (!bData) return;
 
                 const userIds = new Set<string>();
