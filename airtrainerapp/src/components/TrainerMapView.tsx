@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, FontSize, FontWeight, BorderRadius, Spacing, Shadows } from '../theme';
@@ -83,11 +83,24 @@ export default function TrainerMapView({
             .toUpperCase()
             .slice(0, 2);
 
+        // On Android, custom Callout with tooltip causes "addViewAt" crash.
+        // Use default callout on Android, custom tooltip only on iOS.
+        const isAndroid = Platform.OS === 'android';
+
         return (
             <Marker
                 key={trainer.id}
                 coordinate={{ latitude: trainer.lat, longitude: trainer.lng }}
+                tracksViewChanges={false}
+                onPress={() => {
+                    // On Android, directly navigate on marker press to avoid callout crash
+                    if (isAndroid) {
+                        onTrainerPress?.(trainer.userId);
+                    }
+                }}
                 onCalloutPress={() => onTrainerPress?.(trainer.userId)}
+                title={isAndroid ? trainer.name : undefined}
+                description={isAndroid ? `${trainer.sport} · $${trainer.hourlyRate}/hr · ${trainer.rating > 0 ? trainer.rating.toFixed(1) + '★' : 'New'}` : undefined}
             >
                 {/* Custom marker pin */}
                 <View style={markerStyles.pinContainer}>
@@ -106,71 +119,73 @@ export default function TrainerMapView({
                     <View style={markerStyles.pulseRing} />
                 </View>
 
-                {/* Callout popup */}
-                <Callout tooltip onPress={() => onTrainerPress?.(trainer.userId)}>
-                    <View style={calloutStyles.container}>
-                        <View style={calloutStyles.header}>
-                            {trainer.avatarUrl ? (
-                                <Image
-                                    source={{ uri: trainer.avatarUrl }}
-                                    style={calloutStyles.avatar}
-                                />
-                            ) : (
-                                <View style={calloutStyles.avatarPlaceholder}>
-                                    <Text style={calloutStyles.avatarInitials}>{initials}</Text>
+                {/* Custom Callout popup — iOS only (Android uses title/description) */}
+                {!isAndroid && (
+                    <Callout tooltip onPress={() => onTrainerPress?.(trainer.userId)}>
+                        <View style={calloutStyles.container}>
+                            <View style={calloutStyles.header}>
+                                {trainer.avatarUrl ? (
+                                    <Image
+                                        source={{ uri: trainer.avatarUrl }}
+                                        style={calloutStyles.avatar}
+                                    />
+                                ) : (
+                                    <View style={calloutStyles.avatarPlaceholder}>
+                                        <Text style={calloutStyles.avatarInitials}>{initials}</Text>
+                                    </View>
+                                )}
+                                <View style={calloutStyles.info}>
+                                    <Text style={calloutStyles.name} numberOfLines={1}>
+                                        {trainer.name}
+                                    </Text>
+                                    <Text style={calloutStyles.sport} numberOfLines={1}>
+                                        {trainer.sport}
+                                    </Text>
                                 </View>
-                            )}
-                            <View style={calloutStyles.info}>
-                                <Text style={calloutStyles.name} numberOfLines={1}>
-                                    {trainer.name}
-                                </Text>
-                                <Text style={calloutStyles.sport} numberOfLines={1}>
-                                    {trainer.sport}
+                            </View>
+
+                            <View style={calloutStyles.statsRow}>
+                                <View style={calloutStyles.stat}>
+                                    <Ionicons name="star" size={13} color="#FFD700" />
+                                    <Text style={calloutStyles.statText}>
+                                        {trainer.rating > 0 ? trainer.rating.toFixed(1) : 'New'}
+                                    </Text>
+                                    <Text style={calloutStyles.statSub}>
+                                        ({trainer.reviewCount})
+                                    </Text>
+                                </View>
+                                <Text style={calloutStyles.price}>
+                                    ${trainer.hourlyRate}
+                                    <Text style={calloutStyles.priceSub}>/hr</Text>
                                 </Text>
                             </View>
-                        </View>
 
-                        <View style={calloutStyles.statsRow}>
-                            <View style={calloutStyles.stat}>
-                                <Ionicons name="star" size={13} color="#FFD700" />
-                                <Text style={calloutStyles.statText}>
-                                    {trainer.rating > 0 ? trainer.rating.toFixed(1) : 'New'}
-                                </Text>
-                                <Text style={calloutStyles.statSub}>
-                                    ({trainer.reviewCount})
-                                </Text>
+                            {/* Badges */}
+                            <View style={calloutStyles.badgeRow}>
+                                {trainer.isFounder && (
+                                    <View style={[calloutStyles.badge, { backgroundColor: 'rgba(255,215,0,0.15)' }]}>
+                                        <Text style={[calloutStyles.badgeText, { color: '#FFD700' }]}>Founding 50</Text>
+                                    </View>
+                                )}
+                                {trainer.isTopRated && (
+                                    <View style={[calloutStyles.badge, { backgroundColor: 'rgba(255,149,0,0.15)' }]}>
+                                        <Text style={[calloutStyles.badgeText, { color: '#FF9500' }]}>Top Rated</Text>
+                                    </View>
+                                )}
+                                {trainer.isNew && (
+                                    <View style={[calloutStyles.badge, { backgroundColor: 'rgba(0,200,83,0.15)' }]}>
+                                        <Text style={[calloutStyles.badgeText, { color: '#00c853' }]}>New</Text>
+                                    </View>
+                                )}
                             </View>
-                            <Text style={calloutStyles.price}>
-                                ${trainer.hourlyRate}
-                                <Text style={calloutStyles.priceSub}>/hr</Text>
-                            </Text>
-                        </View>
 
-                        {/* Badges */}
-                        <View style={calloutStyles.badgeRow}>
-                            {trainer.isFounder && (
-                                <View style={[calloutStyles.badge, { backgroundColor: 'rgba(255,215,0,0.15)' }]}>
-                                    <Text style={[calloutStyles.badgeText, { color: '#FFD700' }]}>Founding 50</Text>
-                                </View>
-                            )}
-                            {trainer.isTopRated && (
-                                <View style={[calloutStyles.badge, { backgroundColor: 'rgba(255,149,0,0.15)' }]}>
-                                    <Text style={[calloutStyles.badgeText, { color: '#FF9500' }]}>Top Rated</Text>
-                                </View>
-                            )}
-                            {trainer.isNew && (
-                                <View style={[calloutStyles.badge, { backgroundColor: 'rgba(0,200,83,0.15)' }]}>
-                                    <Text style={[calloutStyles.badgeText, { color: '#00c853' }]}>New</Text>
-                                </View>
-                            )}
+                            <View style={calloutStyles.viewButton}>
+                                <Text style={calloutStyles.viewButtonText}>View Profile</Text>
+                                <Ionicons name="arrow-forward" size={12} color="#0A0D14" />
+                            </View>
                         </View>
-
-                        <View style={calloutStyles.viewButton}>
-                            <Text style={calloutStyles.viewButtonText}>View Profile</Text>
-                            <Ionicons name="arrow-forward" size={12} color="#0A0D14" />
-                        </View>
-                    </View>
-                </Callout>
+                    </Callout>
+                )}
             </Marker>
         );
     };
@@ -190,6 +205,7 @@ export default function TrainerMapView({
                 showsUserLocation
                 showsMyLocationButton={false}
                 onMapReady={() => {}}
+                onError={() => setMapError(true)}
             >
                 {validTrainers.map(renderMarker)}
             </MapView>

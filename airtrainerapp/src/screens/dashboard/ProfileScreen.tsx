@@ -69,7 +69,7 @@ export default function ProfileScreen({ navigation }: any) {
         ]);
     };
 
-    const isTrainer = user?.role === 'trainer';
+    const isTrainer = user?.role === 'trainer' || user?.role === 'admin';
     const tp = user?.trainerProfile;
     const ap = user?.athleteProfile;
     const fullName = `${user?.firstName || ''} ${user?.lastName || ''}`.trim();
@@ -153,9 +153,9 @@ export default function ProfileScreen({ navigation }: any) {
 
                     {/* Role badge with dot */}
                     <Badge
-                        label={isTrainer ? 'Trainer' : 'Athlete'}
-                        color={Colors.primary}
-                        bgColor={Colors.primaryGlow}
+                        label={user?.role === 'admin' ? 'Admin' : isTrainer ? 'Trainer' : 'Athlete'}
+                        color={user?.role === 'admin' ? Colors.warning : Colors.primary}
+                        bgColor={user?.role === 'admin' ? Colors.warningLight : Colors.primaryGlow}
                         size="md"
                         dot
                         style={{ marginTop: Spacing.sm, alignSelf: 'center' }}

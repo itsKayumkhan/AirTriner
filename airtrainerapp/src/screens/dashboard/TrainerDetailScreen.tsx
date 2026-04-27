@@ -87,7 +87,9 @@ function PressableCard({ children, style, delay = 0 }: { children: React.ReactNo
 
 export default function TrainerDetailScreen({ route, navigation }: any) {
     const { user } = useAuth();
-    const { trainerId, trainer } = route.params;
+    const { trainerId, trainer: trainerParam } = route.params;
+    // Defensive: ensure trainer is never null/undefined
+    const trainer = trainerParam || {};
     const [reviews, setReviews] = useState<(ReviewRow & { reviewer: UserRow })[]>([]);
     const [isBooking, setIsBooking] = useState(false);
     const [bioExpanded, setBioExpanded] = useState(false);
@@ -832,55 +834,55 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
                 </Card>
 
                 {/* Mini Map (native only) */}
-                {trainer.latitude && trainer.longitude && MAPS_AVAILABLE && (
-                    <View style={styles.miniMapContainer}>
-                        <MapView
-                            style={styles.miniMap}
-                            provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
-                            initialRegion={{
-                                latitude: Number(trainer.latitude),
-                                longitude: Number(trainer.longitude),
-                                latitudeDelta: 0.05,
-                                longitudeDelta: 0.05,
-                            }}
-                            scrollEnabled={false}
-                            zoomEnabled={false}
-                            rotateEnabled={false}
-                            pitchEnabled={false}
-                            customMapStyle={[
-                                { elementType: 'geometry', stylers: [{ color: Colors.background }] },
-                                { elementType: 'labels.text.stroke', stylers: [{ color: Colors.background }] },
-                                { elementType: 'labels.text.fill', stylers: [{ color: Colors.textTertiary }] },
-                                { featureType: 'road', elementType: 'geometry', stylers: [{ color: Colors.card }] },
-                                { featureType: 'water', elementType: 'geometry', stylers: [{ color: Colors.backgroundSecondary }] },
-                                { featureType: 'poi', elementType: 'geometry', stylers: [{ color: Colors.backgroundTertiary }] },
-                            ]}
-                        >
-                            <MapsMarker
-                                coordinate={{
-                                    latitude: Number(trainer.latitude),
-                                    longitude: Number(trainer.longitude),
+                {trainer.latitude && trainer.longitude && MAPS_AVAILABLE && (() => {
+                    const lat = Number(trainer.latitude);
+                    const lng = Number(trainer.longitude);
+                    if (isNaN(lat) || isNaN(lng)) return null;
+                    return (
+                        <View style={styles.miniMapContainer}>
+                            <MapView
+                                style={styles.miniMap}
+                                provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
+                                initialRegion={{
+                                    latitude: lat,
+                                    longitude: lng,
+                                    latitudeDelta: 0.05,
+                                    longitudeDelta: 0.05,
                                 }}
+                                scrollEnabled={false}
+                                zoomEnabled={false}
+                                rotateEnabled={false}
+                                pitchEnabled={false}
+                                customMapStyle={[
+                                    { elementType: 'geometry', stylers: [{ color: Colors.background }] },
+                                    { elementType: 'labels.text.stroke', stylers: [{ color: Colors.background }] },
+                                    { elementType: 'labels.text.fill', stylers: [{ color: Colors.textTertiary }] },
+                                    { featureType: 'road', elementType: 'geometry', stylers: [{ color: Colors.card }] },
+                                    { featureType: 'water', elementType: 'geometry', stylers: [{ color: Colors.backgroundSecondary }] },
+                                    { featureType: 'poi', elementType: 'geometry', stylers: [{ color: Colors.backgroundTertiary }] },
+                                ]}
                             >
-                                <View style={styles.miniMapPin}>
-                                    <Ionicons name="person" size={14} color={Colors.textInverse} />
-                                </View>
-                            </MapsMarker>
-                            {trainer.travel_radius_miles > 0 && (
-                                <MapsCircle
-                                    center={{
-                                        latitude: Number(trainer.latitude),
-                                        longitude: Number(trainer.longitude),
-                                    }}
-                                    radius={trainer.travel_radius_miles * 1609.34}
-                                    fillColor={Colors.primaryMuted}
-                                    strokeColor={Colors.borderActive}
-                                    strokeWidth={1}
-                                />
-                            )}
-                        </MapView>
-                    </View>
-                )}
+                                <MapsMarker
+                                    coordinate={{ latitude: lat, longitude: lng }}
+                                    tracksViewChanges={false}
+                                >
+                                    <View style={styles.miniMapPin}>
+                                        <Ionicons name="person" size={14} color={Colors.textInverse} />
+                                    </View>
+                                </MapsMarker>
+                                {trainer.travel_radius_miles > 0 && (
+                                    <MapsCircle
+                                        center={{ latitude: lat, longitude: lng }}
+                                        radius={trainer.travel_radius_miles * 1609.34}
+                                        fillColor={Colors.primaryMuted}
+                                        strokeColor={Colors.borderActive}
+                                        strokeWidth={1}
+                                    />
+                                )}
+                            </MapView>
+                        </View>
+                    );
+                })()}
             </PressableCard>
 
             {/* ─── 6. REVIEWS SECTION ─── */}
@@ -955,7 +957,7 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
             <View style={{ height: 110 }} />
 
             {/* ─── 7. BOOK NOW BUTTON (sticky) ─── */}
-            {user?.role === 'athlete' && (
+            {(user?.role === 'athlete' || user?.role === 'admin') && (
                 <Animated.View entering={FadeInUp.delay(60).duration(250)} style={styles.bottomBar}>
                     <TouchableOpacity
                         onPress={handleMessage}

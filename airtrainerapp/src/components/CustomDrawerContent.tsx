@@ -41,7 +41,7 @@ export default function CustomDrawerContent(props: any) {
             title: 'Main',
             items: [
                 { label: 'Dashboard', icon: 'home-outline', screen: 'Dashboard', roles: ['athlete', 'trainer', 'admin'] },
-                { label: 'Discover Trainers', icon: 'compass-outline', screen: 'Discover', roles: ['athlete'] },
+                { label: 'Discover Trainers', icon: 'compass-outline', screen: 'Discover', roles: ['athlete', 'admin'] },
                 { label: 'Bookings', icon: 'calendar-outline', screen: 'Bookings', roles: ['athlete', 'trainer', 'admin'] },
                 { label: 'Messages', icon: 'chatbubbles-outline', screen: 'Messages', roles: ['athlete', 'trainer', 'admin'] },
             ],
