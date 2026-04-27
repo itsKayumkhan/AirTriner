@@ -188,11 +188,13 @@ export default function EarningsPage() {
         URL.revokeObjectURL(url)
     }
 
-    // Trainer stats — use completed bookings as source of truth (matches monthly breakdown & session history)
-    // Fall back to released transactions when available, otherwise use booking price
+    // Trainer stats — use completed bookings as source of truth (matches monthly breakdown & session history).
+    // AirTrainr's fee model is "athletes pay all fees, trainer keeps 100% of price",
+    // so total earned == net earnings == trainer payout. No platform/Stripe
+    // deductions are taken from the trainer side — the old subtraction was a
+    // leftover from an earlier model and confused trainers about what they get.
     const totalEarnings = completedBookings.reduce((s, b) => s + Number(b.price), 0);
-    const totalFees = completedBookings.reduce((s, b) => s + Number((b as any).platform_fee || b.price * 0.03), 0);
-    const netEarnings = totalEarnings - totalFees;
+    const netEarnings = totalEarnings;
     // In Escrow: confirmed upcoming sessions + completed sessions awaiting admin release
     const pendingPayout = upcomingPaid.reduce((s, b) => s + Number(b.payment_transaction?.trainer_payout || 0), 0);
     const heldCompletedPayout = heldCompletedTransactions.reduce((s, t) => s + Number(t.trainer_payout), 0);
@@ -272,6 +274,7 @@ export default function EarningsPage() {
                     <div className="bg-surface rounded-2xl p-7 border border-white/5">
                         <div className="text-xs text-text-main/50 mb-2 uppercase tracking-wider font-bold">Net Earnings</div>
                         <div className="text-3xl font-black font-display bg-primary bg-clip-text text-transparent">${netEarnings.toFixed(2)}</div>
+                        <div className="text-[11px] text-text-main/40 mt-1">100% of your rate — athletes pay all platform &amp; Stripe fees</div>
                     </div>
                     <div className="bg-surface rounded-2xl p-7 border border-white/5 border-l-2 border-l-yellow-500/50">
                         <div className="flex items-center gap-2 text-xs text-text-main/50 mb-2 uppercase tracking-wider font-bold">
