@@ -12,6 +12,7 @@ import dynamic from "next/dynamic";
 import type { TrainerPin } from "@/components/search/FindTrainerMap";
 import { formatSportName } from "@/lib/format";
 import LocationAutocomplete, { type LocationValue } from "@/components/forms/LocationAutocomplete";
+import { normalizeSessionPricing, minEnabledPrice, enabledDurations } from "@/lib/session-pricing";
 
 const FindTrainerMap = dynamic(() => import("@/components/search/FindTrainerMap"), { ssr: false });
 
@@ -399,7 +400,8 @@ export default function SearchTrainersPage() {
                 if (!fullName.includes(nameFilter.toLowerCase())) return false;
             }
             if (sportFilter !== "All Sports" && !(t.sports || []).some((s: string) => normalizeSport(s) === normalizeSport(sportFilter))) return false;
-            if (Number(t.hourly_rate) > maxRate) return false;
+            const tMinPrice = minEnabledPrice(normalizeSessionPricing(t.session_pricing, t.hourly_rate)) ?? Number(t.hourly_rate);
+            if (tMinPrice > maxRate) return false;
             if (minRating > 0 && t.avg_rating < minRating) return false;
 
             // Exact Filters
@@ -424,8 +426,16 @@ export default function SearchTrainersPage() {
 
         switch (sortBy) {
             case "match": result.sort((a, b) => b.matchScore - a.matchScore); break;
-            case "price_low": result.sort((a, b) => Number(a.hourly_rate) - Number(b.hourly_rate)); break;
-            case "price_high": result.sort((a, b) => Number(b.hourly_rate) - Number(a.hourly_rate)); break;
+            case "price_low": result.sort((a, b) => {
+                const ap = minEnabledPrice(normalizeSessionPricing(a.session_pricing, a.hourly_rate)) ?? Number(a.hourly_rate);
+                const bp = minEnabledPrice(normalizeSessionPricing(b.session_pricing, b.hourly_rate)) ?? Number(b.hourly_rate);
+                return ap - bp;
+            }); break;
+            case "price_high": result.sort((a, b) => {
+                const ap = minEnabledPrice(normalizeSessionPricing(a.session_pricing, a.hourly_rate)) ?? Number(a.hourly_rate);
+                const bp = minEnabledPrice(normalizeSessionPricing(b.session_pricing, b.hourly_rate)) ?? Number(b.hourly_rate);
+                return bp - ap;
+            }); break;
             case "rating": result.sort((a, b) => b.avg_rating - a.avg_rating); break;
         }
 
@@ -712,7 +722,7 @@ export default function SearchTrainersPage() {
                             sport: (t.sports || []).map((s: string) => sportLabels[s] || formatSportName(s)).join(", "),
                             rating: t.avg_rating,
                             reviewCount: t.review_count,
-                            hourlyRate: Number(t.hourly_rate),
+                            hourlyRate: minEnabledPrice(normalizeSessionPricing(t.session_pricing, t.hourly_rate)) ?? Number(t.hourly_rate),
                             lat: t.latitude!,
                             lng: t.longitude!,
                             avatarUrl: t.user?.avatar_url || undefined,
@@ -752,10 +762,19 @@ export default function SearchTrainersPage() {
 
                             {/* Price — top right, highlighted */}
                             <div className="absolute top-3 right-3">
-                                <div className="bg-primary/20 backdrop-blur-sm px-3 py-1.5 rounded-xl border border-primary/50 shadow-[0_0_12px_rgba(69,208,255,0.3)]">
-                                    <span className="text-primary font-black text-xl leading-none">${Number(trainer.hourly_rate).toFixed(0)}</span>
-                                    <span className="text-primary/60 text-[11px] font-bold">/hr</span>
-                                </div>
+                                {(() => {
+                                    const pricing = normalizeSessionPricing(trainer.session_pricing, trainer.hourly_rate);
+                                    const enabled = enabledDurations(pricing);
+                                    const minPrice = minEnabledPrice(pricing) ?? Number(trainer.hourly_rate);
+                                    const multiple = enabled.length > 1;
+                                    return (
+                                        <div className="bg-primary/20 backdrop-blur-sm px-3 py-1.5 rounded-xl border border-primary/50 shadow-[0_0_12px_rgba(69,208,255,0.3)]">
+                                            {multiple && <span className="text-primary/70 text-[10px] font-bold mr-1">from</span>}
+                                            <span className="text-primary font-black text-xl leading-none">${Number(minPrice).toFixed(0)}</span>
+                                            {!multiple && <span className="text-primary/60 text-[11px] font-bold">/1hr</span>}
+                                        </div>
+                                    );
+                                })()}
                             </div>
 
                             {/* Rating — bottom left */}

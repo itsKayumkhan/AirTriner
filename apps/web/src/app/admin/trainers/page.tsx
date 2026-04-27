@@ -200,8 +200,9 @@ export default function AdminTrainersPage() {
             }));
             setShowRejectInput(false);
             setRejectReasonInput("");
-        } catch (err) {
+        } catch (err: any) {
             console.error(err);
+            alert(err?.message || `Failed to ${action} profile image`);
         } finally {
             setImageActionLoading(false);
         }
