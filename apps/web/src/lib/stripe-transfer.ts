@@ -45,25 +45,39 @@ export async function transferToTrainer(stripe: Stripe, params: {
         return { ok: false, reason: 'account_lookup_failed', code: err?.code };
     }
 
-    // 2. Resolve the source charge for proper transfer accounting
+    // 2. Resolve the source charge for proper transfer accounting + currency.
+    //    When source_transaction is set, the transfer currency MUST match the
+    //    source charge's currency (Stripe rejects USD transfer from a CAD charge).
+    //    We default to USD only when there's no linked source charge to read.
     let sourceTransaction: string | undefined;
+    let sourceCurrency: string | undefined;
     if (stripePaymentIntentId) {
         try {
-            const pi = await stripe.paymentIntents.retrieve(stripePaymentIntentId);
+            const pi = await stripe.paymentIntents.retrieve(stripePaymentIntentId, {
+                expand: ['latest_charge'],
+            });
             const latest = (pi.latest_charge ?? null) as string | Stripe.Charge | null;
-            if (typeof latest === 'string') sourceTransaction = latest;
-            else if (latest && typeof latest === 'object') sourceTransaction = latest.id;
+            if (typeof latest === 'string') {
+                sourceTransaction = latest;
+                // Fallback: PI currency matches its charge currency in 99% of cases
+                if (pi.currency) sourceCurrency = pi.currency.toLowerCase();
+            } else if (latest && typeof latest === 'object') {
+                sourceTransaction = latest.id;
+                sourceCurrency = (latest.currency || pi.currency || '').toLowerCase() || undefined;
+            }
         } catch {
             // non-fatal — Transfer can still happen from platform balance
         }
     }
+
+    const transferCurrency = sourceCurrency || 'usd';
 
     // 3. Transfer
     try {
         const transfer = await stripe.transfers.create(
             {
                 amount: Math.round(amountUsd * 100),
-                currency: 'usd',
+                currency: transferCurrency,
                 destination: destinationAccountId,
                 transfer_group: `booking_${bookingId}`,
                 metadata: { booking_id: bookingId, tx_id: txId },

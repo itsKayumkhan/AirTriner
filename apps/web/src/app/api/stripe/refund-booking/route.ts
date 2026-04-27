@@ -22,16 +22,16 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Missing bookingId' }, { status: 400 });
         }
 
-        // Get the payment transaction
+        // Get the payment transaction (any status — branch below)
         const { data: tx } = await supabase
             .from('payment_transactions')
             .select('*')
             .eq('booking_id', bookingId)
-            .eq('status', 'held')
             .maybeSingle();
 
         if (!tx) {
             // No payment to refund — just cancel the booking
+            console.log(`[refund-booking] No payment_transaction for booking ${bookingId}; nothing to refund`);
             return NextResponse.json({ success: true, refunded: false });
         }
 
@@ -39,16 +39,59 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'No payment intent found for this booking' }, { status: 400 });
         }
 
-        // Issue full refund via Stripe
-        const refund = await stripe.refunds.create({
-            payment_intent: tx.stripe_payment_intent_id,
-        });
+        // Branch on tx.status
+        if (tx.status === 'refunded') {
+            console.log(`[refund-booking] Booking ${bookingId} tx already refunded (idempotent no-op)`);
+            return NextResponse.json({ success: true, refunded: false, alreadyRefunded: true });
+        }
+
+        if (tx.status !== 'held' && tx.status !== 'released') {
+            console.log(`[refund-booking] Booking ${bookingId} tx in non-refundable status: ${tx.status}`);
+            return NextResponse.json(
+                { error: `Cannot refund booking with payment status: ${tx.status}` },
+                { status: 409 }
+            );
+        }
+
+        // RELEASED → reverse the transfer from connected account first
+        if (tx.status === 'released') {
+            if (!tx.stripe_transfer_id) {
+                console.error(`[refund-booking] Booking ${bookingId} status=released but no stripe_transfer_id`);
+                return NextResponse.json(
+                    { error: 'Released payment is missing stripe_transfer_id; cannot reverse' },
+                    { status: 500 }
+                );
+            }
+            console.log(`[refund-booking] Booking ${bookingId} is RELEASED — reversing transfer ${tx.stripe_transfer_id}`);
+            try {
+                const reversal = await stripe.transfers.createReversal(
+                    tx.stripe_transfer_id,
+                    { refund_application_fee: true },
+                    { idempotencyKey: `reversal_${tx.id}` }
+                );
+                console.log(`[refund-booking] Reversal succeeded: ${reversal.id} for tx ${tx.id}`);
+            } catch (reversalErr: any) {
+                console.error(`[refund-booking] Transfer reversal FAILED for tx ${tx.id}:`, reversalErr);
+                return NextResponse.json(
+                    { error: `Transfer reversal failed: ${reversalErr.message}` },
+                    { status: 502 }
+                );
+            }
+        } else {
+            console.log(`[refund-booking] Booking ${bookingId} is HELD — direct refund path`);
+        }
+
+        // Issue refund to athlete's original payment method
+        const refund = await stripe.refunds.create(
+            { payment_intent: tx.stripe_payment_intent_id },
+            { idempotencyKey: `refund_${tx.id}` }
+        );
 
         if (refund.status !== 'succeeded' && refund.status !== 'pending') {
             return NextResponse.json({ error: `Refund failed with status: ${refund.status}` }, { status: 500 });
         }
 
-        // Update payment_transaction to refunded
+        // Update payment_transaction to refunded (regardless of held/released path)
         await supabase
             .from('payment_transactions')
             .update({ status: 'refunded' })
