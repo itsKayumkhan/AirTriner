@@ -118,6 +118,13 @@ export async function GET(req: NextRequest) {
             bankLast4,
             bankName,
             dashboardUrl,
+            requirements: {
+                currently_due: account.requirements?.currently_due ?? [],
+                eventually_due: account.requirements?.eventually_due ?? [],
+                past_due: account.requirements?.past_due ?? [],
+                pending_verification: account.requirements?.pending_verification ?? [],
+                disabled_reason: account.requirements?.disabled_reason ?? null,
+            },
         });
     } catch (error: unknown) {
         const message = error instanceof Error ? error.message : 'Failed to fetch connect status';

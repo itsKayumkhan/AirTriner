@@ -29,6 +29,13 @@ type ConnectStatus = {
     accountId?: string;
     needsPlatformSetup?: boolean;
     notice?: string;
+    requirements?: {
+        currently_due: string[];
+        eventually_due: string[];
+        past_due: string[];
+        pending_verification: string[];
+        disabled_reason: string | null;
+    };
 };
 
 export default function PaymentSettingsPage() {
@@ -282,22 +289,46 @@ export default function PaymentSettingsPage() {
                         <div className="bg-amber-500/5 border border-amber-500/15 rounded-xl px-5 py-4">
                             <p className="text-amber-300 text-sm font-semibold mb-1">Almost there!</p>
                             <p className="text-text-main/60 text-sm">
-                                Your Stripe account was created but onboarding is not complete.
-                                You need to finish adding your bank details and identity verification.
+                                {!status?.onboardingComplete
+                                    ? "Your Stripe account was created but onboarding is not complete. You need to finish adding your bank details and identity verification."
+                                    : "Your account is set up but Stripe still needs a few more details before payouts can be enabled."}
                             </p>
-                        </div>
-                        <button
-                            onClick={handleConnect}
-                            disabled={connecting}
-                            className="flex items-center gap-2 px-6 py-3.5 rounded-full bg-primary text-bg font-black text-sm uppercase tracking-wider hover:shadow-[0_0_20px_rgba(69,208,255,0.25)] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                            {connecting ? (
-                                <Loader2 size={18} className="animate-spin" />
-                            ) : (
-                                <ArrowRight size={18} />
+                            {status?.requirements?.currently_due && status.requirements.currently_due.length > 0 && (
+                                <div className="mt-3 pt-3 border-t border-amber-500/15">
+                                    <p className="text-amber-300/80 text-xs font-bold uppercase tracking-wider mb-2">Pending</p>
+                                    <ul className="space-y-1">
+                                        {status.requirements.currently_due.map((r) => (
+                                            <li key={r} className="text-text-main/70 text-xs font-mono">• {r.replace(/[._]/g, ' ')}</li>
+                                        ))}
+                                    </ul>
+                                </div>
                             )}
-                            {connecting ? "Redirecting..." : "Complete Setup"}
-                        </button>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-3">
+                            <button
+                                onClick={handleConnect}
+                                disabled={connecting}
+                                className="flex items-center gap-2 px-6 py-3.5 rounded-full bg-primary text-bg font-black text-sm uppercase tracking-wider hover:shadow-[0_0_20px_rgba(69,208,255,0.25)] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {connecting ? (
+                                    <Loader2 size={18} className="animate-spin" />
+                                ) : (
+                                    <ArrowRight size={18} />
+                                )}
+                                {connecting ? "Redirecting..." : "Complete Setup"}
+                            </button>
+                            {status?.dashboardUrl && (
+                                <a
+                                    href={status.dashboardUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-white/[0.04] border border-white/10 text-text-main/70 text-sm font-bold hover:border-primary/30 hover:text-primary transition-all"
+                                >
+                                    <ExternalLink size={16} />
+                                    Open Stripe Dashboard
+                                </a>
+                            )}
+                        </div>
                     </div>
                 )}
 
