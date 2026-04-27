@@ -63,10 +63,16 @@ function RegisterForm() {
             return;
         }
 
-        // Fix C: match backend password requirements (12+ chars, complexity)
-        const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#^()\-_=+])[A-Za-z\d@$!%*?&#^()\-_=+]{12,}$/;
-        if (!passwordRegex.test(password)) {
-            toast.error("Password must be at least 12 characters with uppercase, lowercase, number, and special character");
+        // Password rules: at least 12 chars + lower + upper + digit + symbol.
+        // Allow ANY non-alphanumeric as symbol — old regex whitelisted only a
+        // narrow set and silently rejected common chars like '.' ',' ';'
+        // even when the password met every other rule.
+        if (password.length < 12) {
+            toast.error("Password must be at least 12 characters long.");
+            return;
+        }
+        if (!/[a-z]/.test(password) || !/[A-Z]/.test(password) || !/\d/.test(password) || !/[^A-Za-z0-9]/.test(password)) {
+            toast.error("Password must include uppercase, lowercase, a number, and a symbol.");
             return;
         }
 
