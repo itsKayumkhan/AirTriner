@@ -27,6 +27,8 @@ type ConnectStatus = {
     bankName: string | null;
     dashboardUrl: string | null;
     accountId?: string;
+    needsPlatformSetup?: boolean;
+    notice?: string;
 };
 
 export default function PaymentSettingsPage() {
@@ -140,7 +142,9 @@ export default function PaymentSettingsPage() {
     }
 
     const isFullyConnected = status?.hasAccount && status?.onboardingComplete && status?.payoutsEnabled;
-    const isPartial = status?.hasAccount && !status?.onboardingComplete;
+    // Partial: account exists but either Stripe onboarding incomplete OR payouts not enabled
+    // (e.g. identity verified but bank account missing). User needs to finish setup.
+    const isPartial = status?.hasAccount && (!status?.onboardingComplete || !status?.payoutsEnabled) && !isFullyConnected;
 
     return (
         <div className="max-w-[800px] w-full pb-12">
@@ -153,6 +157,21 @@ export default function PaymentSettingsPage() {
                     Connect your bank account to receive payouts from training sessions.
                 </p>
             </div>
+
+            {/* Server notice (e.g. saved Stripe account no longer valid, platform Connect not enabled) */}
+            {status?.notice && (
+                <div className="mb-6 bg-amber-500/10 border border-amber-500/25 rounded-2xl px-5 py-4 flex items-start gap-3">
+                    <AlertTriangle size={18} className="text-amber-400 mt-0.5 shrink-0" />
+                    <div>
+                        <p className="text-amber-200 text-sm font-semibold">{status.notice}</p>
+                        {status.needsPlatformSetup && (
+                            <p className="text-amber-300/70 text-xs mt-1">
+                                Admin: enable Connect at <span className="font-mono">dashboard.stripe.com → Settings → Connect</span>.
+                            </p>
+                        )}
+                    </div>
+                </div>
+            )}
 
             {/* Error Banner */}
             {error && (

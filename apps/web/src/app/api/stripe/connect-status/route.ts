@@ -53,7 +53,34 @@ export async function GET(req: NextRequest) {
             });
         }
 
-        const account = await stripe.accounts.retrieve(profile.stripe_account_id);
+        // Stripe will throw "platform_account_required" if Connect isn't
+        // enabled on the platform account, OR "resource_missing" if the saved
+        // acct_xxx was deleted in Stripe. Either way the saved id is unusable —
+        // surface that to the UI so the Connect button reappears.
+        let account: Stripe.Account;
+        try {
+            account = await stripe.accounts.retrieve(profile.stripe_account_id);
+        } catch (err: any) {
+            const code = err?.code;
+            const isUnusable = code === 'platform_account_required' || code === 'resource_missing' || code === 'account_invalid';
+            console.warn('[stripe/connect-status] retrieve failed', { code, message: err?.message });
+            if (isUnusable) {
+                return NextResponse.json({
+                    hasAccount: false,
+                    onboardingComplete: false,
+                    payoutsEnabled: false,
+                    chargesEnabled: false,
+                    bankLast4: null,
+                    bankName: null,
+                    dashboardUrl: null,
+                    needsPlatformSetup: code === 'platform_account_required',
+                    notice: code === 'platform_account_required'
+                        ? 'Stripe Connect is not enabled on the AirTrainr platform account. Admin must enable Connect in the Stripe dashboard.'
+                        : 'The previously linked Stripe account is no longer valid. Please reconnect.',
+                });
+            }
+            throw err;
+        }
 
         // Try to get bank account details
         let bankLast4: string | null = null;
