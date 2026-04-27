@@ -75,7 +75,6 @@ export default function TrainerEditProfilePage() {
         yearsExperience: "",
         previousFacility: "",
         hourlyRate: "75",
-        packageRate: "650",
         certifications: "",
         city: "",
         state: "",
@@ -94,6 +93,12 @@ export default function TrainerEditProfilePage() {
     const [displayRadius, setDisplayRadius] = useState("20");
 
     const [sessionLengths, setSessionLengths] = useState<number[]>([60]);
+    // Per-duration session pricing (only 30/45/60 supported). Camps live separately.
+    const [sessionPricing, setSessionPricing] = useState<Record<"30" | "45" | "60", { price: string; enabled: boolean }>>({
+        "30": { price: "", enabled: false },
+        "45": { price: "", enabled: false },
+        "60": { price: "75", enabled: true },
+    });
     const [trainingLocations, setTrainingLocations] = useState<string[]>([]);
 
     const [newTag, setNewTag] = useState("");
@@ -193,7 +198,6 @@ export default function TrainerEditProfilePage() {
                     yearsExperience: latestProfile.years_experience?.toString() || "",
                     hourlyRate: latestProfile.hourly_rate?.toString() || "75",
                     previousFacility: prev.previousFacility,
-                    packageRate: prev.packageRate,
                     certifications: initialCerts,
                     city: latestProfile.city || "",
                     state: latestProfile.state || "",
@@ -217,6 +221,25 @@ export default function TrainerEditProfilePage() {
                     setDisplayRadius(String(storedMiles));
                 }
                 if (latestProfile.session_lengths?.length) setSessionLengths(latestProfile.session_lengths);
+                // Hydrate session_pricing from DB (or fall back to hourly_rate proportional defaults)
+                {
+                    const sp = (latestProfile as any).session_pricing as Record<string, { price: number; enabled: boolean }> | null | undefined;
+                    const hr = Number(latestProfile.hourly_rate) || 75;
+                    setSessionPricing({
+                        "30": {
+                            price: sp?.["30"]?.price != null ? String(sp["30"].price) : String(Math.round(hr * 0.5 * 100) / 100),
+                            enabled: !!sp?.["30"]?.enabled,
+                        },
+                        "45": {
+                            price: sp?.["45"]?.price != null ? String(sp["45"].price) : String(Math.round(hr * 0.75 * 100) / 100),
+                            enabled: !!sp?.["45"]?.enabled,
+                        },
+                        "60": {
+                            price: sp?.["60"]?.price != null ? String(sp["60"].price) : String(hr),
+                            enabled: sp?.["60"]?.enabled !== false,
+                        },
+                    });
+                }
                 if (latestProfile.training_locations?.length) setTrainingLocations(latestProfile.training_locations);
                 if (latestProfile.verification_documents?.length) setVerificationDocs(latestProfile.verification_documents);
 
@@ -260,11 +283,17 @@ export default function TrainerEditProfilePage() {
         else if (formData.bio.trim().length < 50) errors.bio = "Bio must be at least 50 characters";
 
         if (!formData.sports || formData.sports.length === 0) errors.sports = "Select at least one sport";
-        if (!formData.hourlyRate || parseFloat(formData.hourlyRate) <= 0) errors.hourlyRate = "Hourly rate is required";
+        // Validate session pricing: at least one duration enabled with a positive price
+        const enabledKeys = (["30", "45", "60"] as const).filter((k) => sessionPricing[k].enabled);
+        const allPricesValid = enabledKeys.every((k) => parseFloat(sessionPricing[k].price) > 0);
+        if (enabledKeys.length === 0) {
+            errors.sessionPricing = "Enable at least one session duration";
+        } else if (!allPricesValid) {
+            errors.sessionPricing = "Set a price (> 0) for every enabled duration";
+        }
         if (!formData.yearsExperience) errors.yearsExperience = "Years of experience is required";
         if (!formData.city?.trim()) errors.city = "City is required";
         if (!trainingLocations || trainingLocations.length === 0) errors.trainingLocations = "Select at least one training location";
-        if (!sessionLengths || sessionLengths.length === 0) errors.sessionLengths = "Select at least one session length";
         if (formData.zipCode.trim()) {
             const zipCountry = detectCountry(formData.zipCode);
             if (zipCountry === "OTHER") {
@@ -299,7 +328,12 @@ export default function TrainerEditProfilePage() {
                 bio: formData.bio,
                 sports: formData.sports,
                 years_experience: Math.max(0, parseInt(formData.yearsExperience) || 0),
-                hourly_rate: parseFloat(formData.hourlyRate) || 75,
+                hourly_rate: parseFloat(sessionPricing["60"].price) || parseFloat(formData.hourlyRate) || 75,
+                session_pricing: {
+                    "30": { price: parseFloat(sessionPricing["30"].price) || 0, enabled: sessionPricing["30"].enabled },
+                    "45": { price: parseFloat(sessionPricing["45"].price) || 0, enabled: sessionPricing["45"].enabled },
+                    "60": { price: parseFloat(sessionPricing["60"].price) || 0, enabled: sessionPricing["60"].enabled },
+                },
                 certifications: formData.certifications,
                 city: formData.city || null,
                 state: formData.state || null,
@@ -309,7 +343,11 @@ export default function TrainerEditProfilePage() {
                     : parseInt(displayRadius) || 20,
                 target_skill_levels: formData.targetSkillLevels,
                 "preferredTrainingTimes": formData.preferredTrainingTimes,
-                session_lengths: sessionLengths.length > 0 ? sessionLengths : [60],
+                // Derived from session_pricing enabled flags (legacy column kept in sync for code that still reads it)
+                session_lengths: (() => {
+                    const enabled = (["30", "45", "60"] as const).filter((k) => sessionPricing[k].enabled).map(Number);
+                    return enabled.length > 0 ? enabled : [60];
+                })(),
                 training_locations: trainingLocations,
                 camp_offerings: campOfferings,
             };
@@ -1412,33 +1450,9 @@ export default function TrainerEditProfilePage() {
                             <h3 className="text-[15px] font-black text-white tracking-widest uppercase">PRICING PLANS</h3>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-5 h-36">
-                            <div id="field-hourlyRate">
-                                <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">HOURLY RATE ($) <span className="text-red-400">*</span></label>
-                                <div className="relative">
-                                    <span className="absolute left-5 top-1/2 -translate-y-1/2 text-text-main/40 font-bold">$</span>
-                                    <input
-                                        type="number"
-                                        value={formData.hourlyRate}
-                                        onChange={(e) => { setFormData({ ...formData, hourlyRate: e.target.value }); setFieldErrors((p) => { const n = { ...p }; delete n.hourlyRate; return n; }); }}
-                                        className={`w-full bg-[#12141A] border rounded-2xl pl-10 pr-5 py-3.5 text-white text-sm outline-none transition-colors ${fieldErrors.hourlyRate ? "border-red-500/60 focus:border-red-500/80" : "border-white/5 focus:border-primary/50"}`}
-                                    />
-                                </div>
-                                {fieldErrors.hourlyRate && <p className="mt-1.5 text-[11px] text-red-400 font-semibold flex items-center gap-1"><AlertTriangle size={11} /> {fieldErrors.hourlyRate}</p>}
-                            </div>
-                            <div>
-                                <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">PACKAGE 10X ($)</label>
-                                <div className="relative">
-                                    <span className="absolute left-5 top-1/2 -translate-y-1/2 text-text-main/40 font-bold">$</span>
-                                    <input
-                                        type="number"
-                                        value={formData.packageRate}
-                                        onChange={(e) => setFormData({ ...formData, packageRate: e.target.value })}
-                                        className="w-full bg-[#12141A] border border-white/5 rounded-2xl pl-10 pr-5 py-3.5 text-white text-sm outline-none focus:border-primary/50 transition-colors"
-                                    />
-                                </div>
-                            </div>
-                        </div>
+                        {/* Per-duration session pricing lives in its own dedicated card below.
+                            Old hourly_rate + package 10x inputs removed — they were inconsistent
+                            with the multi-duration model and confused trainers. */}
                     </div>
 
                     {/* Verification Documents */}
@@ -1519,97 +1533,62 @@ export default function TrainerEditProfilePage() {
                         )}
                     </div>
 
-                    {/* Session Lengths */}
-                    <div id="field-sessionLengths" className={`bg-[#1A1C23] border rounded-[20px] p-6 lg:p-8 shadow-md md:col-span-2 transition-colors ${fieldErrors.sessionLengths ? "border-red-500/60" : "border-white/5"}`}>
+                    {/* Session Pricing — per-duration prices (only 30/45/60). Camps live below in their own block. */}
+                    <div id="field-sessionPricing" className={`bg-[#1A1C23] border rounded-[20px] p-6 lg:p-8 shadow-md md:col-span-2 transition-colors ${fieldErrors.sessionPricing ? "border-red-500/60" : "border-white/5"}`}>
                         <div className="mb-8">
-                            <h3 className="text-white font-bold text-sm uppercase tracking-widest mb-1">Session Lengths Offered <span className="text-red-400">*</span></h3>
-                            <p className="text-zinc-400 text-xs mb-4">Select which session durations you offer</p>
-                            {fieldErrors.sessionLengths && <p className="mb-3 text-[11px] text-red-400 font-semibold flex items-center gap-1"><AlertTriangle size={11} /> {fieldErrors.sessionLengths}</p>}
-                            <div className="flex flex-wrap gap-3">
-                                {[30, 45, 60, 90, 120].map(mins => (
-                                    <button
-                                        key={mins}
-                                        type="button"
-                                        onClick={() => {
-                                            setSessionLengths(prev =>
-                                                prev.includes(mins) ? prev.filter(l => l !== mins) : [...prev, mins]
-                                            );
-                                            setFieldErrors((p) => { const n = { ...p }; delete n.sessionLengths; return n; });
-                                        }}
-                                        className={`px-5 py-3 rounded-xl text-sm font-bold border transition-all ${
-                                            sessionLengths.includes(mins)
-                                                ? 'bg-white text-black border-white'
-                                                : 'bg-white/4 text-white/60 border-white/10 hover:border-white/30'
-                                        }`}
-                                    >
-                                        {mins < 60 ? `${mins} min` : mins === 60 ? '1 hr' : `${mins / 60} hr`}
-                                    </button>
-                                ))}
-                                {/* Show any custom durations not in presets */}
-                                {sessionLengths.filter(m => ![30, 45, 60, 90, 120].includes(m)).map(mins => (
-                                    <button
-                                        key={mins}
-                                        type="button"
-                                        onClick={() => setSessionLengths(prev => prev.filter(l => l !== mins))}
-                                        className="px-5 py-3 rounded-xl text-sm font-bold border transition-all bg-white text-black border-white"
-                                    >
-                                        {mins >= 60 ? `${mins / 60} hr` : `${mins} min`}
-                                        <X size={12} className="inline ml-1.5 -mt-0.5" />
-                                    </button>
-                                ))}
+                            <h3 className="text-white font-bold text-sm uppercase tracking-widest mb-1">Session Pricing <span className="text-red-400">*</span></h3>
+                            <p className="text-zinc-400 text-xs mb-4">Choose which session durations you offer and set a price for each. Athletes only see durations you enable.</p>
+                            {fieldErrors.sessionPricing && <p className="mb-3 text-[11px] text-red-400 font-semibold flex items-center gap-1"><AlertTriangle size={11} /> {fieldErrors.sessionPricing}</p>}
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                {(["30", "45", "60"] as const).map((d) => {
+                                    const e = sessionPricing[d];
+                                    const label = d === "60" ? "1 hr" : `${d} min`;
+                                    return (
+                                        <div
+                                            key={d}
+                                            className={`rounded-2xl border p-4 transition-all ${
+                                                e.enabled
+                                                    ? "bg-primary/5 border-primary/40"
+                                                    : "bg-white/[0.02] border-white/10"
+                                            }`}
+                                        >
+                                            <label className="flex items-center justify-between cursor-pointer mb-3">
+                                                <span className={`text-sm font-black uppercase tracking-wider ${e.enabled ? "text-white" : "text-text-main/50"}`}>{label}</span>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={e.enabled}
+                                                    onChange={(ev) => {
+                                                        setSessionPricing((p) => ({ ...p, [d]: { ...p[d], enabled: ev.target.checked } }));
+                                                        setFieldErrors((p) => { const n = { ...p }; delete n.sessionPricing; return n; });
+                                                    }}
+                                                    className="w-4 h-4 accent-primary"
+                                                />
+                                            </label>
+                                            <div className="relative">
+                                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-main/40 font-bold text-sm">$</span>
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    step="0.01"
+                                                    placeholder="0.00"
+                                                    value={e.price}
+                                                    onChange={(ev) => {
+                                                        setSessionPricing((p) => ({ ...p, [d]: { ...p[d], price: ev.target.value } }));
+                                                        setFieldErrors((p) => { const n = { ...p }; delete n.sessionPricing; return n; });
+                                                    }}
+                                                    disabled={!e.enabled}
+                                                    className={`w-full bg-[#12141A] border rounded-xl pl-7 pr-3 py-2.5 text-white text-sm outline-none transition-colors disabled:opacity-50 ${
+                                                        e.enabled ? "border-white/10 focus:border-primary/50" : "border-white/5"
+                                                    }`}
+                                                />
+                                            </div>
+                                        </div>
+                                    );
+                                })}
                             </div>
-
-                            {/* Custom duration input */}
-                            <div className="mt-4 flex flex-wrap items-center gap-3">
-                                <div className="flex items-center gap-2">
-                                    <input
-                                        type="number"
-                                        min="1"
-                                        max="600"
-                                        placeholder="Custom (min)"
-                                        value={customDuration}
-                                        onChange={(e) => setCustomDuration(e.target.value)}
-                                        className="w-36 bg-[#12141A] border border-white/5 rounded-xl px-4 py-2.5 text-white text-sm outline-none focus:border-primary/50 transition-colors placeholder:text-text-main/30"
-                                    />
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            const val = parseInt(customDuration);
-                                            if (val > 0 && !sessionLengths.includes(val)) {
-                                                setSessionLengths(prev => [...prev, val]);
-                                            }
-                                            setCustomDuration("");
-                                        }}
-                                        disabled={!customDuration || parseInt(customDuration) <= 0}
-                                        className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-primary/10 border border-primary/20 text-primary text-xs font-black uppercase tracking-wider hover:bg-primary/20 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-                                    >
-                                        <Plus size={14} /> Add
-                                    </button>
-                                </div>
-                                {/* Camp shortcut buttons */}
-                                {!sessionLengths.includes(180) && (
-                                    <button
-                                        type="button"
-                                        onClick={() => setSessionLengths(prev => prev.includes(180) ? prev : [...prev, 180])}
-                                        className="px-4 py-2.5 rounded-xl text-xs font-bold border border-white/10 text-text-main/50 bg-white/4 hover:border-primary/30 hover:text-primary transition-all"
-                                    >
-                                        + 3-hour camp (180m)
-                                    </button>
-                                )}
-                                {!sessionLengths.includes(240) && (
-                                    <button
-                                        type="button"
-                                        onClick={() => setSessionLengths(prev => prev.includes(240) ? prev : [...prev, 240])}
-                                        className="px-4 py-2.5 rounded-xl text-xs font-bold border border-white/10 text-text-main/50 bg-white/4 hover:border-primary/30 hover:text-primary transition-all"
-                                    >
-                                        + 4-hour camp (240m)
-                                    </button>
-                                )}
-                            </div>
-
-                            {sessionLengths.length === 0 && (
-                                <p className="text-red-400 text-xs mt-2">Please select at least one session length</p>
-                            )}
+                            <p className="text-text-main/40 text-[11px] mt-3">
+                                Tip: prices are independent — set whatever feels fair. Athletes pay the exact price you list (platform + processing fees added separately on top).
+                            </p>
                         </div>
 
                         {/* Multi-Day Camp Offerings (Change 1) */}

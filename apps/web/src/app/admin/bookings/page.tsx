@@ -160,8 +160,76 @@ export default function AdminBookingsPage() {
         setActionLoading(true);
         try {
             const newStatus = action === "cancel" ? "cancelled" : "completed";
+
+            // Validation guards before mutating — admin shouldn't blindly mark
+            // anything complete. Refresh the row from DB so we don't trust
+            // possibly-stale local state.
+            const { data: fresh, error: fetchErr } = await supabase
+                .from("bookings")
+                .select("id, status, scheduled_at")
+                .eq("id", id)
+                .maybeSingle();
+            if (fetchErr || !fresh) {
+                alert(fetchErr?.message || "Booking not found");
+                setActionLoading(false);
+                return;
+            }
+
+            if (fresh.status === "completed" || fresh.status === "cancelled") {
+                alert(`Booking already ${fresh.status}. No action needed.`);
+                setActionLoading(false);
+                setConfirmModal({ isOpen: false, id: null, action: null, refId: "" });
+                return;
+            }
+
+            if (action === "complete") {
+                // Block 1: must have a payment_transactions row in held state
+                const { data: tx } = await supabase
+                    .from("payment_transactions")
+                    .select("status")
+                    .eq("booking_id", id)
+                    .maybeSingle();
+                if (!tx) {
+                    alert("Cannot mark complete: athlete has not paid yet (no payment_transactions row).");
+                    setActionLoading(false);
+                    return;
+                }
+                if (tx.status !== "held") {
+                    alert(`Cannot mark complete: payment status is '${tx.status}', expected 'held'.`);
+                    setActionLoading(false);
+                    return;
+                }
+
+                // Block 2: must not have an active dispute
+                const { data: openDispute } = await supabase
+                    .from("disputes")
+                    .select("id")
+                    .eq("booking_id", id)
+                    .in("status", ["under_review", "escalated"])
+                    .maybeSingle();
+                if (openDispute) {
+                    alert("Cannot mark complete: there is an active dispute on this booking. Resolve it first.");
+                    setActionLoading(false);
+                    return;
+                }
+
+                // Soft warning: scheduled time is in the future
+                if (fresh.scheduled_at) {
+                    const scheduled = new Date(fresh.scheduled_at).getTime();
+                    if (scheduled > Date.now()) {
+                        const proceed = confirm(
+                            "This session is scheduled for the future. Are you sure you want to mark it complete now? Payout to the trainer will be released after the hold period."
+                        );
+                        if (!proceed) {
+                            setActionLoading(false);
+                            return;
+                        }
+                    }
+                }
+            }
+
             const { error } = await supabase.from("bookings").update({ status: newStatus }).eq("id", id);
-            
+
             if (!error) {
                 // Update local state without full reload
                 setRawBookings(prev => prev.map(b => {
