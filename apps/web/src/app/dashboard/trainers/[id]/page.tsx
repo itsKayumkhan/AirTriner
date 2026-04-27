@@ -168,6 +168,8 @@ export default function BookTrainerPage() {
     const [selectedTime, setSelectedTime] = useState<string>("");
     const [selectedSport, setSelectedSport] = useState<string>("");
     const [slots, setSlots] = useState<string[]>([]);
+    const [rawSlotCount, setRawSlotCount] = useState(0);
+    const [maxSlotMinutes, setMaxSlotMinutes] = useState(0);
     const [slotsLoading, setSlotsLoading] = useState(false);
     const [durationMinutes, setDurationMinutes] = useState(60);
     const [selectedLocation, setSelectedLocation] = useState('');
@@ -416,14 +418,20 @@ export default function BookTrainerPage() {
                 });
             }
 
+            // Track unfiltered slots so we can show a meaningful message if duration mismatch zeroes them out.
+            const unbookedSlots = allSlots.filter(s => !bookedStartTimes.has(s.start_time.slice(0, 5)));
+            setRawSlotCount(unbookedSlots.length);
+            const longestSlot = unbookedSlots.reduce((max, s) => {
+                const [sh, sm] = s.start_time.split(':').map(Number);
+                const [eh, em] = s.end_time.split(':').map(Number);
+                const dur = (eh * 60 + em) - (sh * 60 + sm);
+                return dur > max ? dur : max;
+            }, 0);
+            setMaxSlotMinutes(longestSlot);
+
             // Filter out booked slots and slots too short for selected duration
             const activeDuration = duration ?? durationMinutes;
-            const availableSlots = allSlots.filter(s => {
-                // Check not booked
-                const slotHH = s.start_time.slice(0, 5); // "09:00"
-                if (bookedStartTimes.has(slotHH)) return false;
-
-                // Check slot has enough duration for selected session length
+            const availableSlots = unbookedSlots.filter(s => {
                 const [sh, sm] = s.start_time.split(':').map(Number);
                 const [eh, em] = s.end_time.split(':').map(Number);
                 const slotDuration = (eh * 60 + em) - (sh * 60 + sm);
@@ -1145,8 +1153,17 @@ export default function BookTrainerPage() {
                                     <div className="w-6 h-6 border-2 border-primary/20 border-t-primary rounded-full animate-spin"></div>
                                 </div>
                             ) : slots.length === 0 ? (
-                                <div className="text-center py-6 bg-[#12141A] rounded-2xl border border-white/5">
-                                    <p className="text-text-main/40 text-[11px] font-bold uppercase tracking-widest">No slots available for this day</p>
+                                <div className="text-center py-6 bg-[#12141A] rounded-2xl border border-white/5 px-4">
+                                    <p className="text-text-main/40 text-[11px] font-bold uppercase tracking-widest">
+                                        {rawSlotCount === 0
+                                            ? "No slots available for this day"
+                                            : "No slots fit this session length"}
+                                    </p>
+                                    {rawSlotCount > 0 && maxSlotMinutes > 0 && maxSlotMinutes < durationMinutes && (
+                                        <p className="text-text-main/50 text-[11px] mt-2 normal-case tracking-normal">
+                                            The trainer's slots are up to <span className="text-primary font-semibold">{maxSlotMinutes} min</span> long. Try a shorter session.
+                                        </p>
+                                    )}
                                 </div>
                             ) : (
                                 <div className="grid grid-cols-2 gap-3">
