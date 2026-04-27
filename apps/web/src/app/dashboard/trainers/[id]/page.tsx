@@ -724,16 +724,15 @@ export default function BookTrainerPage() {
 
     return (
         <>
-        {/* Fixed Back Button */}
-        <button
-            onClick={() => router.back()}
-            className="fixed top-4 left-4 md:left-[276px] z-50 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-bg/80 backdrop-blur-sm border border-white/[0.08] text-text-main/70 hover:text-text-main hover:bg-white/[0.08] hover:border-white/[0.12] transition-all text-sm font-semibold group"
-        >
-            <ChevronLeft size={15} className="group-hover:-translate-x-0.5 transition-transform" />
-            Back to Search
-        </button>
-
         <div className="max-w-[1280px] mx-auto pb-20 px-2 sm:px-4 md:px-8 mt-4">
+            {/* Back link — inline, sits above cover so it never overlaps the image */}
+            <button
+                onClick={() => router.back()}
+                className="mb-4 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] hover:border-white/[0.16] text-text-main/70 hover:text-text-main transition-all text-xs font-semibold group"
+            >
+                <ChevronLeft size={14} className="group-hover:-translate-x-0.5 transition-transform" />
+                Back to Search
+            </button>
 
             {/* Cover Banner — depth via parallax-like layered gradients + radial glow */}
             <div className="w-full h-[220px] sm:h-[360px] rounded-2xl sm:rounded-[32px] overflow-hidden relative mb-16 shadow-[0_30px_60px_-20px_rgba(0,0,0,0.6)] ring-1 ring-white/[0.06]">
@@ -748,10 +747,10 @@ export default function BookTrainerPage() {
                 <div className="absolute -top-24 -right-24 w-72 h-72 rounded-full bg-primary/20 blur-3xl pointer-events-none" />
                 <div className="absolute -bottom-32 -left-20 w-80 h-80 rounded-full bg-indigo-500/10 blur-3xl pointer-events-none" />
 
-                {/* Floating verification pill (top-right) */}
+                {/* Floating verification pill (top-right of cover) */}
                 {trainer.is_performance_verified && (
-                    <div className="absolute top-5 right-5 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-black/40 backdrop-blur-md border border-primary/30 text-primary text-[10px] font-black uppercase tracking-[0.15em] shadow-lg">
-                        <ShieldCheck size={12} className="fill-primary/20" />
+                    <div className="absolute top-4 right-4 sm:top-5 sm:right-5 z-10 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-black/55 backdrop-blur-md border border-primary/40 text-primary text-[10px] font-black uppercase tracking-[0.15em] shadow-lg whitespace-nowrap">
+                        <ShieldCheck size={12} className="fill-primary/20 shrink-0" />
                         Verified Performance
                     </div>
                 )}
