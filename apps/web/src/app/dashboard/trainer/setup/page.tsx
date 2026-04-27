@@ -1443,17 +1443,8 @@ export default function TrainerEditProfilePage() {
                         </div>
                     </div>
 
-                    {/* Pricing Plans */}
-                    <div className="bg-[#1A1C23] border border-white/5 rounded-[20px] p-6 lg:p-8 shadow-md">
-                        <div className="flex items-center gap-3 mb-6">
-                            <DollarSign size={20} className="text-primary" strokeWidth={2.5} />
-                            <h3 className="text-[15px] font-black text-white tracking-widest uppercase">PRICING PLANS</h3>
-                        </div>
-
-                        {/* Per-duration session pricing lives in its own dedicated card below.
-                            Old hourly_rate + package 10x inputs removed — they were inconsistent
-                            with the multi-duration model and confused trainers. */}
-                    </div>
+                    {/* (Old "Pricing Plans" card removed — pricing now lives in the
+                        Session Pricing card below, with one row per duration.) */}
 
                     {/* Verification Documents */}
                     <div className="bg-[#1A1C23] border border-white/5 rounded-[20px] p-6 lg:p-8 shadow-md md:col-span-2">
