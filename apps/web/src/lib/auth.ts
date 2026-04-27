@@ -20,9 +20,10 @@ const TOKEN_KEY = 'airtrainr_session';
 export function setSession(user: AuthUser) {
     if (typeof window !== 'undefined') {
         localStorage.setItem(TOKEN_KEY, JSON.stringify(user));
-        // Set cookie for middleware
+        // Cookies: presence flag for middleware + uid for API auth (verified server-side via service role)
         if (typeof document !== 'undefined') {
             document.cookie = `airtrainr_token=1; path=/; max-age=604800; SameSite=Lax`
+            document.cookie = `airtrainr_uid=${encodeURIComponent(user.id)}; path=/; max-age=604800; SameSite=Lax`
         }
     }
 }
@@ -43,6 +44,7 @@ export async function clearSession() {
         localStorage.removeItem(TOKEN_KEY);
         if (typeof document !== 'undefined') {
             document.cookie = `airtrainr_token=; path=/; max-age=0`
+            document.cookie = `airtrainr_uid=; path=/; max-age=0`
         }
     }
     await supabase.auth.signOut();

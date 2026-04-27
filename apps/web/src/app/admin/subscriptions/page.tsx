@@ -8,6 +8,7 @@ import {
     Zap, Star
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { adminFetch } from "@/lib/admin-fetch";
 import PopupModal from "@/components/common/PopupModal";
 
 type Subscription = {
@@ -137,7 +138,7 @@ export default function AdminSubscriptionsPage() {
         setDetailLoading(true);
         setDetail(null);
         try {
-            const res = await fetch(`/api/admin/trainer-detail?userId=${sub.userId}`);
+            const res = await adminFetch(`/api/admin/trainer-detail?userId=${sub.userId}`);
             const json = await res.json();
             if (!res.ok) throw new Error(json.error);
             setDetail(json);
@@ -154,13 +155,18 @@ export default function AdminSubscriptionsPage() {
             try {
                 const expiresAt = new Date();
                 expiresAt.setMonth(expiresAt.getMonth() + 6);
-                const { error } = await supabase.from("trainer_profiles").update({ subscription_status: "active", subscription_expires_at: expiresAt.toISOString(), is_founding_50: true }).eq("id", profileId);
+                const { error } = await supabase.from("trainer_profiles").update({
+                    subscription_status: "active",
+                    subscription_expires_at: expiresAt.toISOString(),
+                    is_founding_50: true,
+                    founding_50_granted_at: new Date().toISOString(),
+                }).eq("id", profileId);
                 if (error) throw error;
                 await loadData();
                 if (selectedSub?.id === profileId) await handleSelectRow({ ...selectedSub, status: "active" });
                 showAlert("success", "Founding 50 Approved", `${trainerName} now has 6 months of free Pro access.`);
-            } catch (err) {
-                showAlert("error", "Error", "Failed to approve Founding 50.");
+            } catch (err: any) {
+                showAlert("error", "Error", err?.message || "Failed to approve Founding 50.");
             } finally {
                 setProcessing(null);
             }

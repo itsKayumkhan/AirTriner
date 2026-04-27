@@ -101,34 +101,43 @@ export default function AdminDisputesPage() {
             async () => {
                 setProcessing(true);
                 try {
-                    await supabase.from("disputes").update({
-                        status: 'resolved',
-                        resolved_at: new Date().toISOString(),
-                        resolution: action === 'refund' ? "refund_athlete" : "payout_trainer"
-                    }).eq("id", selectedDispute.id);
-
                     if (action === 'refund') {
                         const res = await fetch('/api/stripe/refund-booking', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ bookingId: selectedDispute.bookingId, cancelledBy: 'admin', reason: `Dispute resolved: ${selectedDispute.reason}` })
                         });
-                        const data = await res.json();
-                        if (!res.ok) throw new Error(data.error || 'Stripe refund failed');
-                        await supabase.from("bookings").update({ status: 'cancelled' }).eq("id", selectedDispute.bookingId);
+                        const data = await res.json().catch(() => ({}));
+                        if (!res.ok) throw new Error(data?.error || `Stripe refund failed (HTTP ${res.status})`);
+
+                        const { error: bookErr } = await supabase
+                            .from("bookings")
+                            .update({ status: 'cancelled' })
+                            .eq("id", selectedDispute.bookingId);
+                        if (bookErr) throw bookErr;
                     } else {
-                        await supabase.from("payment_transactions")
+                        const { error: ptErr } = await supabase
+                            .from("payment_transactions")
                             .update({ status: 'released', released_at: new Date().toISOString() })
-                            .eq("booking_id", selectedDispute.bookingId);
+                            .eq("booking_id", selectedDispute.bookingId)
+                            .eq("status", "held");
+                        if (ptErr) throw ptErr;
                     }
+
+                    const { error: dispErr } = await supabase.from("disputes").update({
+                        status: 'resolved',
+                        resolved_at: new Date().toISOString(),
+                        resolution: action === 'refund' ? "refund_athlete" : "payout_trainer"
+                    }).eq("id", selectedDispute.id);
+                    if (dispErr) throw dispErr;
 
                     setDisputes(prev => prev.map(d => d.id === selectedDispute.id ? { ...d, status: 'resolved' } : d));
                     setSelectedDispute((prev: any) => prev ? { ...prev, status: 'resolved' } : null);
                     loadData();
                     showAlert("success", "Done", `Dispute ${action === 'refund' ? 'refunded' : 'resolved'} successfully.`);
-                } catch (err) {
+                } catch (err: any) {
                     console.error(err);
-                    showAlert("error", "Failed", "Could not process action. Try again.");
+                    showAlert("error", "Failed", err?.message || "Could not process action. Try again.");
                 } finally {
                     setProcessing(false);
                 }
@@ -141,10 +150,11 @@ export default function AdminDisputesPage() {
         setSavingNote(true);
         try {
             const note = adminNotes[selectedDispute.id] || "";
-            await supabase.from("disputes").update({ admin_note: note || null }).eq("id", selectedDispute.id);
+            const { error } = await supabase.from("disputes").update({ admin_note: note || null }).eq("id", selectedDispute.id);
+            if (error) throw error;
             showAlert("success", "Saved", "Admin note saved successfully.");
-        } catch {
-            showAlert("error", "Failed", "Could not save note.");
+        } catch (err: any) {
+            showAlert("error", "Failed", err?.message || "Could not save note.");
         } finally {
             setSavingNote(false);
         }

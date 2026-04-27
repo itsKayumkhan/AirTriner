@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Download, Wallet, Percent, TrendingUp, TrendingDown, Info, MoreHorizontal, ArrowUpRight, CheckCircle, Clock, AlertTriangle, Loader2, Zap, ShieldAlert, UserX, RefreshCw, Timer, X, CreditCard, Calendar, DollarSign } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { adminFetch } from "@/lib/admin-fetch";
 import PopupModal from "@/components/common/PopupModal";
 
 export default function AdminPaymentsPage() {
@@ -69,7 +70,7 @@ export default function AdminPaymentsPage() {
         setLoading(true);
         try {
             // Use admin API route (service role key) to bypass RLS on payment_transactions
-            const res = await fetch("/api/admin/payment-transactions");
+            const res = await adminFetch("/api/admin/payment-transactions");
             const json = await res.json();
             if (!res.ok) throw new Error(json.error || "Failed to fetch transactions");
 
@@ -183,7 +184,7 @@ export default function AdminPaymentsPage() {
             async () => {
                 setProcessing(txId);
                 try {
-                    const res = await fetch("/api/admin/release-single-payout", {
+                    const res = await adminFetch("/api/admin/release-single-payout", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({ txId, bookingId }),
@@ -211,7 +212,7 @@ export default function AdminPaymentsPage() {
             async () => {
                 setBulkReleasing(true);
                 try {
-                    const res = await fetch("/api/admin/release-payouts", { method: "POST" });
+                    const res = await adminFetch("/api/admin/release-payouts", { method: "POST" });
                     const data = await res.json();
                     if (!res.ok) throw new Error(data.error || "Failed");
                     await loadData();

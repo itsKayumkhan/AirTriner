@@ -167,21 +167,21 @@ export default function AdminSportsPage() {
 
     const deleteSport = async (id: string) => {
         showConfirm(
-            "Delete Category",
-            "Are you sure you want to delete this sport? This cannot be undone and may affect trainers associated with it.",
+            "Deactivate Category",
+            "Deactivate this sport? It will no longer appear in search/booking flows. Existing bookings and trainer profiles referencing it remain intact, and you can re-activate later.",
             async () => {
                 try {
                     const { error } = await supabase
                         .from("sports")
-                        .delete()
+                        .update({ is_active: false })
                         .eq("id", id);
-                    
+
                     if (error) throw error;
-                    setSports(sports.filter(s => s.id !== id));
-                    showAlert("success", "Deleted", "The sport category has been removed.");
-                } catch (err) {
-                    console.error("Failed to delete sport:", err);
-                    showAlert("error", "Delete Failed", "Could not delete sport. It might be linked to existing profiles or bookings.");
+                    setSports(sports.map(s => s.id === id ? { ...s, is_active: false } : s));
+                    showAlert("success", "Deactivated", "The sport category has been deactivated.");
+                } catch (err: any) {
+                    console.error("Failed to deactivate sport:", err);
+                    showAlert("error", "Failed", err?.message || "Could not deactivate sport.");
                 }
             }
         );

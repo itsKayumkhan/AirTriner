@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Download, Plus, FileText, CheckCircle, Search, XCircle, ChevronLeft, ChevronRight, UserCheck, Clock, Award, ExternalLink, ShieldCheck, ShieldX, X, Mail, Phone, MapPin, Calendar, CreditCard, Loader2, Activity, DollarSign, ImageIcon, Eye, Check } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { adminFetch } from "@/lib/admin-fetch";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { FoundingBadgeTooltip } from "@/components/ui/FoundingBadge";
 import dynamic from "next/dynamic";
@@ -54,7 +55,7 @@ export default function AdminTrainersPage() {
     const openTrainerDetail = async (trainerId: string) => {
         setTrainerDetail({ isOpen: true, loading: true, data: null });
         try {
-            const res = await fetch(`/api/admin/trainer-detail?userId=${trainerId}`);
+            const res = await adminFetch(`/api/admin/trainer-detail?userId=${trainerId}`);
             const json = await res.json();
             if (!res.ok) throw new Error(json.error);
             setTrainerDetail({ isOpen: true, loading: false, data: json });
@@ -70,7 +71,7 @@ export default function AdminTrainersPage() {
 
     const loadTrainers = async () => {
         try {
-            const { data: usersData } = await supabase.from("users").select("*").eq("role", "trainer");
+            const { data: usersData } = await supabase.from("users").select("id, email, first_name, last_name, phone, role, is_suspended, is_approved, avatar_url, created_at, deleted_at, email_verified, phone_verified, date_of_birth, sex").eq("role", "trainer");
             if (!usersData) return;
 
             const userIds = usersData.map(u => u.id);
@@ -180,7 +181,7 @@ export default function AdminTrainersPage() {
         if (!imageModal.trainerId) return;
         setImageActionLoading(true);
         try {
-            const res = await fetch("/api/admin/approve-trainer-image", {
+            const res = await adminFetch("/api/admin/approve-trainer-image", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -210,12 +211,12 @@ export default function AdminTrainersPage() {
         if (!docsModal.trainerId) return;
         setDocsActionLoading(true);
         try {
-            await supabase
+            const { error: profErr } = await supabase
                 .from("trainer_profiles")
                 .update({ verification_status: newStatus, is_verified: newStatus === "verified" })
                 .eq("user_id", docsModal.trainerId);
+            if (profErr) throw profErr;
 
-            // Insert notification for the trainer
             const notification = newStatus === "verified"
                 ? {
                     user_id: docsModal.trainerId,
@@ -231,7 +232,8 @@ export default function AdminTrainersPage() {
                     body: "Your profile verification needs attention. Please review your documents and resubmit.",
                     read: false,
                 };
-            await supabase.from("notifications").insert(notification);
+            const { error: notifErr } = await supabase.from("notifications").insert(notification);
+            if (notifErr) console.error("notification insert failed:", notifErr);
 
             setTrainers(prev => prev.map(t => {
                 if (t.id === docsModal.trainerId) {
@@ -247,8 +249,9 @@ export default function AdminTrainersPage() {
                 isVerified: newStatus === "verified",
                 isDeclined: newStatus === "rejected",
             }));
-        } catch (err) {
+        } catch (err: any) {
             console.error(err);
+            alert(err?.message || "Failed to update verification status");
         } finally {
             setDocsActionLoading(false);
         }
@@ -257,14 +260,16 @@ export default function AdminTrainersPage() {
     const toggleFounding50 = async (id: string, current: boolean) => {
         setFounding50Loading(id);
         try {
-            await supabase.from("trainer_profiles").update({
+            const { error } = await supabase.from("trainer_profiles").update({
                 is_founding_50: !current,
                 founding_50_granted_at: !current ? new Date().toISOString() : null,
                 ...((!current) ? { subscription_status: "active", subscription_expires_at: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString() } : {})
             }).eq("user_id", id);
+            if (error) throw error;
             await loadTrainers();
-        } catch (err) {
+        } catch (err: any) {
             console.error(err);
+            alert(err?.message || "Failed to toggle Founding 50 status");
         } finally {
             setFounding50Loading(null);
         }
@@ -280,7 +285,12 @@ export default function AdminTrainersPage() {
 
         setActionLoading(true);
         try {
-            await supabase.from("trainer_profiles").update({ verification_status: newStatus }).eq("user_id", id);
+            // Keep verification_status and is_verified in sync — search/discovery uses is_verified
+            const { error } = await supabase.from("trainer_profiles").update({
+                verification_status: newStatus,
+                is_verified: newStatus === "verified",
+            }).eq("user_id", id);
+            if (error) throw error;
             setTrainers(prev => prev.map(t => {
                 if (t.id === id) {
                     const isVerified = newStatus === "verified";
@@ -290,8 +300,9 @@ export default function AdminTrainersPage() {
                 return t;
             }));
             setConfirmModal({ isOpen: false, id: null, newStatus: null, name: "" });
-        } catch (err) {
+        } catch (err: any) {
             console.error(err);
+            alert(err?.message || "Failed to update verification status");
         } finally {
             setActionLoading(false);
         }

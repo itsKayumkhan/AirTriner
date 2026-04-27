@@ -19,6 +19,7 @@ import {
     Trophy,
     Crown,
     Mail,
+    ScrollText,
     X,
     AlertCircle,
     CheckCircle2,
@@ -188,6 +189,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         { icon: <CreditCard size={20} />, label: "Payments", href: "/admin/payments" },
         { icon: <Crown size={20} />, label: "Subscriptions", href: "/admin/subscriptions" },
         { icon: <Mail size={20} />, label: "Contact Messages", href: "/admin/contacts", badge: unreadContacts },
+        { icon: <ScrollText size={20} />, label: "Audit Log", href: "/admin/audit-log" },
     ];
 
     const SidebarContent = ({ onNavClick }: { onNavClick?: () => void }) => (

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { getSession, AuthUser } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
+import { adminFetch } from "@/lib/admin-fetch";
 import { Settings, Save, RefreshCw, Shield, Bell, Globe, CreditCard, Users, Calendar, AlertOctagon, TrendingUp } from "lucide-react";
 import PopupModal from "@/components/common/PopupModal";
 
@@ -131,7 +132,7 @@ export default function AdminSettingsPage() {
     const saveSettings = async () => {
         setSaving(true);
         try {
-            const res = await fetch("/api/admin/settings", {
+            const res = await adminFetch("/api/admin/settings", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(settings),

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { Search, Users, Activity, CheckCircle, XCircle, ChevronLeft, ChevronRight, X, Calendar, CreditCard, MapPin, Phone, Mail, Clock, Loader2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { adminFetch } from "@/lib/admin-fetch";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import dynamic from "next/dynamic";
 import { SortableTh, SortState, nextSortDir, compareValues } from "@/components/admin/SortableTh";
@@ -59,7 +60,7 @@ export default function AdminAthletesPage() {
     const openDetailModal = async (athleteId: string) => {
         setDetailModal({ isOpen: true, loading: true, data: null });
         try {
-            const res = await fetch(`/api/admin/athlete-detail?userId=${athleteId}`);
+            const res = await adminFetch(`/api/admin/athlete-detail?userId=${athleteId}`);
             const json = await res.json();
             if (!res.ok) throw new Error(json.error);
             setDetailModal({ isOpen: true, loading: false, data: json });
@@ -80,7 +81,7 @@ export default function AdminAthletesPage() {
         const loadAthletes = async () => {
             try {
                 // Fetch athletes
-                const { data } = await supabase.from("users").select("*").eq("role", "athlete");
+                const { data } = await supabase.from("users").select("id, email, first_name, last_name, phone, role, is_suspended, is_approved, avatar_url, created_at, deleted_at, email_verified, phone_verified, date_of_birth, sex").eq("role", "athlete");
 
                 // Fetch total bookings count
                 const { count: bookingsCount } = await supabase
@@ -199,13 +200,15 @@ export default function AdminAthletesPage() {
 
         setActionLoading(true);
         try {
-            await supabase.from("users").update({ is_suspended: action === "suspend" }).eq("id", id);
+            const { error } = await supabase.from("users").update({ is_suspended: action === "suspend" }).eq("id", id);
+            if (error) throw error;
             setAthletes(prev => prev.map(a =>
                 a.id === id ? { ...a, status: action === "suspend" ? "Suspended" : "Active" } : a
             ));
             setConfirmModal({ isOpen: false, id: null, action: null, name: "" });
-        } catch (err) {
+        } catch (err: any) {
             console.error(err);
+            alert(err?.message || "Failed to update user status");
         } finally {
             setActionLoading(false);
         }

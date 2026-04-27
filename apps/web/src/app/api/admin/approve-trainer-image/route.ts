@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { requireAdmin, logAdminAction } from "@/lib/admin-auth";
 
 export async function POST(req: NextRequest) {
+    const auth = await requireAdmin(req);
+    if ("error" in auth) return auth.error;
+
     const adminSupabase = createClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -20,6 +24,14 @@ export async function POST(req: NextRequest) {
         if (action !== "approve" && action !== "reject") {
             return NextResponse.json({ error: "Invalid action. Must be 'approve' or 'reject'" }, { status: 400 });
         }
+
+        await logAdminAction({
+            actorId: auth.ctx.userId,
+            action: action === "approve" ? "approve_trainer_image" : "reject_trainer_image",
+            targetType: "trainer_profiles",
+            targetId: trainerId,
+            payload: { reason: reason ?? null },
+        });
 
         // Look up the pending image URL so we can sync it to users.avatar_url
         // (Bug #9: trainer detail page reads users.avatar_url, so approval must

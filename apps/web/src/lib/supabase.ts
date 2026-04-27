@@ -12,6 +12,7 @@ if (typeof window !== 'undefined') {
         if (event === 'SIGNED_OUT') {
             localStorage.removeItem('airtrainr_session');
             document.cookie = 'airtrainr_token=; path=/; max-age=0';
+            document.cookie = 'airtrainr_uid=; path=/; max-age=0';
             const path = window.location.pathname;
             if (!path.startsWith('/auth/')) {
                 window.location.href = '/auth/login';

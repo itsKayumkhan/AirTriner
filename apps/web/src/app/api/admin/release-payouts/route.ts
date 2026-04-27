@@ -1,7 +1,11 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { requireAdmin, logAdminAction } from "@/lib/admin-auth";
 
-export async function POST() {
+export async function POST(req: NextRequest) {
+    const auth = await requireAdmin(req);
+    if ("error" in auth) return auth.error;
+
     const supabase = createClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -71,6 +75,15 @@ export async function POST() {
                 .in("id", toRelease);
 
             if (updateErr) throw updateErr;
+        }
+
+        if (toRelease.length > 0) {
+            await logAdminAction({
+                actorId: auth.ctx.userId,
+                action: "release_payouts_bulk",
+                targetType: "payment_transactions",
+                payload: { releasedIds: toRelease, skippedReasons },
+            });
         }
 
         return NextResponse.json({
