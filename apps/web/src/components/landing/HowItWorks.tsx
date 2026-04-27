@@ -16,7 +16,7 @@ export default function HowItWorks() {
         },
         {
             title: "Connect & Start Training",
-            desc: "Message your trainer directly, book sessions, and begin your journey with personalized coaching.",
+            desc: "Message your trainer directly, book sessions, and pay securely — only a 3% platform fee, no subscription.",
             icon: <Rocket className="w-5 h-5" />,
         }
     ];
@@ -24,7 +24,7 @@ export default function HowItWorks() {
     const trainerSteps = [
         {
             title: "Create Your Trainer Profile",
-            desc: "Set up your professional page with experience, certifications, specialties, and training locations.",
+            desc: "Set up your profile and start with a 7-day free trial — then $25/month or $250/year. Keep 100% of your hourly rate.",
             icon: <Briefcase className="w-5 h-5" />,
         },
         {
@@ -40,7 +40,7 @@ export default function HowItWorks() {
     ];
 
     return (
-        <section style={{ padding: "80px 20px", background: "var(--color-bg)", borderBottom: "1px solid var(--gray-900)", position: "relative", overflow: "hidden" }} className="how-it-works-section">
+        <section id="how-it-works" style={{ padding: "80px 20px", background: "var(--color-bg)", borderBottom: "1px solid var(--gray-900)", position: "relative", overflow: "hidden" }} className="how-it-works-section">
             {/* Background Decor */}
             <div style={{ position: "absolute", top: "20%", left: "-10%", width: "40%", height: "40%", background: "var(--primary)", filter: "blur(180px)", opacity: 0.03, borderRadius: "50%", zIndex: 0 }}></div>
             

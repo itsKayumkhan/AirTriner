@@ -4,7 +4,7 @@ import { useEffect, useState, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { getSession, AuthUser } from "@/lib/auth";
 import { supabase, TrainerProfileRow } from "@/lib/supabase";
-import { Star, MapPin, MessageSquare, BadgeCheck, ChevronLeft, ChevronRight } from "lucide-react";
+import { Star, MapPin, MessageSquare, BadgeCheck, ChevronLeft, ChevronRight, Trophy, Calendar as CalendarIcon, Clock, Sparkles, Award, Quote, ShieldCheck, Zap } from "lucide-react";
 import { ReviewSection } from "@/components/trainers/ReviewSection";
 import { FoundingBadgeTooltip } from "@/components/ui/FoundingBadge";
 import { toast } from "@/components/ui/Toast";
@@ -519,7 +519,7 @@ export default function BookTrainerPage() {
                 avg_rating: profile.average_rating || 0,
                 review_count: profile.total_reviews || 0,
                 sessions_count: bookingsCount || 0,
-                cover_image: getSportCover(profile.sports),
+                cover_image: (profile.banner_url as string | null) || getSportCover(profile.sports),
                 recent_reviews: (reviewsData || []) as unknown as Review[],
                 dispute_count: finalDisputeCount,
                 is_performance_verified: isPerformanceVerified
@@ -716,63 +716,96 @@ export default function BookTrainerPage() {
 
         <div className="max-w-[1280px] mx-auto pb-20 px-2 sm:px-4 md:px-8 mt-4">
 
-            {/* Cover Image */}
-            <div className="w-full h-[200px] sm:h-[320px] rounded-2xl sm:rounded-[32px] overflow-hidden relative mb-16 shadow-2xl">
+            {/* Cover Banner — depth via parallax-like layered gradients + radial glow */}
+            <div className="w-full h-[220px] sm:h-[360px] rounded-2xl sm:rounded-[32px] overflow-hidden relative mb-16 shadow-[0_30px_60px_-20px_rgba(0,0,0,0.6)] ring-1 ring-white/[0.06]">
                 <div
-                    className="absolute inset-0 bg-cover bg-center"
+                    className="absolute inset-0 bg-cover bg-center scale-105"
                     style={{ backgroundImage: `url(${trainer.cover_image})` }}
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-[#0F1115] via-transparent to-transparent opacity-80" />
+                {/* Vignette + bottom fade */}
+                <div className="absolute inset-0 bg-gradient-to-t from-[#0F1115] via-[#0F1115]/40 to-transparent" />
+                <div className="absolute inset-0 bg-gradient-to-r from-[#0F1115]/60 via-transparent to-[#0F1115]/40" />
+                {/* Soft primary glow blob */}
+                <div className="absolute -top-24 -right-24 w-72 h-72 rounded-full bg-primary/20 blur-3xl pointer-events-none" />
+                <div className="absolute -bottom-32 -left-20 w-80 h-80 rounded-full bg-indigo-500/10 blur-3xl pointer-events-none" />
+
+                {/* Floating verification pill (top-right) */}
+                {trainer.is_performance_verified && (
+                    <div className="absolute top-5 right-5 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-black/40 backdrop-blur-md border border-primary/30 text-primary text-[10px] font-black uppercase tracking-[0.15em] shadow-lg">
+                        <ShieldCheck size={12} className="fill-primary/20" />
+                        Verified Performance
+                    </div>
+                )}
             </div>
 
-            {/* Profile Header Overlapping */}
-            <div className="flex flex-col md:flex-row items-start md:items-end gap-4 px-2 sm:px-4 md:px-12 -mt-14 sm:-mt-28 md:-mt-36 relative z-10 mb-6">
-                {/* Avatar */}
-                <div className="relative">
-                    <div className="w-24 h-24 sm:w-40 sm:h-40 rounded-[18px] sm:rounded-[24px] border-[4px] sm:border-[6px] border-[#0F1115] overflow-hidden bg-gray-800 shadow-xl">
-                        {trainer.user?.avatar_url ? (
-                            <img src={trainer.user.avatar_url} alt="Profile" className="w-full h-full object-cover" />
-                        ) : (
-                            <div className="w-full h-full flex items-center justify-center text-5xl font-black text-text-main bg-gradient-to-br from-indigo-500 to-purple-800">
-                                {trainer.user?.first_name?.[0]}{trainer.user?.last_name?.[0]}
-                            </div>
-                        )}
+            {/* Profile Header — Avatar with glow ring + name block */}
+            <div className="flex flex-col md:flex-row items-start md:items-end gap-5 sm:gap-7 px-2 sm:px-4 md:px-12 -mt-16 sm:-mt-32 md:-mt-40 relative z-10 mb-6">
+                {/* Avatar with soft glow ring */}
+                <div className="relative group">
+                    {/* Outer glow halo */}
+                    <div className="absolute inset-0 rounded-[20px] sm:rounded-[28px] bg-gradient-to-br from-primary/40 via-primary/10 to-transparent blur-xl opacity-70 group-hover:opacity-100 transition-opacity" />
+                    {/* Ring layer */}
+                    <div className="relative rounded-[20px] sm:rounded-[28px] p-[2px] bg-gradient-to-br from-primary/60 via-white/10 to-transparent shadow-[0_20px_40px_-10px_rgba(0,0,0,0.6)]">
+                        <div className="w-28 h-28 sm:w-44 sm:h-44 rounded-[18px] sm:rounded-[26px] border-[3px] sm:border-[5px] border-[#0F1115] overflow-hidden bg-gradient-to-br from-zinc-800 to-zinc-900 ring-2 ring-primary/30">
+                            {trainer.user?.avatar_url ? (
+                                <img src={trainer.user.avatar_url} alt="Profile" className="w-full h-full object-cover" />
+                            ) : (
+                                <div className="w-full h-full flex items-center justify-center text-5xl font-black text-text-main bg-gradient-to-br from-indigo-500 via-purple-700 to-fuchsia-800">
+                                    {trainer.user?.first_name?.[0]}{trainer.user?.last_name?.[0]}
+                                </div>
+                            )}
+                        </div>
                     </div>
-                    {/* Verification checkmark - only if performance metrics are met */}
+                    {/* Verification checkmark */}
                     {trainer.is_performance_verified && (
-                        <div className="absolute -bottom-2 -right-2 bg-primary rounded-full p-1 border-[4px] border-[#0F1115] shadow-[0_0_10px_rgba(69,208,255,0.5)]">
-                            <BadgeCheck size={20} className="text-bg" />
+                        <div className="absolute -bottom-1 -right-1 sm:-bottom-2 sm:-right-2 bg-gradient-to-br from-primary to-cyan-400 rounded-full p-1.5 border-[3px] sm:border-[4px] border-[#0F1115] shadow-[0_0_20px_rgba(69,208,255,0.6)]">
+                            <BadgeCheck size={18} className="text-bg" />
                         </div>
                     )}
                 </div>
 
-                {/* Name & Titles */}
-                <div className="pb-2">
-                    <h1 className="text-3xl sm:text-5xl font-black text-text-main tracking-tight mb-2 flex items-center gap-3 flex-wrap">
-                        {trainer.user?.first_name} {trainer.user?.last_name}
-                        {trainer.is_founding_50 && <FoundingBadgeTooltip size={36} />}
-                    </h1>
-                    <div className="flex items-center gap-4 text-sm font-bold flex-wrap">
+                {/* Name & meta */}
+                <div className="pb-1 sm:pb-3 flex-1 min-w-0">
+                    {/* Status tag above name */}
+                    <div className="mb-2 flex items-center gap-2 flex-wrap">
                         {trainer.is_performance_verified ? (
-                            <span className="text-primary tracking-widest uppercase">Verified Performance</span>
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary/10 border border-primary/30 text-primary text-[10px] font-black uppercase tracking-[0.15em]">
+                                <Sparkles size={10} /> Verified Performance
+                            </span>
                         ) : trainer.sessions_count > 0 ? (
-                            <span className="text-blue-400 tracking-widest uppercase">Pro Trainer</span>
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-blue-400/10 border border-blue-400/30 text-blue-300 text-[10px] font-black uppercase tracking-[0.15em]">
+                                <Zap size={10} /> Pro Trainer
+                            </span>
                         ) : (
-                            <span className="text-emerald-400 tracking-widest uppercase">New Trainer</span>
-                        )}
-                        {trainer.city && (
-                            <span className="text-text-main/60 flex items-center gap-1.5">
-                                <MapPin size={14} /> {trainer.city}, {trainer.state}
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-400/10 border border-emerald-400/30 text-emerald-300 text-[10px] font-black uppercase tracking-[0.15em]">
+                                <Sparkles size={10} /> New Trainer
                             </span>
                         )}
                     </div>
+                    <h1
+                        className="text-3xl sm:text-5xl md:text-6xl font-black text-text-main tracking-tight mb-2 flex items-center gap-3 flex-wrap leading-[1.05]"
+                        style={{ fontFamily: "var(--font-display)" }}
+                    >
+                        {trainer.user?.first_name} {trainer.user?.last_name}
+                        {trainer.is_founding_50 && <FoundingBadgeTooltip size={36} />}
+                    </h1>
+                    {trainer.city && (
+                        <div className="flex items-center gap-1.5 text-text-main/60 text-sm font-semibold">
+                            <MapPin size={14} className="text-primary/70" />
+                            {trainer.city}{trainer.state ? `, ${trainer.state}` : ""}
+                        </div>
+                    )}
                 </div>
             </div>
 
-            {/* Tags/Chips */}
+            {/* Sport pills — premium chips with gradient borders + hover lift */}
             <div className="px-2 sm:px-4 md:px-12 flex flex-wrap gap-2 sm:gap-3 mb-6 sm:mb-10">
                 {trainer.sports.map((sport, i) => (
-                    <span key={i} className="bg-surface border border-white/5 text-text-main/80 px-5 py-2 rounded-full text-xs font-bold uppercase tracking-wider">
+                    <span
+                        key={i}
+                        className="group relative inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-[11px] font-black uppercase tracking-[0.12em] text-text-main/85 bg-gradient-to-br from-white/[0.06] to-white/[0.02] border border-white/[0.08] hover:border-primary/40 hover:-translate-y-0.5 hover:shadow-[0_8px_20px_-8px_rgba(69,208,255,0.4)] transition-all duration-200 backdrop-blur-sm"
+                    >
+                        <Trophy size={11} className="text-primary/80 group-hover:text-primary transition-colors" />
                         {SPORT_LABELS[sport] || formatSportName(sport)}
                     </span>
                 ))}
@@ -784,47 +817,96 @@ export default function BookTrainerPage() {
                 {/* Content */}
                 <div className="flex flex-col gap-12">
 
-                    {/* Stats Row */}
-                    <div className="grid grid-cols-3 sm:flex sm:gap-12 gap-6 border-b border-white/5 pb-10">
-                        <div>
-                            <div className="text-3xl font-black text-text-main mb-2">{trainer.avg_rating}</div>
-                            <div className="flex gap-1 text-primary mb-2">
-                                {[1, 2, 3, 4, 5].map(s => <Star key={s} size={14} className="fill-current" />)}
+                    {/* Stats — bento grid with glass cards + gradient highlights */}
+                    <div className="grid grid-cols-3 gap-2 sm:gap-4">
+                        {/* Rating */}
+                        <div className="group relative overflow-hidden rounded-2xl sm:rounded-3xl bg-gradient-to-br from-amber-400/[0.08] via-white/[0.03] to-white/[0.01] border border-white/[0.07] hover:border-amber-300/30 transition-all p-4 sm:p-6 backdrop-blur-sm">
+                            <div className="absolute -top-10 -right-10 w-28 h-28 rounded-full bg-amber-300/10 blur-2xl group-hover:bg-amber-300/20 transition-colors" />
+                            <div className="relative">
+                                <div className="flex items-center gap-1.5 text-amber-300/90 mb-2">
+                                    <Star size={14} className="fill-current" />
+                                    <span className="text-[10px] font-black uppercase tracking-[0.15em]">Rating</span>
+                                </div>
+                                <div
+                                    className="text-3xl sm:text-4xl font-black text-text-main leading-none mb-1"
+                                    style={{ fontFamily: "var(--font-display)" }}
+                                >
+                                    {Number(trainer.avg_rating).toFixed(1)}
+                                </div>
+                                <div className="text-[10px] text-text-main/40 font-bold uppercase tracking-widest">{trainer.review_count} reviews</div>
                             </div>
-                            <div className="text-[10px] text-text-main/40 font-bold uppercase tracking-widest">{trainer.review_count} REVIEWS</div>
                         </div>
-                        <div>
-                            <div className="text-3xl font-black text-text-main mb-3">{Math.max(0, trainer.years_experience || 0)}+</div>
-                            <div className="text-[10px] text-text-main/40 font-bold uppercase tracking-widest mt-1">YEARS EXP.</div>
-                        </div>
-                        <div>
-                            <div className="text-3xl font-black text-text-main mb-3">
-                                {trainer.sessions_count >= 1000
-                                    ? (trainer.sessions_count / 1000).toFixed(1) + "k"
-                                    : trainer.sessions_count}
+
+                        {/* Years Experience */}
+                        <div className="group relative overflow-hidden rounded-2xl sm:rounded-3xl bg-gradient-to-br from-primary/[0.08] via-white/[0.03] to-white/[0.01] border border-white/[0.07] hover:border-primary/30 transition-all p-4 sm:p-6 backdrop-blur-sm">
+                            <div className="absolute -top-10 -right-10 w-28 h-28 rounded-full bg-primary/10 blur-2xl group-hover:bg-primary/20 transition-colors" />
+                            <div className="relative">
+                                <div className="flex items-center gap-1.5 text-primary/90 mb-2">
+                                    <Award size={14} />
+                                    <span className="text-[10px] font-black uppercase tracking-[0.15em]">Experience</span>
+                                </div>
+                                <div
+                                    className="text-3xl sm:text-4xl font-black text-text-main leading-none mb-1"
+                                    style={{ fontFamily: "var(--font-display)" }}
+                                >
+                                    {Math.max(0, trainer.years_experience || 0)}+
+                                </div>
+                                <div className="text-[10px] text-text-main/40 font-bold uppercase tracking-widest">years</div>
                             </div>
-                            <div className="text-[10px] text-text-main/40 font-bold uppercase tracking-widest mt-1">SESSIONS</div>
+                        </div>
+
+                        {/* Sessions */}
+                        <div className="group relative overflow-hidden rounded-2xl sm:rounded-3xl bg-gradient-to-br from-emerald-400/[0.08] via-white/[0.03] to-white/[0.01] border border-white/[0.07] hover:border-emerald-300/30 transition-all p-4 sm:p-6 backdrop-blur-sm">
+                            <div className="absolute -top-10 -right-10 w-28 h-28 rounded-full bg-emerald-300/10 blur-2xl group-hover:bg-emerald-300/20 transition-colors" />
+                            <div className="relative">
+                                <div className="flex items-center gap-1.5 text-emerald-300/90 mb-2">
+                                    <CalendarIcon size={14} />
+                                    <span className="text-[10px] font-black uppercase tracking-[0.15em]">Sessions</span>
+                                </div>
+                                <div
+                                    className="text-3xl sm:text-4xl font-black text-text-main leading-none mb-1"
+                                    style={{ fontFamily: "var(--font-display)" }}
+                                >
+                                    {trainer.sessions_count >= 1000
+                                        ? (trainer.sessions_count / 1000).toFixed(1) + "k"
+                                        : trainer.sessions_count}
+                                </div>
+                                <div className="text-[10px] text-text-main/40 font-bold uppercase tracking-widest">completed</div>
+                            </div>
                         </div>
                     </div>
 
-                    {/* About */}
-                    <div>
-                        <h2 className="text-xl font-black text-text-main mb-4">About {trainer.user?.first_name}</h2>
-                        <p className="text-text-main/60 text-base leading-relaxed">
-                            {trainer.bio || `Specializing in high-performance athletic training and metabolic conditioning. My approach combines data-driven science with old-school grit to help you push past plateaus and redefine your physical limits. Whether you're an elite athlete or just starting your journey, we'll build a foundation of functional strength and explosive power.`}
-                        </p>
+                    {/* About — quoted treatment with left accent border */}
+                    <div className="relative">
+                        <h2 className="text-xl sm:text-2xl font-black text-text-main mb-5 flex items-center gap-2" style={{ fontFamily: "var(--font-display)" }}>
+                            <span className="w-1 h-6 rounded-full bg-gradient-to-b from-primary to-primary/0" />
+                            About {trainer.user?.first_name}
+                        </h2>
+                        <div className="relative rounded-2xl sm:rounded-3xl bg-gradient-to-br from-white/[0.04] via-white/[0.02] to-transparent border border-white/[0.07] p-5 sm:p-7 backdrop-blur-sm overflow-hidden">
+                            <div className="absolute top-0 left-0 w-[3px] h-full bg-gradient-to-b from-primary via-primary/40 to-transparent" />
+                            <Quote size={28} className="absolute top-4 right-5 text-primary/15" />
+                            <p className="text-text-main/75 text-base sm:text-[17px] leading-relaxed font-medium relative">
+                                {trainer.bio || `Specializing in high-performance athletic training and metabolic conditioning. My approach combines data-driven science with old-school grit to help you push past plateaus and redefine your physical limits. Whether you're an elite athlete or just starting your journey, we'll build a foundation of functional strength and explosive power.`}
+                            </p>
+                        </div>
                     </div>
 
                     {/* Experience & Certifications */}
                     <div>
-                        <h2 className="text-xl font-black text-text-main mb-6">Experience & Certifications</h2>
+                        <h2 className="text-xl sm:text-2xl font-black text-text-main mb-5 flex items-center gap-2" style={{ fontFamily: "var(--font-display)" }}>
+                            <span className="w-1 h-6 rounded-full bg-gradient-to-b from-primary to-primary/0" />
+                            Experience & Certifications
+                        </h2>
                         {(() => {
                             const certs = Array.isArray(trainer.certifications) ? trainer.certifications as string[] : [];
                             return certs.length > 0 ? (
-                                <div className="flex flex-wrap gap-2">
+                                <div className="flex flex-wrap gap-2.5">
                                     {certs.map((cert, i) => (
-                                        <span key={i} className="inline-flex items-center gap-2 px-4 py-2.5 bg-surface border border-white/[0.08] rounded-xl text-base font-semibold text-text-main/80">
-                                            <BadgeCheck size={15} className="text-primary/70 shrink-0" />
+                                        <span
+                                            key={i}
+                                            className="group inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-br from-white/[0.05] to-white/[0.02] border border-white/[0.08] hover:border-primary/30 rounded-xl text-sm font-semibold text-text-main/85 hover:-translate-y-0.5 hover:shadow-[0_8px_20px_-8px_rgba(0,0,0,0.5)] transition-all backdrop-blur-sm"
+                                        >
+                                            <BadgeCheck size={15} className="text-primary/80 group-hover:text-primary shrink-0 transition-colors" />
                                             {cert}
                                         </span>
                                     ))}
@@ -838,10 +920,17 @@ export default function BookTrainerPage() {
                     {/* Session Lengths */}
                     {trainer.session_lengths?.length > 0 && (
                         <div>
-                            <h2 className="text-xl font-black text-text-main mb-4">Session Lengths</h2>
-                            <div className="flex flex-wrap gap-2">
+                            <h2 className="text-xl sm:text-2xl font-black text-text-main mb-5 flex items-center gap-2" style={{ fontFamily: "var(--font-display)" }}>
+                                <span className="w-1 h-6 rounded-full bg-gradient-to-b from-primary to-primary/0" />
+                                Session Lengths
+                            </h2>
+                            <div className="flex flex-wrap gap-2.5">
                                 {[...trainer.session_lengths].sort((a, b) => a - b).map((d, i) => (
-                                    <span key={i} className="bg-surface border border-white/5 text-text-main/80 px-4 py-2 rounded-full text-sm font-bold uppercase tracking-wider">
+                                    <span
+                                        key={i}
+                                        className="inline-flex items-center gap-1.5 bg-gradient-to-br from-white/[0.05] to-white/[0.02] border border-white/[0.08] hover:border-primary/30 text-text-main/85 px-4 py-2 rounded-full text-xs font-black uppercase tracking-[0.12em] hover:-translate-y-0.5 transition-all backdrop-blur-sm"
+                                    >
+                                        <Clock size={11} className="text-primary/80" />
                                         {d < 60 ? `${d} min` : d === 60 ? '1 hr' : d === 90 ? '1.5 hr' : `${d / 60} hr`}
                                     </span>
                                 ))}
@@ -852,10 +941,17 @@ export default function BookTrainerPage() {
                     {/* Training Locations */}
                     {trainer.training_locations?.length > 0 && (
                         <div>
-                            <h2 className="text-xl font-black text-text-main mb-4">Training Locations</h2>
-                            <div className="flex flex-wrap gap-2">
+                            <h2 className="text-xl sm:text-2xl font-black text-text-main mb-5 flex items-center gap-2" style={{ fontFamily: "var(--font-display)" }}>
+                                <span className="w-1 h-6 rounded-full bg-gradient-to-b from-primary to-primary/0" />
+                                Training Locations
+                            </h2>
+                            <div className="flex flex-wrap gap-2.5">
                                 {trainer.training_locations.map((loc, i) => (
-                                    <span key={i} className="bg-surface border border-white/5 text-text-main/80 px-4 py-2 rounded-full text-sm font-bold uppercase tracking-wider">
+                                    <span
+                                        key={i}
+                                        className="inline-flex items-center gap-1.5 bg-gradient-to-br from-white/[0.05] to-white/[0.02] border border-white/[0.08] hover:border-primary/30 text-text-main/85 px-4 py-2 rounded-full text-xs font-black uppercase tracking-[0.12em] hover:-translate-y-0.5 transition-all backdrop-blur-sm"
+                                    >
+                                        <MapPin size={11} className="text-primary/80" />
                                         {loc}
                                     </span>
                                 ))}
@@ -871,22 +967,31 @@ export default function BookTrainerPage() {
 
                 </div>
 
-                {/* Booking Widget */}
+                {/* Booking Widget — premium glass card */}
                 <div className="w-full">
-                    <div className="bg-surface border border-white/5 rounded-[24px] sm:rounded-[32px] p-4 sm:p-8 shadow-2xl">
+                    <div className="relative overflow-hidden bg-gradient-to-b from-[#15171D] to-[#0F1115] border border-white/[0.08] rounded-[24px] sm:rounded-[32px] p-4 sm:p-8 shadow-[0_30px_80px_-20px_rgba(0,0,0,0.7)] backdrop-blur-xl">
+                        {/* Subtle ambient glow */}
+                        <div className="absolute -top-32 -right-32 w-72 h-72 rounded-full bg-primary/[0.06] blur-3xl pointer-events-none" />
+                        <div className="absolute -bottom-40 -left-32 w-80 h-80 rounded-full bg-indigo-500/[0.05] blur-3xl pointer-events-none" />
 
                         {/* Price & Rating */}
-                        <div className="flex justify-between items-start mb-8 pb-8 border-b border-white/5">
-                            <div className="flex items-baseline gap-1.5">
-                                <span className="text-[42px] font-black text-white leading-none">
-                                    ${((trainer.hourly_rate || 0) * (durationMinutes / 60)).toFixed(0)}
-                                </span>
-                                <span className="text-zinc-400 text-xs ml-1">
-                                    / {durationMinutes < 60 ? `${durationMinutes}min` : durationMinutes === 90 ? '1.5hr' : `${durationMinutes / 60}hr`}
-                                </span>
+                        <div className="relative flex justify-between items-start mb-8 pb-8 border-b border-white/[0.06]">
+                            <div>
+                                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-text-main/40 mb-1.5">Starting at</div>
+                                <div className="flex items-baseline gap-1.5">
+                                    <span
+                                        className="text-[44px] sm:text-[52px] font-black text-white leading-none bg-gradient-to-br from-white to-white/70 bg-clip-text"
+                                        style={{ fontFamily: "var(--font-display)" }}
+                                    >
+                                        ${((trainer.hourly_rate || 0) * (durationMinutes / 60)).toFixed(0)}
+                                    </span>
+                                    <span className="text-zinc-400 text-xs ml-1 font-semibold">
+                                        / {durationMinutes < 60 ? `${durationMinutes}min` : durationMinutes === 90 ? '1.5hr' : `${durationMinutes / 60}hr`}
+                                    </span>
+                                </div>
                             </div>
-                            <div className="flex items-center gap-1.5 text-primary text-[15px] font-black mt-2">
-                                <Star size={16} className="fill-current" /> {trainer.avg_rating}
+                            <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-300/10 border border-amber-300/30 text-amber-300 text-[13px] font-black mt-2">
+                                <Star size={14} className="fill-current" /> {Number(trainer.avg_rating).toFixed(1)}
                             </div>
                         </div>
 
@@ -1101,33 +1206,37 @@ export default function BookTrainerPage() {
                         })()}
 
                         {/* Actions */}
-                        <div className="space-y-4">
+                        <div className="relative space-y-3">
                             {user?.id === trainer?.user_id ? (
-                                <div className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-4 text-center">
-                                    <p className="text-text-main/50 text-xs font-bold uppercase tracking-widest">This is your profile</p>
+                                <div className="w-full bg-white/[0.04] border border-white/[0.08] rounded-2xl py-4 px-4 text-center">
+                                    <p className="text-text-main/60 text-xs font-bold uppercase tracking-widest">This is your profile</p>
                                     <p className="text-text-main/30 text-[11px] mt-1">You cannot book yourself</p>
                                 </div>
                             ) : (
-                                <button
-                                    onClick={handleBook}
-                                    disabled={processing}
-                                    className="w-full bg-primary text-bg font-black text-[15px] py-4 rounded-2xl hover:shadow-[0_0_15px_rgba(69,208,255,0.25)] hover:-translate-y-0.5 transition-all disabled:opacity-50"
-                                >
-                                    {processing ? "Processing..." : "Book Session"}
-                                </button>
+                                <>
+                                    <button
+                                        onClick={handleBook}
+                                        disabled={processing}
+                                        className="group relative w-full overflow-hidden bg-gradient-to-r from-primary via-cyan-300 to-primary bg-[length:200%_100%] hover:bg-[position:100%_0] text-bg font-black text-[15px] py-4 rounded-2xl shadow-[0_10px_30px_-10px_rgba(69,208,255,0.6)] hover:shadow-[0_15px_40px_-10px_rgba(69,208,255,0.8)] hover:-translate-y-0.5 transition-all duration-300 disabled:opacity-50 disabled:hover:translate-y-0"
+                                    >
+                                        <span className="relative inline-flex items-center justify-center gap-2">
+                                            <Sparkles size={15} />
+                                            {processing ? "Processing..." : "Book Session"}
+                                        </span>
+                                    </button>
+
+                                    <button
+                                        onClick={() => router.push(`/dashboard/messages?trainerId=${trainer?.id}`)}
+                                        className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-white/[0.04] hover:bg-white/[0.07] border border-white/[0.08] hover:border-white/[0.15] text-text-main/85 hover:text-text-main font-bold text-[13px] transition-all"
+                                    >
+                                        <MessageSquare size={14} /> Message Trainer
+                                    </button>
+                                </>
                             )}
 
-                            {user?.id !== trainer?.user_id && (
-                                <button
-                                    onClick={() => router.push(`/dashboard/messages?trainerId=${trainer?.id}`)}
-                                    className="w-full flex items-center justify-center gap-2 text-text-main/80 font-bold text-xs py-2 hover:text-text-main transition-colors"
-                                >
-                                    <MessageSquare size={14} /> Message Trainer
-                                </button>
-                            )}
-
-                            <div className="text-center text-[9px] text-gray-600 font-bold uppercase tracking-widest mt-4">
-                                SECURE CHECKOUT VIA AIRTRAINR PAY
+                            <div className="flex items-center justify-center gap-1.5 text-[9px] text-text-main/30 font-bold uppercase tracking-[0.18em] mt-4">
+                                <ShieldCheck size={11} className="text-primary/40" />
+                                Secure checkout via AirTrainr Pay
                             </div>
                         </div>
 

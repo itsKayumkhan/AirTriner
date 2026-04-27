@@ -6,6 +6,9 @@ import { supabase } from "@/lib/supabase";
 import SportsGrid from "@/components/landing/SportsGrid";
 import HowItWorks from "@/components/landing/HowItWorks";
 import AirTrainrAdvantage from "@/components/landing/AirTrainrAdvantage";
+import Pricing from "@/components/landing/Pricing";
+import Founding50 from "@/components/landing/Founding50";
+import FAQ from "@/components/landing/FAQ";
 
 // =============================================
 // ICONS (inline SVG components)
@@ -112,7 +115,27 @@ function Navbar() {
                     </span>
                 </a>
 
-                {/* Desktop Nav Removed as requested */}
+                {/* Desktop Nav Links — visible to guests only, anchors to landing sections */}
+                {!user && (
+                    <div className="desktop-nav-links" style={{ display: "flex", alignItems: "center", gap: "28px" }}>
+                        <a href="#how-it-works" style={{ color: "var(--gray-300)", textDecoration: "none", fontSize: "13px", fontWeight: 600, letterSpacing: "0.5px", transition: "color 0.2s" }}
+                            onMouseEnter={(e) => { e.currentTarget.style.color = "var(--primary)"; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.color = "var(--gray-300)"; }}
+                        >How it Works</a>
+                        <a href="#pricing" style={{ color: "var(--gray-300)", textDecoration: "none", fontSize: "13px", fontWeight: 600, letterSpacing: "0.5px", transition: "color 0.2s" }}
+                            onMouseEnter={(e) => { e.currentTarget.style.color = "var(--primary)"; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.color = "var(--gray-300)"; }}
+                        >Pricing</a>
+                        <a href="#sports" style={{ color: "var(--gray-300)", textDecoration: "none", fontSize: "13px", fontWeight: 600, letterSpacing: "0.5px", transition: "color 0.2s" }}
+                            onMouseEnter={(e) => { e.currentTarget.style.color = "var(--primary)"; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.color = "var(--gray-300)"; }}
+                        >Sports</a>
+                        <a href="#faq" style={{ color: "var(--gray-300)", textDecoration: "none", fontSize: "13px", fontWeight: 600, letterSpacing: "0.5px", transition: "color 0.2s" }}
+                            onMouseEnter={(e) => { e.currentTarget.style.color = "var(--primary)"; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.color = "var(--gray-300)"; }}
+                        >FAQ</a>
+                    </div>
+                )}
 
                 {/* CTA Buttons */}
                 <div style={{ display: "flex", alignItems: "center", gap: "16px" }} className="desktop-nav">
@@ -209,6 +232,21 @@ function Navbar() {
                         </>
                     ) : (
                         <>
+                            {/* Mobile nav links for guests */}
+                            {[
+                                { label: "How it Works", href: "#how-it-works" },
+                                { label: "Pricing", href: "#pricing" },
+                                { label: "Sports", href: "#sports" },
+                                { label: "FAQ", href: "#faq" },
+                            ].map(l => (
+                                <a key={l.label} href={l.href} onClick={() => setMobileMenuOpen(false)} style={{
+                                    textDecoration: "none", color: "var(--gray-300)", fontSize: "14px", fontWeight: 600,
+                                    padding: "10px 0", letterSpacing: "0.5px",
+                                }}>
+                                    {l.label}
+                                </a>
+                            ))}
+                            <div style={{ height: "1px", background: "var(--gray-800)", margin: "6px 0" }} />
                             <a href="/auth/login" onClick={() => setMobileMenuOpen(false)} style={{
                                 textDecoration: "none", color: "white", fontSize: "13px", fontWeight: 700,
                                 padding: "12px 20px", border: "1px solid var(--gray-700)", borderRadius: "var(--radius-full)",
@@ -231,10 +269,12 @@ function Navbar() {
             <style>{`
         @media (min-width: 969px) {
           .desktop-nav { display: flex !important; }
+          .desktop-nav-links { display: flex !important; }
           .mobile-menu-btn { display: none !important; }
         }
         @media (max-width: 968px) {
           .desktop-nav { display: none !important; }
+          .desktop-nav-links { display: none !important; }
           .mobile-menu-btn { display: block !important; }
         }
         .sport-card:hover .sport-bg { transform: scale(1.1); }
@@ -612,6 +652,15 @@ export default function Home() {
             {/* THE AIRTRAINR ADVANTAGE */}
             <AirTrainrAdvantage />
 
+            {/* PRICING */}
+            <Pricing />
+
+            {/* FOUNDING 50 */}
+            <Founding50 />
+
+            {/* FAQ SECTION (moved up — directly after Founding 50) */}
+            <FAQ />
+
             {/* PLATFORM CAPABILITIES */}
             <section style={{ padding: "100px 24px", background: "var(--color-bg)", borderBottom: "1px solid var(--gray-900)" }}>
                 <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
@@ -675,63 +724,6 @@ export default function Home() {
                     </div>
                 </div>
             </section>
-
-            {/* FAQ SECTION */}
-            <section style={{ padding: "100px 24px", background: "var(--surface)", borderBottom: "1px solid var(--gray-900)" }}>
-                <div style={{ maxWidth: "800px", margin: "0 auto" }}>
-                    <div style={{ textAlign: "center", marginBottom: "56px" }}>
-                        <h2 style={{ fontSize: "36px", fontWeight: 900, fontFamily: "var(--font-display)", textTransform: "uppercase", marginBottom: "16px" }}>
-                            FREQUENTLY ASKED QUESTIONS
-                        </h2>
-                        <div style={{ width: "60px", height: "4px", background: "var(--primary)", margin: "0 auto 24px" }}></div>
-                        <p style={{ color: "var(--gray-400)", fontSize: "16px" }}>
-                            Everything you need to know about getting started with AirTrainr.
-                        </p>
-                    </div>
-
-                    <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-                        {[
-                            { q: "How are the coaches verified?", a: "Every coach on AirTrainr undergoes a strict vetting process. We check certifications, previous coaching experience, and professional backgrounds to ensure you only train with elite talent." },
-                            { q: "Do I have to commit to a monthly plan?", a: "No! We offer a flexible 'Pay-Per-Play' option so you can book single sessions a la carte whenever it fits your schedule." },
-                            { q: "Can I train both in-person and online?", a: "Yes. Many of our coaches offer both in-person sessions (based on your location filter) and remote video analysis or live virtual training." },
-                            { q: "How do payments and bookings work?", a: "It's all handled securely through our platform. Once you find a coach, you select an available time slot and pay via our secure checkout. Both you and the coach receive instant calendar invites." }
-                        ].map((faq, i) => (
-                            <details key={i} style={{
-                                background: "var(--color-bg)",
-                                border: "1px solid var(--gray-800)",
-                                borderRadius: "var(--radius-lg)",
-                                overflow: "hidden"
-                            }} className="faq-details">
-                                <summary style={{
-                                    padding: "24px",
-                                    fontSize: "18px",
-                                    fontWeight: 700,
-                                    cursor: "pointer",
-                                    listStyle: "none",
-                                    display: "flex",
-                                    justifyContent: "space-between",
-                                    alignItems: "center",
-                                    color: "white"
-                                }} className="faq-summary">
-                                    {faq.q}
-                                    <span style={{ color: "var(--primary)", fontSize: "24px", fontWeight: 400 }}>+</span>
-                                </summary>
-                                <div style={{ padding: "0 24px 24px 24px", color: "var(--gray-400)", lineHeight: 1.6, fontSize: "15px" }}>
-                                    {faq.a}
-                                </div>
-                            </details>
-                        ))}
-                    </div>
-
-                    {/* Clean styling for details marker removal */}
-                    <style>{`
-                        details > summary::-webkit-details-marker {display: none; }
-                        details[open] summary span {transform: rotate(45deg); transition: transform 0.2s; }
-                        details summary span {transition: transform 0.2s; }
-                    `}</style>
-                </div>
-            </section>
-
 
             {/* REVIEWS SECTION */}
             <section style={{ padding: "100px 24px", background: "var(--color-bg)" }}>
@@ -853,16 +845,44 @@ export default function Home() {
                                 </div>
                             </div>
 
-                            {/* Platform */}
+                            {/* Platform — role-aware */}
                             <div className="footer-col">
                                 <h4 style={{ fontSize: "11px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "2px", marginBottom: "24px", color: "var(--primary)" }}>PLATFORM</h4>
                                 <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "14px" }}>
-                                    {["Find a Trainer", "Become a Trainer", "Browse Sports", "Dashboard"].map(link => (
-                                        <li key={link}><a href="#" style={{ color: "var(--gray-500)", textDecoration: "none", fontSize: "14px", transition: "color 0.2s" }}
-                                            onMouseEnter={(e) => { e.currentTarget.style.color = "white"; }}
-                                            onMouseLeave={(e) => { e.currentTarget.style.color = "var(--gray-500)"; }}
-                                        >{link}</a></li>
-                                    ))}
+                                    {(() => {
+                                        const guestLinks = [
+                                            { label: "Find a Trainer", href: "/dashboard/search" },
+                                            { label: "Become a Trainer", href: "/auth/register?role=trainer" },
+                                            { label: "Pricing", href: "#pricing" },
+                                            { label: "Browse Sports", href: "#sports" },
+                                            { label: "How it Works", href: "#how-it-works" },
+                                        ];
+                                        const athleteLinks = [
+                                            { label: "Find a Trainer", href: "/dashboard/search" },
+                                            { label: "My Bookings", href: "/dashboard/bookings" },
+                                            { label: "Messages", href: "/dashboard/messages" },
+                                            { label: "Earnings", href: "/dashboard/earnings" },
+                                            { label: "My Profile", href: "/dashboard/profile" },
+                                        ];
+                                        const trainerLinks = [
+                                            { label: "Browse Athletes", href: "/dashboard/search" },
+                                            { label: "Availability", href: "/dashboard/availability" },
+                                            { label: "Bookings", href: "/dashboard/bookings" },
+                                            { label: "Subscription", href: "/dashboard/subscription" },
+                                            { label: "My Profile", href: "/dashboard/profile" },
+                                        ];
+                                        const links = !currentUser
+                                            ? guestLinks
+                                            : currentUser.role === "trainer"
+                                              ? trainerLinks
+                                              : athleteLinks;
+                                        return links.map(link => (
+                                            <li key={link.label}><a href={link.href} style={{ color: "var(--gray-500)", textDecoration: "none", fontSize: "14px", transition: "color 0.2s" }}
+                                                onMouseEnter={(e) => { e.currentTarget.style.color = "white"; }}
+                                                onMouseLeave={(e) => { e.currentTarget.style.color = "var(--gray-500)"; }}
+                                            >{link.label}</a></li>
+                                        ));
+                                    })()}
                                 </ul>
                             </div>
 
@@ -870,11 +890,16 @@ export default function Home() {
                             <div className="footer-col">
                                 <h4 style={{ fontSize: "11px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "2px", marginBottom: "24px", color: "var(--primary)" }}>COMPANY</h4>
                                 <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "14px" }}>
-                                    {["About Us", "Careers", "Press Kit", "Contact"].map(link => (
-                                        <li key={link}><a href="#" style={{ color: "var(--gray-500)", textDecoration: "none", fontSize: "14px", transition: "color 0.2s" }}
+                                    {[
+                                        { label: "About Us", href: "/about" },
+                                        { label: "Careers", href: "/careers" },
+                                        { label: "Press Kit", href: "/press" },
+                                        { label: "Contact", href: "/contact" },
+                                    ].map(link => (
+                                        <li key={link.label}><a href={link.href} style={{ color: "var(--gray-500)", textDecoration: "none", fontSize: "14px", transition: "color 0.2s" }}
                                             onMouseEnter={(e) => { e.currentTarget.style.color = "white"; }}
                                             onMouseLeave={(e) => { e.currentTarget.style.color = "var(--gray-500)"; }}
-                                        >{link}</a></li>
+                                        >{link.label}</a></li>
                                     ))}
                                 </ul>
                             </div>
@@ -883,11 +908,16 @@ export default function Home() {
                             <div className="footer-col">
                                 <h4 style={{ fontSize: "11px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "2px", marginBottom: "24px", color: "var(--primary)" }}>LEGAL</h4>
                                 <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "14px" }}>
-                                    {["Privacy Policy", "Terms of Service", "Safety Guides", "Help Center"].map(link => (
-                                        <li key={link}><a href="#" style={{ color: "var(--gray-500)", textDecoration: "none", fontSize: "14px", transition: "color 0.2s" }}
+                                    {[
+                                        { label: "Privacy Policy", href: "/legal/privacy" },
+                                        { label: "Terms of Service", href: "/legal/terms" },
+                                        { label: "Safety Guides", href: "/legal/safety" },
+                                        { label: "Help Center", href: "/help" },
+                                    ].map(link => (
+                                        <li key={link.label}><a href={link.href} style={{ color: "var(--gray-500)", textDecoration: "none", fontSize: "14px", transition: "color 0.2s" }}
                                             onMouseEnter={(e) => { e.currentTarget.style.color = "white"; }}
                                             onMouseLeave={(e) => { e.currentTarget.style.color = "var(--gray-500)"; }}
-                                        >{link}</a></li>
+                                        >{link.label}</a></li>
                                     ))}
                                 </ul>
                             </div>
@@ -897,11 +927,15 @@ export default function Home() {
                         <div style={{ padding: "24px 0 0", borderTop: "1px solid rgba(255,255,255,0.05)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
                             <p style={{ color: "var(--gray-600)", fontSize: "12px", letterSpacing: "0.5px" }}>© 2026 AIRTRAINR. ALL RIGHTS RESERVED.</p>
                             <div style={{ display: "flex", gap: "24px" }}>
-                                {["Privacy", "Terms", "Cookies"].map(l => (
-                                    <a key={l} href="#" style={{ color: "var(--gray-600)", fontSize: "12px", textDecoration: "none", letterSpacing: "0.5px" }}
+                                {[
+                                    { label: "Privacy", href: "/legal/privacy" },
+                                    { label: "Terms", href: "/legal/terms" },
+                                    { label: "Cookies", href: "/legal/cookies" },
+                                ].map(l => (
+                                    <a key={l.label} href={l.href} style={{ color: "var(--gray-600)", fontSize: "12px", textDecoration: "none", letterSpacing: "0.5px" }}
                                         onMouseEnter={(e) => { e.currentTarget.style.color = "var(--primary)"; }}
                                         onMouseLeave={(e) => { e.currentTarget.style.color = "var(--gray-600)"; }}
-                                    >{l}</a>
+                                    >{l.label}</a>
                                 ))}
                             </div>
                         </div>

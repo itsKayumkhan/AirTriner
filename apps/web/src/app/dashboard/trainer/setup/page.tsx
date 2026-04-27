@@ -117,6 +117,12 @@ export default function TrainerEditProfilePage() {
     const [imageUploading, setImageUploading] = useState(false);
     const profileImageInputRef = useRef<HTMLInputElement>(null);
 
+    // Banner / cover image for public profile (Change: custom banner)
+    const [bannerUrl, setBannerUrl] = useState<string | null>(null);
+    const [selectedDefaultBanner, setSelectedDefaultBanner] = useState<string | null>(null);
+    const [bannerUploading, setBannerUploading] = useState(false);
+    const bannerInputRef = useRef<HTMLInputElement>(null);
+
     const [requireVerification, setRequireVerification] = useState(true);
 
     // Verification documents state
@@ -224,6 +230,7 @@ export default function TrainerEditProfilePage() {
                 if (latestProfile.profile_image_url) setProfileImageUrl(latestProfile.profile_image_url);
                 if (latestProfile.profile_image_status) setProfileImageStatus(latestProfile.profile_image_status);
                 if (latestProfile.profile_image_rejection_reason) setProfileImageRejectionReason(latestProfile.profile_image_rejection_reason);
+                if (latestProfile.banner_url) setBannerUrl(latestProfile.banner_url);
             }
             setLoading(false);
         };
@@ -243,13 +250,21 @@ export default function TrainerEditProfilePage() {
         if (!formData.lastName.trim()) errors.lastName = "Last name is required";
         else if (formData.lastName.trim().length < 2) errors.lastName = "Must be at least 2 characters";
 
-        if (formData.phone && !/^\+?[\d\s\-()\/.]{10,}$/.test(formData.phone))
+        if (!formData.phone || !formData.phone.trim()) errors.phone = "Phone number is required";
+        else if (!/^\+?[\d\s\-()\/.]{10,}$/.test(formData.phone))
             errors.phone = "Enter a valid phone number (10+ digits)";
+
+        if (!profileImageUrl) errors.profileImage = "Profile photo is required";
+
+        if (!formData.bio?.trim()) errors.bio = "Bio is required";
+        else if (formData.bio.trim().length < 50) errors.bio = "Bio must be at least 50 characters";
 
         if (!formData.sports || formData.sports.length === 0) errors.sports = "Select at least one sport";
         if (!formData.hourlyRate || parseFloat(formData.hourlyRate) <= 0) errors.hourlyRate = "Hourly rate is required";
         if (!formData.yearsExperience) errors.yearsExperience = "Years of experience is required";
         if (!formData.city?.trim()) errors.city = "City is required";
+        if (!trainingLocations || trainingLocations.length === 0) errors.trainingLocations = "Select at least one training location";
+        if (!sessionLengths || sessionLengths.length === 0) errors.sessionLengths = "Select at least one session length";
         if (formData.zipCode.trim()) {
             const zipCountry = detectCountry(formData.zipCode);
             if (zipCountry === "OTHER") {
@@ -262,7 +277,19 @@ export default function TrainerEditProfilePage() {
 
         setFieldErrors(errors);
         if (Object.keys(errors).length > 0) {
-            setPopup({ type: "error", message: "Please fix the highlighted fields before saving." });
+            const errorKeys = Object.keys(errors);
+            const firstKey = errorKeys[0];
+            const count = errorKeys.length;
+            const firstMsg = errors[firstKey];
+            setPopup({ type: "error", message: `${count} field${count > 1 ? "s" : ""} need${count > 1 ? "" : "s"} attention. First issue: ${firstMsg}` });
+            toast.error(`${count} field${count > 1 ? "s" : ""} need${count > 1 ? "" : "s"} fixing — scroll to see highlighted fields.`);
+            // Scroll to first error field
+            setTimeout(() => {
+                const el = document.getElementById(`field-${firstKey}`);
+                if (el) {
+                    el.scrollIntoView({ behavior: "smooth", block: "center" });
+                }
+            }, 50);
             return;
         }
 
@@ -547,6 +574,85 @@ export default function TrainerEditProfilePage() {
         }
     };
 
+    const persistBannerUrl = async (url: string | null) => {
+        if (!user) return;
+        const { error } = await supabase
+            .from("trainer_profiles")
+            .update({ banner_url: url })
+            .eq("user_id", user.id);
+        if (error) {
+            console.error("Failed to save banner_url:", error);
+            toast.error("Failed to save banner. Please try again.");
+            return false;
+        }
+        return true;
+    };
+
+    const handleUploadBanner = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (!e.target.files || e.target.files.length === 0 || !user) return;
+        const file = e.target.files[0];
+
+        const allowedTypes = ["image/png", "image/jpeg", "image/webp"];
+        if (!allowedTypes.includes(file.type)) {
+            toast.error("Only PNG, JPEG, or WebP images are allowed.");
+            if (bannerInputRef.current) bannerInputRef.current.value = "";
+            return;
+        }
+        if (file.size > 8 * 1024 * 1024) {
+            toast.error("Banner must be under 8 MB.");
+            if (bannerInputRef.current) bannerInputRef.current.value = "";
+            return;
+        }
+
+        setBannerUploading(true);
+        try {
+            const result = await uploadToCloudinary(file, "airtrainer/trainer-banners", { resourceType: "image" });
+            const ok = await persistBannerUrl(result.url);
+            if (ok) {
+                setBannerUrl(result.url);
+                setSelectedDefaultBanner(null);
+                toast.success("Banner uploaded!");
+            }
+        } catch (err: unknown) {
+            console.error("Banner upload error:", err);
+            toast.error("Failed to upload banner. Please try again.");
+        } finally {
+            setBannerUploading(false);
+            if (bannerInputRef.current) bannerInputRef.current.value = "";
+        }
+    };
+
+    const handleSelectDefaultBanner = async (url: string) => {
+        const ok = await persistBannerUrl(url);
+        if (ok) {
+            setBannerUrl(url);
+            setSelectedDefaultBanner(url);
+            toast.success("Banner updated.");
+        }
+    };
+
+    const handleRemoveBanner = async () => {
+        const ok = await persistBannerUrl(null);
+        if (ok) {
+            setBannerUrl(null);
+            setSelectedDefaultBanner(null);
+            toast.success("Banner removed. Default sport banner will be shown.");
+        }
+    };
+
+    // Default banner options shown when trainer hasn't uploaded one
+    const DEFAULT_BANNERS: { label: string; url: string }[] = [
+        { label: "Tennis", url: "https://images.unsplash.com/photo-1595435934249-5df7ed86e1c0?w=1600&auto=format&fit=crop&q=80" },
+        { label: "Soccer", url: "https://images.unsplash.com/photo-1579952363873-27f3bade9f55?w=1600&auto=format&fit=crop&q=80" },
+        { label: "Basketball", url: "https://images.unsplash.com/photo-1546519638-68e109498ffc?w=1600&auto=format&fit=crop&q=80" },
+        { label: "Swimming", url: "https://images.unsplash.com/photo-1530549387789-4c1017266635?w=1600&auto=format&fit=crop&q=80" },
+        { label: "Track", url: "https://images.unsplash.com/photo-1552674605-db6ffd4facb5?w=1600&auto=format&fit=crop&q=80" },
+        { label: "Hockey", url: "https://images.unsplash.com/photo-1580748141549-71748dbe0bdc?w=1600&auto=format&fit=crop&q=80" },
+        { label: "Golf", url: "https://images.unsplash.com/photo-1535139262971-c51845709a48?w=1600&auto=format&fit=crop&q=80" },
+        { label: "Martial Arts", url: "https://images.unsplash.com/photo-1555597673-b21d5c935865?w=1600&auto=format&fit=crop&q=80" },
+        { label: "Gym", url: "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?w=1600&auto=format&fit=crop&q=80" },
+    ];
+
     const handleAddCamp = () => {
         const name = campForm.name.trim();
         const hoursPerDay = parseFloat(campForm.hoursPerDay);
@@ -713,12 +819,13 @@ export default function TrainerEditProfilePage() {
             )}
 
             {/* Profile Photo (Change 3) */}
-            <div className="bg-[#1A1C23] border border-white/5 rounded-[20px] p-6 lg:p-8 shadow-md mb-6">
+            <div id="field-profileImage" className={`bg-[#1A1C23] border rounded-[20px] p-6 lg:p-8 shadow-md mb-6 transition-colors ${fieldErrors.profileImage ? "border-red-500/60" : "border-white/5"}`}>
                 <div className="flex items-center gap-3 mb-6">
                     <Camera size={20} className="text-primary" strokeWidth={2.5} />
                     <div>
-                        <h3 className="text-[15px] font-black text-white tracking-widest uppercase">PROFILE PHOTO</h3>
+                        <h3 className="text-[15px] font-black text-white tracking-widest uppercase">PROFILE PHOTO <span className="text-red-400">*</span></h3>
                         <p className="text-[11px] text-text-main/40 font-medium mt-0.5">Upload a professional photo. Reviewed by admin before display.</p>
+                        {fieldErrors.profileImage && <p className="mt-2 text-[11px] text-red-400 font-semibold flex items-center gap-1"><AlertTriangle size={11} /> {fieldErrors.profileImage}</p>}
                     </div>
                 </div>
 
@@ -833,6 +940,88 @@ export default function TrainerEditProfilePage() {
                 </div>
             </div>
 
+            {/* Cover Banner Section */}
+            <div className="bg-[#1A1C23] border border-white/5 rounded-[20px] p-6 lg:p-8 shadow-md mb-6">
+                <div className="flex items-center justify-between mb-4">
+                    <div>
+                        <h3 className="text-lg font-bold text-white">Profile Cover Banner</h3>
+                        <p className="text-sm text-white/50 mt-1">Shown at the top of your public profile. Pick a default below or upload your own.</p>
+                    </div>
+                    {bannerUrl && (
+                        <button
+                            onClick={handleRemoveBanner}
+                            className="text-xs text-red-400 hover:text-red-300 px-3 py-1.5 rounded-full border border-red-400/30 hover:border-red-400/60 transition"
+                        >
+                            Remove Banner
+                        </button>
+                    )}
+                </div>
+
+                {/* Current banner preview */}
+                <div className="relative w-full h-[180px] sm:h-[220px] rounded-2xl overflow-hidden mb-4 border border-white/10 bg-[#0F1115]">
+                    {bannerUrl ? (
+                        <img src={bannerUrl} alt="Cover banner" className="w-full h-full object-cover" />
+                    ) : (
+                        <div className="w-full h-full flex flex-col items-center justify-center text-white/40 gap-2">
+                            <ImageIcon size={40} />
+                            <span className="text-sm">No banner set â€” a default sport banner will be shown</span>
+                        </div>
+                    )}
+                    {bannerUploading && (
+                        <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                            <span className="text-white text-sm">Uploadingâ€¦</span>
+                        </div>
+                    )}
+                </div>
+
+                {/* Upload custom */}
+                <div className="flex flex-wrap items-center gap-3 mb-5">
+                    <button
+                        onClick={() => !bannerUploading && bannerInputRef.current?.click()}
+                        disabled={bannerUploading}
+                        className="inline-flex items-center gap-2 px-4 py-2.5 rounded-full bg-primary text-black text-sm font-bold hover:opacity-90 transition disabled:opacity-50"
+                    >
+                        <Upload size={16} />
+                        {bannerUrl ? "Replace Banner" : "Upload Custom Banner"}
+                    </button>
+                    <span className="text-xs text-white/40">PNG / JPEG / WebP, up to 8 MB. Recommended 1600 x 600.</span>
+                    <input
+                        ref={bannerInputRef}
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        className="hidden"
+                        onChange={handleUploadBanner}
+                    />
+                </div>
+
+                {/* Default banner picker */}
+                <div>
+                    <p className="text-[11px] font-bold text-white/50 uppercase tracking-[0.15em] mb-3">Or pick a default</p>
+                    <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-3">
+                        {DEFAULT_BANNERS.map((b) => {
+                            const isActive = bannerUrl === b.url || selectedDefaultBanner === b.url;
+                            return (
+                                <button
+                                    key={b.url}
+                                    type="button"
+                                    onClick={() => handleSelectDefaultBanner(b.url)}
+                                    className={`relative h-20 rounded-xl overflow-hidden border-2 transition group ${isActive ? "border-primary ring-2 ring-primary/40" : "border-white/10 hover:border-white/30"}`}
+                                >
+                                    <img src={b.url} alt={b.label} className="w-full h-full object-cover" />
+                                    <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition" />
+                                    <span className="absolute bottom-1 left-1.5 text-[10px] font-bold text-white uppercase tracking-wider drop-shadow">{b.label}</span>
+                                    {isActive && (
+                                        <span className="absolute top-1 right-1 bg-primary text-black rounded-full w-5 h-5 flex items-center justify-center">
+                                            <CheckCircle size={12} />
+                                        </span>
+                                    )}
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+            </div>
+
             {/* Content Blocks */}
             <div className="space-y-6">
 
@@ -922,20 +1111,21 @@ export default function TrainerEditProfilePage() {
                         <h3 className="text-[15px] font-black text-white tracking-widest uppercase">PROFESSIONAL BIO</h3>
                     </div>
 
-                    <div>
-                        <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">INTRODUCTION</label>
+                    <div id="field-bio">
+                        <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">INTRODUCTION <span className="text-red-400">*</span></label>
                         <div className="relative">
                             <textarea
                                 value={formData.bio}
-                                onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
+                                onChange={(e) => { setFormData({ ...formData, bio: e.target.value }); setFieldErrors((p) => { const n = { ...p }; delete n.bio; return n; }); }}
                                 maxLength={500}
-                                placeholder="Write about your coaching philosophy and track record..."
-                                className="w-full h-32 bg-[#12141A] border border-white/5 rounded-2xl p-5 text-white text-sm outline-none focus:border-primary/50 resize-none transition-colors placeholder:text-text-main/30"
+                                placeholder="Write about your coaching philosophy and track record (min 50 characters)..."
+                                className={`w-full h-32 bg-[#12141A] border rounded-2xl p-5 text-white text-sm outline-none resize-none transition-colors placeholder:text-text-main/30 ${fieldErrors.bio ? "border-red-500/60 focus:border-red-500/80" : "border-white/5 focus:border-primary/50"}`}
                             />
                             <div className="absolute bottom-4 right-5 text-[10px] font-medium text-text-main/40 uppercase tracking-wider italic">
                                 {formData.bio.length} / 500 characters
                             </div>
                         </div>
+                        {fieldErrors.bio && <p className="mt-1.5 text-[11px] text-red-400 font-semibold flex items-center gap-1"><AlertTriangle size={11} /> {fieldErrors.bio}</p>}
                     </div>
                 </div>
 
@@ -943,14 +1133,15 @@ export default function TrainerEditProfilePage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
                     {/* Specialization */}
-                    <div className="bg-[#1A1C23] border border-white/5 rounded-[20px] p-6 lg:p-8 shadow-md flex flex-col">
+                    <div id="field-sports" className={`bg-[#1A1C23] border rounded-[20px] p-6 lg:p-8 shadow-md flex flex-col transition-colors ${fieldErrors.sports ? "border-red-500/60" : "border-white/5"}`}>
                         <div className="flex items-center gap-3 mb-6">
                             <Crosshair size={20} className="text-primary" strokeWidth={2.5} />
                             <h3 className="text-[15px] font-black text-white tracking-widest uppercase">SPECIALIZATION</h3>
                         </div>
 
                         <div className="flex-1">
-                            <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">CORE DISCIPLINES</label>
+                            <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">CORE DISCIPLINES <span className="text-red-400">*</span></label>
+                            {fieldErrors.sports && <p className="mb-3 text-[11px] text-red-400 font-semibold flex items-center gap-1"><AlertTriangle size={11} /> {fieldErrors.sports}</p>}
                             <div className="flex flex-wrap gap-2.5">
                                 {sportsLoading
                                     ? Array.from({ length: 10 }).map((_, i) => (
@@ -972,6 +1163,7 @@ export default function TrainerEditProfilePage() {
                                                             ? p.sports.filter((s) => s !== sport.slug)
                                                             : [...p.sports, sport.slug],
                                                     }));
+                                                    setFieldErrors((p) => { const n = { ...p }; delete n.sports; return n; });
                                                 }}
                                                 className={`
                                                     px-5 py-2.5 rounded-full text-[11px] font-black uppercase tracking-wider transition-all duration-200 border
@@ -998,17 +1190,18 @@ export default function TrainerEditProfilePage() {
                         </div>
 
                         <div className="space-y-6 flex-1">
-                            <div>
-                                <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">YEARS IN COACHING</label>
+                            <div id="field-yearsExperience">
+                                <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">YEARS IN COACHING <span className="text-red-400">*</span></label>
                                 <input
                                     type="number"
                                     min="0"
                                     max="60"
                                     value={formData.yearsExperience}
-                                    onChange={(e) => setFormData({ ...formData, yearsExperience: String(Math.max(0, parseInt(e.target.value) || 0)) })}
+                                    onChange={(e) => { setFormData({ ...formData, yearsExperience: String(Math.max(0, parseInt(e.target.value) || 0)) }); setFieldErrors((p) => { const n = { ...p }; delete n.yearsExperience; return n; }); }}
                                     placeholder="e.g. 8"
-                                    className="w-full bg-[#12141A] border border-white/5 mx-0 rounded-2xl px-5 py-3.5 text-white text-sm outline-none focus:border-primary/50 transition-colors placeholder:text-text-main/30"
+                                    className={`w-full bg-[#12141A] border mx-0 rounded-2xl px-5 py-3.5 text-white text-sm outline-none transition-colors placeholder:text-text-main/30 ${fieldErrors.yearsExperience ? "border-red-500/60 focus:border-red-500/80" : "border-white/5 focus:border-primary/50"}`}
                                 />
+                                {fieldErrors.yearsExperience && <p className="mt-1.5 text-[11px] text-red-400 font-semibold flex items-center gap-1"><AlertTriangle size={11} /> {fieldErrors.yearsExperience}</p>}
                             </div>
                             <div>
                                 <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">PREVIOUS FACILITY</label>
@@ -1048,8 +1241,9 @@ export default function TrainerEditProfilePage() {
                             <h3 className="text-[15px] font-black text-white tracking-widest uppercase">LOCATION & MATCHING</h3>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                            <div className="md:col-span-2">
-                                <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">City</label>
+                            <div id="field-city" className="md:col-span-2">
+                                <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">City <span className="text-red-400">*</span></label>
+                                <div className={fieldErrors.city ? "rounded-2xl ring-2 ring-red-500/60" : ""}>
                                 <LocationAutocomplete
                                     value={formData.city ? { city: formData.city, state: formData.state || "", country: formData.country || "", lat: formData.latitude, lng: formData.longitude } : null}
                                     onChange={(loc: LocationValue) => {
@@ -1075,10 +1269,13 @@ export default function TrainerEditProfilePage() {
                                                 longitude: loc.lng ?? null,
                                                 ...(loc.zipCode ? { zipCode: loc.zipCode } : {}),
                                             }));
+                                            setFieldErrors((p) => { const n = { ...p }; delete n.city; return n; });
                                         }
                                     }}
                                     placeholder="Start typing a city..."
                                 />
+                                </div>
+                                {fieldErrors.city && <p className="mt-1.5 text-[11px] text-red-400 font-semibold flex items-center gap-1"><AlertTriangle size={11} /> {fieldErrors.city}</p>}
                             </div>
                             <div>
                                 <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">ZIP / Postal Code</label>
@@ -1216,17 +1413,18 @@ export default function TrainerEditProfilePage() {
                         </div>
 
                         <div className="grid grid-cols-2 gap-5 h-36">
-                            <div>
-                                <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">HOURLY RATE ($)</label>
+                            <div id="field-hourlyRate">
+                                <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">HOURLY RATE ($) <span className="text-red-400">*</span></label>
                                 <div className="relative">
                                     <span className="absolute left-5 top-1/2 -translate-y-1/2 text-text-main/40 font-bold">$</span>
                                     <input
                                         type="number"
                                         value={formData.hourlyRate}
-                                        onChange={(e) => setFormData({ ...formData, hourlyRate: e.target.value })}
-                                        className="w-full bg-[#12141A] border border-white/5 rounded-2xl pl-10 pr-5 py-3.5 text-white text-sm outline-none focus:border-primary/50 transition-colors"
+                                        onChange={(e) => { setFormData({ ...formData, hourlyRate: e.target.value }); setFieldErrors((p) => { const n = { ...p }; delete n.hourlyRate; return n; }); }}
+                                        className={`w-full bg-[#12141A] border rounded-2xl pl-10 pr-5 py-3.5 text-white text-sm outline-none transition-colors ${fieldErrors.hourlyRate ? "border-red-500/60 focus:border-red-500/80" : "border-white/5 focus:border-primary/50"}`}
                                     />
                                 </div>
+                                {fieldErrors.hourlyRate && <p className="mt-1.5 text-[11px] text-red-400 font-semibold flex items-center gap-1"><AlertTriangle size={11} /> {fieldErrors.hourlyRate}</p>}
                             </div>
                             <div>
                                 <label className="block text-[11px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-4">PACKAGE 10X ($)</label>
@@ -1322,10 +1520,11 @@ export default function TrainerEditProfilePage() {
                     </div>
 
                     {/* Session Lengths */}
-                    <div className="bg-[#1A1C23] border border-white/5 rounded-[20px] p-6 lg:p-8 shadow-md md:col-span-2">
+                    <div id="field-sessionLengths" className={`bg-[#1A1C23] border rounded-[20px] p-6 lg:p-8 shadow-md md:col-span-2 transition-colors ${fieldErrors.sessionLengths ? "border-red-500/60" : "border-white/5"}`}>
                         <div className="mb-8">
-                            <h3 className="text-white font-bold text-sm uppercase tracking-widest mb-1">Session Lengths Offered</h3>
+                            <h3 className="text-white font-bold text-sm uppercase tracking-widest mb-1">Session Lengths Offered <span className="text-red-400">*</span></h3>
                             <p className="text-zinc-400 text-xs mb-4">Select which session durations you offer</p>
+                            {fieldErrors.sessionLengths && <p className="mb-3 text-[11px] text-red-400 font-semibold flex items-center gap-1"><AlertTriangle size={11} /> {fieldErrors.sessionLengths}</p>}
                             <div className="flex flex-wrap gap-3">
                                 {[30, 45, 60, 90, 120].map(mins => (
                                     <button
@@ -1334,7 +1533,8 @@ export default function TrainerEditProfilePage() {
                                         onClick={() => {
                                             setSessionLengths(prev =>
                                                 prev.includes(mins) ? prev.filter(l => l !== mins) : [...prev, mins]
-                                            )
+                                            );
+                                            setFieldErrors((p) => { const n = { ...p }; delete n.sessionLengths; return n; });
                                         }}
                                         className={`px-5 py-3 rounded-xl text-sm font-bold border transition-all ${
                                             sessionLengths.includes(mins)
@@ -1730,9 +1930,10 @@ export default function TrainerEditProfilePage() {
                         </div>
 
                         {/* Training Locations */}
-                        <div className="mb-8">
-                            <h3 className="text-white font-bold text-sm uppercase tracking-widest mb-1">Training Locations</h3>
+                        <div id="field-trainingLocations" className={`mb-8 ${fieldErrors.trainingLocations ? "p-4 -m-4 rounded-xl border border-red-500/40" : ""}`}>
+                            <h3 className="text-white font-bold text-sm uppercase tracking-widest mb-1">Training Locations <span className="text-red-400">*</span></h3>
                             <p className="text-zinc-400 text-xs mb-4">Where do you train? (select all that apply)</p>
+                            {fieldErrors.trainingLocations && <p className="mb-3 text-[11px] text-red-400 font-semibold flex items-center gap-1"><AlertTriangle size={11} /> {fieldErrors.trainingLocations}</p>}
                             <div className="flex flex-wrap gap-3">
                                 {['Rink', 'Field', 'Gym', 'Indoor Facility', 'Outdoor Court', 'Pool', 'Track', 'Home Visits', 'Virtual/Online'].map(loc => (
                                     <button
@@ -1741,7 +1942,8 @@ export default function TrainerEditProfilePage() {
                                         onClick={() => {
                                             setTrainingLocations(prev =>
                                                 prev.includes(loc) ? prev.filter(l => l !== loc) : [...prev, loc]
-                                            )
+                                            );
+                                            setFieldErrors((p) => { const n = { ...p }; delete n.trainingLocations; return n; });
                                         }}
                                         className={`px-4 py-2.5 rounded-xl text-xs font-bold border transition-all ${
                                             trainingLocations.includes(loc)

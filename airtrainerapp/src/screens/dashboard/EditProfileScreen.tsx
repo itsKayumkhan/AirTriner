@@ -167,7 +167,7 @@ export default function EditProfileScreen({ navigation }: any) {
     const [phone, setPhone] = useState((user as any)?.phone || '');
     const [dateOfBirth, setDateOfBirth] = useState((user as any)?.dateOfBirth || '');
     const [sex, setSex] = useState((user as any)?.sex || '');
-    const [skillLevel, setSkillLevel] = useState(user?.athleteProfile?.skill_level || 'beginner');
+    const [skillLevel, setSkillLevel] = useState(user?.athleteProfile?.skill_level || '');
     const [addressLine1, setAddressLine1] = useState(user?.athleteProfile?.address_line1 || '');
     const [zipCode, setZipCode] = useState(user?.athleteProfile?.zip_code || '');
     const storedRadiusMiles = tp?.travel_radius_miles || user?.athleteProfile?.travel_radius_miles || 25;
@@ -341,7 +341,11 @@ export default function EditProfileScreen({ navigation }: any) {
         else if (firstName.trim().length < 2) errors.firstName = 'First name must be at least 2 characters';
         if (!lastName.trim()) errors.lastName = 'Last name is required';
         else if (lastName.trim().length < 2) errors.lastName = 'Last name must be at least 2 characters';
-        if (phone && !/^\+?[\d\s\-()]{10,}$/.test(phone)) errors.phone = 'Phone must be at least 10 digits';
+        if (!phone || !phone.trim()) errors.phone = 'Phone number is required';
+        else if (!/^\+?[\d\s\-()]{10,}$/.test(phone)) errors.phone = 'Phone must be at least 10 digits';
+        if (!sex) errors.sex = 'Please select your gender';
+        if (!avatarUrl) errors.avatar = 'Profile photo is required';
+        if (!city.trim()) errors.city = 'City is required';
         if (zipCode.trim()) {
             const zipCountry = detectCountry(zipCode);
             if (zipCountry === 'OTHER') {
@@ -353,11 +357,14 @@ export default function EditProfileScreen({ navigation }: any) {
         }
         if (isTrainer) {
             if (!headline.trim()) errors.headline = 'Headline is required';
+            if (!bio?.trim()) errors.bio = 'Bio is required';
+            else if (bio.trim().length < 50) errors.bio = 'Bio must be at least 50 characters';
             if (selectedSports.length === 0) errors.sports = 'Select at least one sport';
             const rate = parseFloat(hourlyRate);
             if (!rate || rate < 10) errors.hourlyRate = 'Minimum rate is $10/hr';
         } else {
             if (selectedSports.length === 0) errors.sports = 'Select at least one sport';
+            if (!skillLevel) errors.skillLevel = 'Please select your skill level';
         }
         setFieldErrors(errors);
         return Object.keys(errors).length === 0;
@@ -512,6 +519,9 @@ export default function EditProfileScreen({ navigation }: any) {
                         <Text style={styles.pendingApprovalText}>Pending admin approval</Text>
                     </View>
                 )}
+                {fieldErrors.avatar && (
+                    <Text style={[styles.fieldError, { textAlign: 'center', marginTop: 8 }]}>{fieldErrors.avatar} — Tap your photo to upload</Text>
+                )}
             </Animated.View>
 
             {/* ── Personal Info Card ── */}
@@ -564,23 +574,24 @@ export default function EditProfileScreen({ navigation }: any) {
                         />
                     </View>
                     <View style={{ flex: 1 }}>
-                        <Text style={styles.chipLabel}>Sex</Text>
+                        <Text style={styles.chipLabel}>Sex *</Text>
                         <View style={styles.chipContainer}>
                             {SEX_OPTIONS.map((option) => (
                                 <Chip
                                     key={option}
                                     label={option}
                                     active={sex === option}
-                                    onPress={() => setSex(sex === option ? '' : option)}
+                                    onPress={() => { setSex(sex === option ? '' : option); setFieldErrors((p) => { const n = { ...p }; delete n.sex; return n; }); }}
                                 />
                             ))}
                         </View>
+                        {fieldErrors.sex && <Text style={styles.fieldError}>{fieldErrors.sex}</Text>}
                     </View>
                 </View>
             </SectionCard>
 
             {/* ── Location Card ── */}
-            <SectionCard title="Location" delay={250}>
+            <SectionCard title="Location *" delay={250}>
                 <View style={{ zIndex: 100 }}>
                     <LocationAutocomplete
                         value={{ city, state: stateVal, country, lat: null, lng: null }}
@@ -588,6 +599,7 @@ export default function EditProfileScreen({ navigation }: any) {
                             setCity(loc.city);
                             setStateVal(loc.state);
                             setCountry(loc.country);
+                            setFieldErrors((p) => { const n = { ...p }; delete n.city; return n; });
                             if (loc.lat && loc.lng && user) {
                                 const table = isTrainer ? 'trainer_profiles' : 'athlete_profiles';
                                 supabase.from(table).update({
@@ -602,6 +614,7 @@ export default function EditProfileScreen({ navigation }: any) {
                         placeholder="Search city or use GPS..."
                     />
                 </View>
+                {fieldErrors.city && <Text style={styles.fieldError}>{fieldErrors.city}</Text>}
                 {!isTrainer && (
                     <>
                         <Input
@@ -682,14 +695,15 @@ export default function EditProfileScreen({ navigation }: any) {
                         error={fieldErrors.headline}
                     />
                     <Input
-                        label="Bio"
+                        label="Bio *"
                         value={bio}
-                        onChangeText={setBio}
-                        placeholder="Tell athletes about your coaching style..."
+                        onChangeText={(t) => { setBio(t); setFieldErrors((p) => { const n = { ...p }; delete n.bio; return n; }); }}
+                        placeholder="Tell athletes about your coaching style (min 50 chars)..."
                         multiline
                         numberOfLines={5}
                         maxLength={1000}
                         style={{ minHeight: 120, textAlignVertical: 'top' }}
+                        error={fieldErrors.bio}
                     />
                     <Text style={styles.charCount}>{bio.length}/1000</Text>
                     <View style={styles.row}>
@@ -757,12 +771,13 @@ export default function EditProfileScreen({ navigation }: any) {
                 {!isTrainer && (
                     <>
                         <Divider />
-                        <Text style={[styles.chipLabel, { marginTop: Spacing.md }]}>Skill Level</Text>
+                        <Text style={[styles.chipLabel, { marginTop: Spacing.md }]}>Skill Level *</Text>
                         <SegmentedControl
                             options={SKILL_LEVELS}
                             selected={skillLevel}
-                            onChange={(v) => setSkillLevel(v as typeof SKILL_LEVELS[number])}
+                            onChange={(v) => { setSkillLevel(v as typeof SKILL_LEVELS[number]); setFieldErrors((p) => { const n = { ...p }; delete n.skillLevel; return n; }); }}
                         />
+                        {fieldErrors.skillLevel && <Text style={styles.fieldError}>{fieldErrors.skillLevel}</Text>}
                     </>
                 )}
             </SectionCard>

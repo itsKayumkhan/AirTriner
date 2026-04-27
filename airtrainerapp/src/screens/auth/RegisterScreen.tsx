@@ -49,7 +49,7 @@ export default function RegisterScreen({ navigation }: any) {
     const [confirmPassword, setConfirmPassword] = useState('');
     const [dateOfBirth, setDateOfBirth] = useState('');
     const [selectedSports, setSelectedSports] = useState<string[]>([]);
-    const [skillLevel, setSkillLevel] = useState('beginner');
+    const [skillLevel, setSkillLevel] = useState('');
     const [city, setCity] = useState('');
     const [state, setState] = useState('');
     const [country, setCountry] = useState('');
@@ -82,6 +82,15 @@ export default function RegisterScreen({ navigation }: any) {
         else if (password.length < 8) newErrors.password = 'Minimum 8 characters';
         if (password !== confirmPassword) newErrors.confirmPassword = 'Passwords don\'t match';
         if (!dateOfBirth.trim()) newErrors.dateOfBirth = 'Required';
+        else {
+            const dob = new Date(dateOfBirth);
+            if (isNaN(dob.getTime())) newErrors.dateOfBirth = 'Invalid date (YYYY-MM-DD)';
+            else {
+                const today = new Date();
+                const eighteenAgo = new Date(today.getFullYear() - 18, today.getMonth(), today.getDate());
+                if (dob > eighteenAgo) newErrors.dateOfBirth = 'You must be 18 or older';
+            }
+        }
         setErrors(newErrors);
         return Object.keys(newErrors).length === 0;
     };
@@ -94,12 +103,25 @@ export default function RegisterScreen({ navigation }: any) {
         return true;
     };
 
+    const validateStep3 = () => {
+        if (role === 'athlete' && !skillLevel) {
+            Alert.alert('Skill Level Required', 'Please select your skill level');
+            return false;
+        }
+        if (!city.trim()) {
+            Alert.alert('Location Required', 'Please select your city');
+            return false;
+        }
+        return true;
+    };
+
     const handleNext = () => {
         if (step === 1 && validateStep1()) setStep(2);
         else if (step === 2 && validateStep2()) setStep(3);
     };
 
     const handleRegister = async () => {
+        if (!validateStep3()) return;
         setIsLoading(true);
         try {
             await register({
@@ -110,7 +132,7 @@ export default function RegisterScreen({ navigation }: any) {
                 role,
                 dateOfBirth,
                 sports: selectedSports,
-                skillLevel: skillLevel.toLowerCase(),
+                skillLevel: skillLevel ? skillLevel.toLowerCase() : 'beginner',
                 city: city || undefined,
                 state: state || undefined,
             });

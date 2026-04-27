@@ -96,16 +96,35 @@ function RegisterForm() {
             return;
         }
 
-        // Fix F: client-side age validation
-        if (dateOfBirth) {
-            const dob = new Date(dateOfBirth);
-            const today = new Date();
-            const eighteenYearsAgo = new Date(today.getFullYear() - 18, today.getMonth(), today.getDate());
-            if (dob > eighteenYearsAgo) {
-                toast.error("You must be at least 18 years old to register");
-                setLoading(false);
-                return;
-            }
+        if (role === "athlete" && !skillLevel) {
+            toast.error("Please select your skill level");
+            setLoading(false);
+            return;
+        }
+
+        if (!city.trim()) {
+            toast.error("Please select your city");
+            setLoading(false);
+            return;
+        }
+
+        if (!dateOfBirth) {
+            toast.error("Date of birth is required");
+            setLoading(false);
+            return;
+        }
+        const dob = new Date(dateOfBirth);
+        const today = new Date();
+        const eighteenYearsAgo = new Date(today.getFullYear() - 18, today.getMonth(), today.getDate());
+        if (isNaN(dob.getTime())) {
+            toast.error("Invalid date of birth");
+            setLoading(false);
+            return;
+        }
+        if (dob > eighteenYearsAgo) {
+            toast.error("You must be at least 18 years old to register");
+            setLoading(false);
+            return;
         }
 
         const [firstName, ...lastNames] = fullName.split(" ");
@@ -338,7 +357,7 @@ function RegisterForm() {
 
                             {role === "athlete" && (
                                 <div style={{ marginBottom: "24px" }}>
-                                    <label style={{ display: "block", fontSize: "14px", fontWeight: 700, marginBottom: "12px" }}>Skill Level</label>
+                                    <label style={{ display: "block", fontSize: "14px", fontWeight: 700, marginBottom: "12px" }}>Skill Level <span style={{ color: "#f87171" }}>*</span></label>
                                     {/* Fix G: skill level grid — 1 col on mobile, 2 cols on sm+ */}
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                         {SKILL_LEVELS.map(sl => (
@@ -359,7 +378,7 @@ function RegisterForm() {
                             {/* Fix G: city/dob — stack on mobile, side by side on sm+ */}
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4" style={{ marginBottom: "32px" }}>
                                 <div>
-                                    <label style={{ display: "block", fontSize: "12px", fontWeight: 700, color: "var(--gray-300)", marginBottom: "8px" }}>City</label>
+                                    <label style={{ display: "block", fontSize: "12px", fontWeight: 700, color: "var(--gray-300)", marginBottom: "8px" }}>City <span style={{ color: "#f87171" }}>*</span></label>
                                     <LocationAutocomplete
                                         value={locationData}
                                         onChange={(loc: LocationValue) => {
@@ -370,7 +389,7 @@ function RegisterForm() {
                                     />
                                 </div>
                                 <div>
-                                    <label style={{ display: "block", fontSize: "12px", fontWeight: 700, color: "var(--gray-300)", marginBottom: "8px" }}>Date of Birth</label>
+                                    <label style={{ display: "block", fontSize: "12px", fontWeight: 700, color: "var(--gray-300)", marginBottom: "8px" }}>Date of Birth <span style={{ color: "#f87171" }}>*</span></label>
                                     <input type="date" value={dateOfBirth} onChange={e => setDateOfBirth(e.target.value)} required style={inputStyle} />
                                 </div>
                             </div>

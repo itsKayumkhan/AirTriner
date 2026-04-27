@@ -214,10 +214,18 @@ export default function ProfilePage() {
         if (!form.lastName.trim()) errors.lastName = "Last name is required";
         else if (form.lastName.trim().length < 2) errors.lastName = "Must be at least 2 characters";
 
-        if (form.phone && !/^\+?[\d\s\-()\/.]{10,}$/.test(form.phone))
+        if (!form.phone || !form.phone.trim()) errors.phone = "Phone number is required";
+        else if (!/^\+?[\d\s\-()\/.]{10,}$/.test(form.phone))
             errors.phone = "Enter a valid phone number (10+ digits)";
 
-        if (form.dateOfBirth) {
+        if (!form.sex) errors.sex = "Please select your gender";
+
+        if (!avatarUrl) errors.avatar = "Profile photo is required";
+
+        if (!form.city?.trim()) errors.city = "City is required";
+
+        if (!form.dateOfBirth) errors.dateOfBirth = "Date of birth is required";
+        else {
             const dob = new Date(form.dateOfBirth);
             const age = (Date.now() - dob.getTime()) / (1000 * 60 * 60 * 24 * 365.25);
             if (isNaN(dob.getTime())) errors.dateOfBirth = "Invalid date";
@@ -251,11 +259,15 @@ export default function ProfilePage() {
             if (!form.headline.trim()) errors.headline = "Headline is required";
             else if (form.headline.trim().length < 5) errors.headline = "Headline must be at least 5 characters";
 
+            if (!form.bio?.trim()) errors.bio = "Bio is required";
+            else if (form.bio.trim().length < 50) errors.bio = "Bio must be at least 50 characters";
+
             if (form.sports.length === 0) errors.sports = "Select at least one sport";
         }
 
         if (user?.role === "athlete") {
             if (form.sports.length === 0) errors.sports = "Select at least one sport";
+            if (!form.skillLevel) errors.skillLevel = "Please select your skill level";
         }
 
         setFieldErrors(errors);
@@ -265,8 +277,33 @@ export default function ProfilePage() {
     const handleSave = async () => {
         if (!user) return;
         if (!validate()) {
-            toast.error("Please fix the highlighted fields below before saving.");
-            window.scrollTo({ top: 0, behavior: "smooth" });
+            // Find first error and scroll to it
+            const firstKey = Object.keys(fieldErrors)[0] || (() => {
+                const errs: Record<string, string> = {};
+                // Re-run validate inline to capture errors synchronously since setFieldErrors is async
+                if (!form.firstName.trim()) errs.firstName = "x";
+                if (!form.lastName.trim()) errs.lastName = "x";
+                if (!form.phone?.trim()) errs.phone = "x";
+                if (!form.sex) errs.sex = "x";
+                if (!avatarUrl) errs.avatar = "x";
+                if (!form.city?.trim()) errs.city = "x";
+                if (!form.dateOfBirth) errs.dateOfBirth = "x";
+                if (user?.role === "trainer" && !form.bio?.trim()) errs.bio = "x";
+                if (user?.role === "athlete" && !form.skillLevel) errs.skillLevel = "x";
+                return Object.keys(errs)[0];
+            })();
+            const count = Object.keys(fieldErrors).length;
+            toast.error(`${count || "Some"} field${count === 1 ? "" : "s"} need${count === 1 ? "s" : ""} attention. Scroll to highlighted field${count === 1 ? "" : "s"}.`);
+            setTimeout(() => {
+                if (firstKey) {
+                    const el = document.getElementById(`field-${firstKey}`);
+                    if (el) {
+                        el.scrollIntoView({ behavior: "smooth", block: "center" });
+                        return;
+                    }
+                }
+                window.scrollTo({ top: 0, behavior: "smooth" });
+            }, 50);
             return;
         }
         setSaving(true);
@@ -587,12 +624,12 @@ export default function ProfilePage() {
                             </p>
                         )}
                     </div>
-                    <div>
-                        <label className="block text-[10px] font-bold text-text-main/40 uppercase tracking-[0.12em] mb-2">Sex</label>
+                    <div id="field-sex">
+                        <label className="block text-[10px] font-bold text-text-main/40 uppercase tracking-[0.12em] mb-2">Sex <span className="text-red-400">*</span></label>
                         <select
                             value={form.sex}
                             onChange={(e) => updateForm({ sex: e.target.value })}
-                            className={inputCls() + " appearance-none cursor-pointer"}
+                            className={inputCls("sex") + " appearance-none cursor-pointer"}
                             style={{ backgroundColor: "#13151b", colorScheme: "dark" }}
                         >
                             <option value="">Select Sex</option>
@@ -600,6 +637,7 @@ export default function ProfilePage() {
                             <option value="female">Female</option>
                             <option value="other">Other</option>
                         </select>
+                        <FieldError field="sex" />
                     </div>
                     <div className="md:col-span-2">
                         <label className="block text-[10px] font-bold text-text-main/40 uppercase tracking-[0.12em] mb-2">Phone</label>
@@ -625,6 +663,17 @@ export default function ProfilePage() {
                 </div>
             )}
 
+            {/* Profile Photo Required Notice */}
+            {fieldErrors.avatar && (
+                <div id="field-avatar" className="mb-4 p-4 bg-red-500/10 border border-red-500/40 rounded-2xl flex items-center gap-3">
+                    <AlertTriangle size={18} className="text-red-400 shrink-0" />
+                    <div>
+                        <p className="text-sm font-bold text-red-400">{fieldErrors.avatar}</p>
+                        <p className="text-xs text-red-400/70 mt-0.5">Click your photo at the top of the page to upload one.</p>
+                    </div>
+                </div>
+            )}
+
             {/* Location Info */}
             <div className="bg-surface border border-white/[0.06] rounded-2xl p-6 mb-4">
                     <div className="flex items-center gap-2.5 mb-5">
@@ -636,8 +685,9 @@ export default function ProfilePage() {
                             <label className="block text-[10px] font-bold text-text-main/40 uppercase tracking-[0.12em] mb-2">Address</label>
                             <input value={form.addressLine1} onChange={(e) => updateForm({ addressLine1: e.target.value })} placeholder="123 Training Way" className={inputCls()} />
                         </div>
-                        <div className="md:col-span-2">
-                            <label className="block text-[10px] font-bold text-text-main/40 uppercase tracking-[0.12em] mb-2">City / Town</label>
+                        <div id="field-city" className="md:col-span-2">
+                            <label className="block text-[10px] font-bold text-text-main/40 uppercase tracking-[0.12em] mb-2">City / Town <span className="text-red-400">*</span></label>
+                            <div className={fieldErrors.city ? "rounded-xl ring-2 ring-red-500/60" : ""}>
                             <LocationAutocomplete
                                 value={
                                     form.city
@@ -660,6 +710,8 @@ export default function ProfilePage() {
                                 }}
                                 placeholder="Start typing a city..."
                             />
+                            </div>
+                            <FieldError field="city" />
                         </div>
                         <div className="grid grid-cols-2 gap-3 md:col-span-2">
                             <div>
@@ -730,8 +782,9 @@ export default function ProfilePage() {
                         <h3 className="text-[11px] font-black text-text-main/50 tracking-[0.15em] uppercase">Training Preferences</h3>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div>
-                            <label className="block text-[10px] font-bold text-text-main/40 uppercase tracking-[0.12em] mb-3">Skill Level</label>
+                        <div id="field-skillLevel" className={fieldErrors.skillLevel ? "p-3 -m-3 rounded-xl border border-red-500/40" : ""}>
+                            <label className="block text-[10px] font-bold text-text-main/40 uppercase tracking-[0.12em] mb-3">Skill Level <span className="text-red-400">*</span></label>
+                            <FieldError field="skillLevel" />
                             <div className="grid grid-cols-2 gap-2">
                                 {["beginner", "intermediate", "advanced", "pro"].map((level) => (
                                     <button
@@ -790,14 +843,15 @@ export default function ProfilePage() {
                             <input value={form.headline} onChange={(e) => updateForm({ headline: e.target.value })} placeholder="e.g. Former NCAA D1 Player" className={inputCls("headline")} />
                             <FieldError field="headline" />
                         </div>
-                        <div>
-                            <label className="block text-[10px] font-bold text-text-main/40 uppercase tracking-[0.12em] mb-2">Bio</label>
+                        <div id="field-bio">
+                            <label className="block text-[10px] font-bold text-text-main/40 uppercase tracking-[0.12em] mb-2">Bio <span className="text-red-400">*</span></label>
                             <textarea
                                 value={form.bio}
                                 onChange={(e) => updateForm({ bio: e.target.value })}
-                                placeholder="Tell athletes about your experience..."
-                                className={inputCls() + " h-28 resize-none"}
+                                placeholder="Tell athletes about your experience (min 50 characters)..."
+                                className={inputCls("bio") + " h-28 resize-none"}
                             />
+                            <FieldError field="bio" />
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
