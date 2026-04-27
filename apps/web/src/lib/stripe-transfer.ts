@@ -49,9 +49,9 @@ export async function transferToTrainer(stripe: Stripe, params: {
     // 2. Resolve the source charge for proper transfer accounting + currency.
     //    When source_transaction is set, the transfer currency MUST match the
     //    source charge's currency (Stripe rejects USD transfer from a CAD charge).
-    //    We default to USD only when there's no linked source charge to read.
     let sourceTransaction: string | undefined;
     let sourceCurrency: string | undefined;
+    let piLookupFailed = false;
     if (stripePaymentIntentId) {
         try {
             const pi = await stripe.paymentIntents.retrieve(stripePaymentIntentId, {
@@ -60,19 +60,34 @@ export async function transferToTrainer(stripe: Stripe, params: {
             const latest = (pi.latest_charge ?? null) as string | Stripe.Charge | null;
             if (typeof latest === 'string') {
                 sourceTransaction = latest;
-                // Fallback: PI currency matches its charge currency in 99% of cases
                 if (pi.currency) sourceCurrency = pi.currency.toLowerCase();
             } else if (latest && typeof latest === 'object') {
                 sourceTransaction = latest.id;
                 sourceCurrency = (latest.currency || pi.currency || '').toLowerCase() || undefined;
             }
-        } catch {
-            // non-fatal — Transfer can still happen from platform balance
+        } catch (err: any) {
+            piLookupFailed = true;
+            console.warn('[stripe-transfer] PI lookup failed', {
+                txId, stripePaymentIntentId, code: err?.code, message: err?.message,
+            });
+            // If the saved PI no longer exists in Stripe, the platform can still
+            // transfer from its general balance — but the audit trail is broken.
+            // Surface this clearly instead of letting Stripe error opaquely.
+            if (err?.code === 'resource_missing') {
+                return {
+                    ok: false,
+                    reason: 'stripe_payment_intent_not_found',
+                    code: err?.code,
+                };
+            }
         }
     }
 
     // sourceCurrency wins (must match charge), platform default fallback otherwise.
     const transferCurrency = stripeCurrency(sourceCurrency);
+    console.log('[stripe-transfer] resolved', {
+        txId, bookingId, sourceTransaction, sourceCurrency, transferCurrency,
+    });
 
     // 3. Transfer
     try {
@@ -85,7 +100,9 @@ export async function transferToTrainer(stripe: Stripe, params: {
                 metadata: { booking_id: bookingId, tx_id: txId },
                 ...(sourceTransaction ? { source_transaction: sourceTransaction } : {}),
             },
-            { idempotencyKey: `release_${txId}` }
+            // v2 prefix: invalidates any v1 idempotency cache from the
+            // pre-currency-fix code that hardcoded USD on CAD source charges.
+            { idempotencyKey: `release_v2_${txId}` }
         );
         return { ok: true, transferId: transfer.id };
     } catch (err: any) {
