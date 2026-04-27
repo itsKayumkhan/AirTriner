@@ -9,6 +9,17 @@ import { useRouter } from "next/navigation";
 import LocationAutocomplete, { type LocationValue } from "@/components/forms/LocationAutocomplete";
 import { detectCountry, radiusUnit, formatRadius, kmToMi, miToKm } from "@/lib/units";
 import { toast } from "@/components/ui/Toast";
+import { ALLOWED_SESSION_DURATIONS, normalizeSessionPricing, defaultSessionPricing } from "@/lib/session-pricing";
+
+// Convert DB jsonb session_pricing to form state shape (string prices for inputs).
+function hydratePricingFromDb(raw: unknown, hourlyRate: number): Record<"30" | "45" | "60", { price: string; enabled: boolean }> {
+    const norm = normalizeSessionPricing(raw, hourlyRate);
+    return {
+        "30": { price: String(norm["30"]?.price ?? ""), enabled: !!norm["30"]?.enabled },
+        "45": { price: String(norm["45"]?.price ?? ""), enabled: !!norm["45"]?.enabled },
+        "60": { price: String(norm["60"]?.price ?? ""), enabled: !!norm["60"]?.enabled },
+    };
+}
 
 const FALLBACK_SPORTS: { id: string; name: string; slug: string }[] = [
     { id: "hockey", name: "Hockey", slug: "hockey" },
@@ -52,6 +63,12 @@ export default function ProfilePage() {
         bio: "",
         headline: "",
         hourlyRate: "",
+        // Per-duration pricing (sessions only; camps are separate). Strings for input binding.
+        sessionPricing: {
+            "30": { price: "", enabled: false },
+            "45": { price: "", enabled: false },
+            "60": { price: "", enabled: true },
+        } as Record<"30" | "45" | "60", { price: string; enabled: boolean }>,
         yearsExperience: "",
         sports: [] as string[],
         skillLevel: "beginner",
@@ -131,6 +148,7 @@ export default function ProfilePage() {
                 bio: tp?.bio || "",
                 headline: tp?.headline || "",
                 hourlyRate: String(tp?.hourly_rate || 50),
+                sessionPricing: hydratePricingFromDb(tp?.session_pricing as any, Number(tp?.hourly_rate) || 50),
                 yearsExperience: String(tp?.years_experience || 0),
                 sports: tp?.sports || [],
                 skillLevel: "beginner",
@@ -164,6 +182,11 @@ export default function ProfilePage() {
                 bio: (ap as any)?.bio || "",
                 headline: "",
                 hourlyRate: "",
+                sessionPricing: {
+                    "30": { price: "", enabled: false },
+                    "45": { price: "", enabled: false },
+                    "60": { price: "", enabled: true },
+                },
                 yearsExperience: "",
                 sports: ap?.sports || [],
                 skillLevel: ap?.skill_level || "beginner",

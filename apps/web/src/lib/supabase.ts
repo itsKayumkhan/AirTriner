@@ -76,6 +76,7 @@ export type TrainerProfileRow = {
     longitude: number | null;
     travel_radius_miles: number;
     session_lengths: number[];
+    session_pricing?: Record<string, { price: number; enabled: boolean }> | null;
     training_locations: string[];
     training_types: string[] | null;
     preferred_training_times: ('morning'|'afternoon'|'evening')[] | null;

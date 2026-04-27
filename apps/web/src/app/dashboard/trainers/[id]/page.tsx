@@ -9,6 +9,7 @@ import { ReviewSection } from "@/components/trainers/ReviewSection";
 import { FoundingBadgeTooltip } from "@/components/ui/FoundingBadge";
 import { toast } from "@/components/ui/Toast";
 import { formatSportName } from "@/lib/format";
+import { normalizeSessionPricing, priceFor, enabledDurations } from "@/lib/session-pricing";
 
 type Review = {
     id: string;
@@ -101,6 +102,11 @@ export default function BookTrainerPage() {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const [user, setUser] = useState<AuthUser | null>(null);
     const [trainer, setTrainer] = useState<TrainerWithUser | null>(null);
+    const sessionPricing = useMemo(
+        () => normalizeSessionPricing(trainer?.session_pricing ?? null, trainer?.hourly_rate),
+        [trainer?.session_pricing, trainer?.hourly_rate]
+    );
+    const offeredDurations = useMemo(() => enabledDurations(sessionPricing), [sessionPricing]);
     const [trainerProfileId, setTrainerProfileId] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [pageError, setPageError] = useState<string | null>(null);
@@ -533,13 +539,12 @@ export default function BookTrainerPage() {
                 is_performance_verified: isPerformanceVerified
             });
 
-            // Set default duration and location from trainer profile
-            let defaultDuration = 60;
-            if (profile.session_lengths?.length) {
-                const sorted = [...profile.session_lengths].sort((a: number, b: number) => a - b);
-                defaultDuration = sorted[0];
-                setDurationMinutes(sorted[0]);
-            }
+            // Set default duration from session_pricing (sessions, not camps).
+            // Falls back to legacy session_lengths if pricing column missing.
+            const profilePricing = normalizeSessionPricing(profile.session_pricing ?? null, profile.hourly_rate);
+            const profileEnabled = enabledDurations(profilePricing);
+            let defaultDuration = profileEnabled[0] ?? 60;
+            setDurationMinutes(defaultDuration);
             if (profile.training_locations?.length) {
                 setSelectedLocation(profile.training_locations[0]);
             }
@@ -640,7 +645,13 @@ export default function BookTrainerPage() {
                 .select("platform_fee_percentage")
                 .maybeSingle();
 
-            const sessionPrice = (trainer.hourly_rate || 0) * (durationMinutes / 60);
+            const explicitPrice = priceFor(sessionPricing, durationMinutes);
+            if (explicitPrice == null) {
+                toast.error(`This trainer doesn't offer ${durationMinutes}-minute sessions.`);
+                setProcessing(false);
+                return;
+            }
+            const sessionPrice = explicitPrice;
 
             // Compute full athlete-pays-all breakdown (platform + Stripe + tax)
             const { calculateFees } = await import("@/lib/fees");
@@ -925,21 +936,22 @@ export default function BookTrainerPage() {
                         })()}
                     </div>
 
-                    {/* Session Lengths */}
-                    {trainer.session_lengths?.length > 0 && (
+                    {/* Session Lengths & Pricing */}
+                    {offeredDurations.length > 0 && (
                         <div>
                             <h2 className="text-xl sm:text-2xl font-black text-text-main mb-5 flex items-center gap-2" style={{ fontFamily: "var(--font-display)" }}>
                                 <span className="w-1 h-6 rounded-full bg-gradient-to-b from-primary to-primary/0" />
-                                Session Lengths
+                                Session Lengths & Pricing
                             </h2>
                             <div className="flex flex-wrap gap-2.5">
-                                {[...trainer.session_lengths].sort((a, b) => a - b).map((d, i) => (
+                                {offeredDurations.map((d, i) => (
                                     <span
                                         key={i}
                                         className="inline-flex items-center gap-1.5 bg-gradient-to-br from-white/[0.05] to-white/[0.02] border border-white/[0.08] hover:border-primary/30 text-text-main/85 px-4 py-2 rounded-full text-xs font-black uppercase tracking-[0.12em] hover:-translate-y-0.5 transition-all backdrop-blur-sm"
                                     >
                                         <Clock size={11} className="text-primary/80" />
-                                        {d < 60 ? `${d} min` : d === 60 ? '1 hr' : d === 90 ? '1.5 hr' : `${d / 60} hr`}
+                                        {d < 60 ? `${d} min` : '1 hr'}
+                                        <span className="text-primary font-black">${(priceFor(sessionPricing, d) ?? 0).toFixed(0)}</span>
                                     </span>
                                 ))}
                             </div>
@@ -991,10 +1003,10 @@ export default function BookTrainerPage() {
                                         className="text-[44px] sm:text-[52px] font-black text-white leading-none bg-gradient-to-br from-white to-white/70 bg-clip-text"
                                         style={{ fontFamily: "var(--font-display)" }}
                                     >
-                                        ${((trainer.hourly_rate || 0) * (durationMinutes / 60)).toFixed(0)}
+                                        ${(priceFor(sessionPricing, durationMinutes) ?? 0).toFixed(0)}
                                     </span>
                                     <span className="text-zinc-400 text-xs ml-1 font-semibold">
-                                        / {durationMinutes < 60 ? `${durationMinutes}min` : durationMinutes === 90 ? '1.5hr' : `${durationMinutes / 60}hr`}
+                                        / {durationMinutes < 60 ? `${durationMinutes}min` : `${durationMinutes / 60}hr`}
                                     </span>
                                 </div>
                             </div>
@@ -1119,12 +1131,12 @@ export default function BookTrainerPage() {
                             </div>
                         )}
 
-                        {/* Session Duration — only show trainer's offered lengths */}
-                        {trainer?.session_lengths?.length > 0 && (
+                        {/* Session Duration — show only enabled durations from session_pricing */}
+                        {offeredDurations.length > 0 && (
                             <div className="mb-8">
                                 <h4 className="text-[10px] text-text-main/40 font-bold uppercase tracking-[0.15em] mb-3">Session Duration</h4>
                                 <div className="flex flex-wrap gap-2">
-                                    {[...trainer.session_lengths].sort((a, b) => a - b).map(d => (
+                                    {offeredDurations.map(d => (
                                         <button
                                             key={d}
                                             type="button"
@@ -1135,9 +1147,9 @@ export default function BookTrainerPage() {
                                                     : 'bg-white/4 text-white/60 border-white/10 hover:border-white/30'
                                             }`}
                                         >
-                                            {d < 60 ? `${d} min` : d === 60 ? '1 hr' : d === 90 ? '1.5 hr' : `${d/60} hr`}
+                                            {d < 60 ? `${d} min` : '1 hr'}
                                             <span className="ml-2 text-[10px] opacity-70">
-                                                ${((trainer.hourly_rate || 0) * (d / 60)).toFixed(0)}
+                                                ${(priceFor(sessionPricing, d) ?? 0).toFixed(0)}
                                             </span>
                                         </button>
                                     ))}
@@ -1189,7 +1201,7 @@ export default function BookTrainerPage() {
 
                         {/* Fee Breakdown Preview */}
                         {user?.id !== trainer?.user_id && (() => {
-                            const sessionPrice = (trainer.hourly_rate || 0) * (durationMinutes / 60);
+                            const sessionPrice = priceFor(sessionPricing, durationMinutes) ?? 0;
                             const pct = platformFeePct / 100;
                             const platformFeeAmt = Math.round(sessionPrice * pct * 100) / 100;
                             const stripeFeeAmt = Math.round(((sessionPrice + platformFeeAmt) * 0.029 + 0.30) * 100) / 100;
