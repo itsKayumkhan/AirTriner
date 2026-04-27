@@ -167,6 +167,10 @@ export async function registerUser(data: {
     budgetMax?: number;
     city?: string;
     state?: string;
+    country?: string;
+    zipCode?: string;
+    latitude?: number;
+    longitude?: number;
     travelRadius?: number;
 }): Promise<AuthUser> {
     const cleanEmail = data.email.toLowerCase().trim();
@@ -247,6 +251,13 @@ export async function registerUser(data: {
                 trial_started_at: new Date().toISOString(),
                 verification_status: autoApprove ? 'approved' : 'pending',
                 is_verified: autoApprove,
+                city: data.city || null,
+                state: data.state || null,
+                country: data.country || null,
+                zip_code: data.zipCode || null,
+                latitude: data.latitude ?? null,
+                longitude: data.longitude ?? null,
+                travel_radius_miles: data.travelRadius ?? 25,
             })
             .select()
             .single();
@@ -267,6 +278,10 @@ export async function registerUser(data: {
                 training_preferences: data.trainingTypes || [],
                 city: data.city || null,
                 state: data.state || null,
+                country: data.country || null,
+                zip_code: data.zipCode || null,
+                latitude: data.latitude ?? null,
+                longitude: data.longitude ?? null,
                 travel_radius_miles: data.travelRadius || 25,
             })
             .select()

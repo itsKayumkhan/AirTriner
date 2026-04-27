@@ -147,6 +147,11 @@ function RegisterForm() {
                 sports: selectedSports,
                 ...(role === "athlete" ? { skillLevel: skillLevel || undefined } : {}),
                 city: city || undefined,
+                state: locationData?.state || undefined,
+                country: locationData?.country || undefined,
+                zipCode: locationData?.zipCode || undefined,
+                latitude: locationData?.lat ?? undefined,
+                longitude: locationData?.lng ?? undefined,
             });
             router.push(role === "trainer" ? "/dashboard/trainer/setup" : "/dashboard");
         } catch (err: unknown) {
