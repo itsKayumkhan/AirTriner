@@ -78,7 +78,27 @@ export async function POST(req: NextRequest) {
                 targetId: txId,
                 payload: { bookingId: tx.booking_id, amount: tx.trainer_payout, reason: result.reason, code: result.code },
             });
-            return NextResponse.json({ error: `Transfer failed: ${result.reason}` }, { status: 502 });
+            // Map machine reasons to admin-friendly explanations.
+            const userMessage = (() => {
+                switch (result.reason) {
+                    case 'no_stripe_account':
+                        return "Trainer hasn't connected their Stripe (Connect) account yet.";
+                    case 'invalid_amount':
+                        return "Payout amount is invalid (must be > 0).";
+                    case 'payouts_not_enabled':
+                        return "Trainer's Stripe account is not yet approved for payouts (verification pending).";
+                    case 'account_lookup_failed':
+                        return `Could not look up trainer's Stripe account (${result.code || 'error'}).`;
+                    case 'stripe_payment_intent_not_found':
+                        return "The original payment is missing from Stripe (orphan transaction). Reconcile this booking before releasing.";
+                    default:
+                        return `Stripe transfer failed: ${result.reason}`;
+                }
+            })();
+            console.error('[release-single-payout] transfer rejected', {
+                txId, bookingId: tx.booking_id, reason: result.reason, code: result.code,
+            });
+            return NextResponse.json({ error: userMessage, reason: result.reason, code: result.code }, { status: 502 });
         }
 
         // Only after Transfer succeeds, mark released + persist transfer id

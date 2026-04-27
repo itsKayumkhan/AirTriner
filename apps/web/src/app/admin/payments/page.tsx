@@ -194,9 +194,9 @@ export default function AdminPaymentsPage() {
 
                     loadData();
                     showAlert("success", "Payout Released", "The funds have been successfully released to the trainer.");
-                } catch (err) {
-                    console.error(err);
-                    showAlert("error", "Error", "Failed to release payout. Please try again later.");
+                } catch (err: any) {
+                    console.error("[admin/payments] release single failed", err);
+                    showAlert("error", "Release Failed", err?.message || "Failed to release payout. Please try again later.");
                 } finally {
                     setProcessing(null);
                 }
