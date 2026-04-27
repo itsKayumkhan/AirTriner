@@ -967,12 +967,15 @@ export default function DiscoverScreen({ navigation }: any) {
                 <View style={styles.mapContainer}>
                     <TrainerMapView
                         trainers={trainerPins}
-                        onTrainerPress={(userId) =>
-                            navigation.navigate('TrainerDetail', {
-                                trainerId: userId,
-                                trainer: filteredTrainers.find((t) => t.user_id === userId),
-                            })
-                        }
+                        onTrainerPress={(userId) => {
+                            const found = filteredTrainers.find((t) => t.user_id === userId);
+                            if (found) {
+                                navigation.navigate('TrainerDetail', {
+                                    trainerId: userId,
+                                    trainer: found,
+                                });
+                            }
+                        }}
                     />
                 </View>
             )}
@@ -1313,15 +1316,16 @@ const styles = StyleSheet.create({
     sportScroll: {
         marginTop: Spacing.md,
         marginBottom: Spacing.sm,
-        height: 40,
+        minHeight: 44,
         flexGrow: 0,
+        flexShrink: 0,
     },
     sportScrollContent: {
         paddingHorizontal: Layout.screenPadding,
         paddingRight: Layout.screenPadding + 20,
         gap: 8,
         alignItems: 'center',
-        height: 40,
+        minHeight: 44,
     },
     sportPill: {
         flexDirection: 'row',
@@ -1354,15 +1358,16 @@ const styles = StyleSheet.create({
     // ── Sort Options ──
     sortScrollOuter: {
         marginBottom: Spacing.md,
-        height: 32,
+        minHeight: 36,
         flexGrow: 0,
+        flexShrink: 0,
         marginTop: Spacing.xs,
     },
     sortScrollContent: {
         paddingHorizontal: Layout.screenPadding,
         gap: 6,
         alignItems: 'center',
-        height: 32,
+        minHeight: 36,
     },
     sortPill: {
         flexDirection: 'row',

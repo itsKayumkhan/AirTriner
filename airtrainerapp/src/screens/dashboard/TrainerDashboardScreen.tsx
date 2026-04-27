@@ -65,19 +65,30 @@ export default function TrainerDashboardScreen({ navigation }: any) {
                 setRequireVerification(platformData.require_trainer_verification);
             }
 
-            const { data: bookings } = await supabase
+            let bookingsQuery = supabase
                 .from('bookings')
                 .select('*')
-                .eq('trainer_id', user.id)
                 .order('scheduled_at', { ascending: false });
+
+            // Admin sees all bookings; trainer sees only their own
+            if (user.role !== 'admin') {
+                bookingsQuery = bookingsQuery.eq('trainer_id', user.id);
+            }
+
+            const { data: bookings } = await bookingsQuery;
 
             const allBookings = (bookings || []) as BookingRow[];
             const now = new Date().toISOString();
 
-            const { data: reviews } = await supabase
+            let reviewsQuery = supabase
                 .from('reviews')
-                .select('*')
-                .eq('reviewee_id', user.id);
+                .select('*');
+
+            if (user.role !== 'admin') {
+                reviewsQuery = reviewsQuery.eq('reviewee_id', user.id);
+            }
+
+            const { data: reviews } = await reviewsQuery;
 
             const avgRating =
                 reviews && reviews.length > 0
@@ -103,7 +114,10 @@ export default function TrainerDashboardScreen({ navigation }: any) {
             });
 
             const recentIds = allBookings.slice(0, 5);
-            const otherUserIds = recentIds.map((b) => b.athlete_id);
+            // Admin sees both sides; collect all related user IDs
+            const otherUserIds = user.role === 'admin'
+                ? [...new Set(recentIds.flatMap((b) => [b.athlete_id, b.trainer_id]))]
+                : recentIds.map((b) => b.athlete_id);
 
             if (otherUserIds.length > 0) {
                 const { data: otherUsers } = await supabase

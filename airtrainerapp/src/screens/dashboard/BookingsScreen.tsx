@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, RefreshControl, Pressable } from 'react-native';
+import { View, Text, StyleSheet, FlatList, RefreshControl, Pressable, ScrollView, Modal, TouchableOpacity } from 'react-native';
 import Animated, { FadeInUp, Layout as ReanimatedLayout } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
@@ -59,16 +59,26 @@ export default function BookingsScreen({ navigation }: any) {
     const [isLoading, setIsLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [activeTab, setActiveTab] = useState<FilterTab>('all');
+    const [filterModalVisible, setFilterModalVisible] = useState(false);
+    const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
 
     /* ── data fetching ── */
     const fetchBookings = useCallback(async () => {
         if (!user) return;
         try {
-            const idColumn = user.role === 'trainer' ? 'trainer_id' : 'athlete_id';
-            const { data, error } = await supabase
+            let query = supabase
                 .from('bookings')
-                .select('*, athlete:users!bookings_athlete_id_fkey(*), trainer:users!bookings_trainer_id_fkey(*)')
-                .eq(idColumn, user.id)
+                .select('*, athlete:users!bookings_athlete_id_fkey(*), trainer:users!bookings_trainer_id_fkey(*)');
+
+            // Admin sees all bookings; trainer/athlete see only their own
+            if (user.role === 'admin') {
+                // no filter — admin sees everything
+            } else {
+                const idColumn = user.role === 'trainer' ? 'trainer_id' : 'athlete_id';
+                query = query.eq(idColumn, user.id);
+            }
+
+            const { data, error } = await query
                 .order('scheduled_at', { ascending: false });
 
             if (error) throw error;
@@ -95,8 +105,11 @@ export default function BookingsScreen({ navigation }: any) {
     };
 
     const getFilteredBookings = (): BookingWithUsers[] => {
-        if (activeTab === 'all') return bookings;
-        return bookings.filter((b) => b.status === activeTab);
+        let result = activeTab === 'all' ? bookings : bookings.filter((b) => b.status === activeTab);
+        if (sortOrder === 'oldest') {
+            result = [...result].reverse();
+        }
+        return result;
     };
 
     const formatTime = (dateStr: string) => {
@@ -147,7 +160,12 @@ export default function BookingsScreen({ navigation }: any) {
 
     /** Pill-style tab filter */
     const renderPillTabs = () => (
-        <View style={styles.pillRow}>
+        <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.pillScrollOuter}
+            contentContainerStyle={styles.pillRow}
+        >
             {TABS.map((t) => {
                 const isActive = activeTab === t.key;
                 const count = getCountForTab(t.key);
@@ -170,14 +188,14 @@ export default function BookingsScreen({ navigation }: any) {
                     </Pressable>
                 );
             })}
-        </View>
+        </ScrollView>
     );
 
     /** Single booking card */
     const renderBookingCard = ({ item, index }: { item: BookingWithUsers; index: number }) => {
         const config = STATUS_CONFIG[item.status] || STATUS_CONFIG.pending;
         const accent = STATUS_ACCENT[item.status] || '#ffab00';
-        const otherUser = user?.role === 'trainer' ? item.athlete : item.trainer;
+        const otherUser = (user?.role === 'trainer' || user?.role === 'admin') ? item.athlete : item.trainer;
         const otherName = `${otherUser?.first_name || ''} ${otherUser?.last_name || ''}`.trim();
         const d = new Date(item.scheduled_at);
         const dayNum = d.getDate();
@@ -272,6 +290,7 @@ export default function BookingsScreen({ navigation }: any) {
                 </View>
                 <Pressable
                     style={styles.filterBtn}
+                    onPress={() => setFilterModalVisible(true)}
                     accessibilityLabel="Open filters"
                     accessibilityRole="button"
                 >
@@ -308,6 +327,88 @@ export default function BookingsScreen({ navigation }: any) {
                     />
                 }
             />
+
+            {/* FILTER MODAL */}
+            <Modal
+                visible={filterModalVisible}
+                animationType="slide"
+                transparent
+                onRequestClose={() => setFilterModalVisible(false)}
+            >
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <View style={styles.modalDragHandle} />
+                        <View style={styles.modalHeader}>
+                            <Text style={styles.modalTitle}>Filters</Text>
+                            <TouchableOpacity
+                                onPress={() => setFilterModalVisible(false)}
+                                style={styles.modalCloseBtn}
+                                accessibilityLabel="Close filters"
+                            >
+                                <Ionicons name="close" size={20} color={Colors.textSecondary} />
+                            </TouchableOpacity>
+                        </View>
+
+                        {/* Status filter */}
+                        <View style={styles.filterSection}>
+                            <Text style={styles.filterSectionTitle}>Status</Text>
+                            <View style={styles.filterOptionRow}>
+                                {TABS.map((t) => {
+                                    const isActive = activeTab === t.key;
+                                    return (
+                                        <TouchableOpacity
+                                            key={t.key}
+                                            style={[styles.filterOption, isActive && styles.filterOptionActive]}
+                                            onPress={() => setActiveTab(t.key)}
+                                        >
+                                            <Text style={[styles.filterOptionText, isActive && styles.filterOptionTextActive]}>
+                                                {t.label} ({getCountForTab(t.key)})
+                                            </Text>
+                                        </TouchableOpacity>
+                                    );
+                                })}
+                            </View>
+                        </View>
+
+                        {/* Sort order */}
+                        <View style={styles.filterSection}>
+                            <Text style={styles.filterSectionTitle}>Sort Order</Text>
+                            <View style={styles.filterOptionRow}>
+                                {(['newest', 'oldest'] as const).map((order) => {
+                                    const isActive = sortOrder === order;
+                                    return (
+                                        <TouchableOpacity
+                                            key={order}
+                                            style={[styles.filterOption, isActive && styles.filterOptionActive]}
+                                            onPress={() => setSortOrder(order)}
+                                        >
+                                            <Text style={[styles.filterOptionText, isActive && styles.filterOptionTextActive]}>
+                                                {order === 'newest' ? 'Newest First' : 'Oldest First'}
+                                            </Text>
+                                        </TouchableOpacity>
+                                    );
+                                })}
+                            </View>
+                        </View>
+
+                        {/* Done button */}
+                        <View style={styles.modalFooter}>
+                            <TouchableOpacity
+                                style={styles.modalResetBtn}
+                                onPress={() => { setActiveTab('all'); setSortOrder('newest'); }}
+                            >
+                                <Text style={styles.modalResetText}>Reset</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={styles.modalDoneBtn}
+                                onPress={() => setFilterModalVisible(false)}
+                            >
+                                <Text style={styles.modalDoneText}>Done</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
         </ScreenWrapper>
     );
 }
@@ -383,11 +484,19 @@ const styles = StyleSheet.create({
     },
 
     /* ── Pill tabs ── */
+    pillScrollOuter: {
+        flexGrow: 0,
+        flexShrink: 0,
+        marginBottom: Spacing.lg,
+        minHeight: 52,
+    },
     pillRow: {
         flexDirection: 'row',
         paddingHorizontal: Spacing.lg,
+        paddingRight: Spacing.lg + 20,
         gap: Spacing.sm,
-        marginBottom: Spacing.md,
+        alignItems: 'center',
+        height: 52,
     },
     pill: {
         flexDirection: 'row',
@@ -407,13 +516,13 @@ const styles = StyleSheet.create({
         borderColor: Colors.glassBorder,
     },
     pillText: {
-        fontSize: FontSize.sm,
-        fontWeight: FontWeight.medium,
-        color: Colors.textTertiary,
+        fontSize: FontSize.md,
+        fontWeight: FontWeight.semibold,
+        color: Colors.textSecondary,
     },
     pillTextActive: {
         color: Colors.textInverse,
-        fontWeight: FontWeight.semibold,
+        fontWeight: FontWeight.bold,
     },
     pillBadge: {
         minWidth: 20,
@@ -572,5 +681,120 @@ const styles = StyleSheet.create({
         fontSize: FontSize.sm,
         fontWeight: FontWeight.medium,
         color: Colors.primary,
+    },
+
+    /* ── Filter Modal ── */
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.6)',
+        justifyContent: 'flex-end',
+    },
+    modalContent: {
+        backgroundColor: Colors.background,
+        borderTopLeftRadius: BorderRadius.xxl,
+        borderTopRightRadius: BorderRadius.xxl,
+        paddingBottom: Spacing.xxl,
+    },
+    modalDragHandle: {
+        width: 40,
+        height: 4,
+        borderRadius: 2,
+        backgroundColor: Colors.textMuted,
+        alignSelf: 'center',
+        marginTop: Spacing.md,
+    },
+    modalHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingHorizontal: Spacing.lg,
+        paddingTop: Spacing.lg,
+        paddingBottom: Spacing.lg,
+        borderBottomWidth: 1,
+        borderBottomColor: Colors.border,
+    },
+    modalTitle: {
+        fontSize: FontSize.xl,
+        fontWeight: FontWeight.bold,
+        color: Colors.text,
+    },
+    modalCloseBtn: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: Colors.glass,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    filterSection: {
+        paddingHorizontal: Spacing.lg,
+        paddingVertical: Spacing.lg,
+        borderBottomWidth: 1,
+        borderBottomColor: Colors.border,
+    },
+    filterSectionTitle: {
+        fontSize: FontSize.md,
+        fontWeight: FontWeight.semibold,
+        color: Colors.text,
+        marginBottom: Spacing.md,
+    },
+    filterOptionRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: Spacing.sm,
+    },
+    filterOption: {
+        paddingHorizontal: Spacing.lg,
+        paddingVertical: Spacing.sm,
+        borderRadius: BorderRadius.pill,
+        backgroundColor: Colors.glass,
+        borderWidth: 1,
+        borderColor: Colors.glassBorder,
+    },
+    filterOptionActive: {
+        backgroundColor: Colors.primary,
+        borderColor: Colors.primary,
+    },
+    filterOptionText: {
+        fontSize: FontSize.sm,
+        fontWeight: FontWeight.medium,
+        color: Colors.textSecondary,
+    },
+    filterOptionTextActive: {
+        color: Colors.textInverse,
+        fontWeight: FontWeight.semibold,
+    },
+    modalFooter: {
+        flexDirection: 'row',
+        paddingHorizontal: Spacing.lg,
+        paddingTop: Spacing.xl,
+        gap: Spacing.md,
+    },
+    modalResetBtn: {
+        paddingHorizontal: Spacing.xl,
+        paddingVertical: Spacing.md,
+        borderRadius: BorderRadius.pill,
+        borderWidth: 1,
+        borderColor: Colors.border,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    modalResetText: {
+        fontSize: FontSize.sm,
+        fontWeight: FontWeight.semibold,
+        color: Colors.textSecondary,
+    },
+    modalDoneBtn: {
+        flex: 1,
+        paddingVertical: Spacing.md,
+        borderRadius: BorderRadius.pill,
+        backgroundColor: Colors.primary,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    modalDoneText: {
+        fontSize: FontSize.md,
+        fontWeight: FontWeight.bold,
+        color: '#FFFFFF',
     },
 });

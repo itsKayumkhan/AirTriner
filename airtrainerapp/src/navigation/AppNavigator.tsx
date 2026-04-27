@@ -60,7 +60,7 @@ function AuthNavigator() {
 
 function TabNavigator() {
     const { user } = useAuth();
-    const isTrainer = user?.role === 'trainer';
+    const isTrainer = user?.role === 'trainer' || user?.role === 'admin';
     const [unreadMessages, setUnreadMessages] = useState(0);
     const [unreadNotifications, setUnreadNotifications] = useState(0);
 
@@ -217,11 +217,20 @@ function TabNavigator() {
             })}
         >
             {isTrainer ? (
-                <Tab.Screen
-                    name="Dashboard"
-                    component={TrainerDashboardScreen}
-                    options={{ tabBarLabel: 'Dashboard' }}
-                />
+                <>
+                    <Tab.Screen
+                        name="Dashboard"
+                        component={TrainerDashboardScreen}
+                        options={{ tabBarLabel: 'Dashboard' }}
+                    />
+                    {user?.role === 'admin' && (
+                        <Tab.Screen
+                            name="Discover"
+                            component={DiscoverScreen}
+                            options={{ tabBarLabel: 'Discover' }}
+                        />
+                    )}
+                </>
             ) : (
                 <>
                     <Tab.Screen
@@ -369,9 +378,9 @@ const styles = StyleSheet.create({
         backgroundColor: Colors.card,
         borderTopWidth: 1,
         borderTopColor: Colors.border,
-        height: Platform.OS === 'ios' ? 88 : 64,
+        height: Platform.OS === 'ios' ? 88 : 72,
         paddingTop: Spacing.sm,
-        paddingBottom: Platform.OS === 'ios' ? 28 : Spacing.sm,
+        paddingBottom: Platform.OS === 'ios' ? 28 : Spacing.md,
         elevation: 0,
         ...Shadows.small,
     },
@@ -379,6 +388,7 @@ const styles = StyleSheet.create({
         fontSize: FontSize.xs,
         fontWeight: FontWeight.medium,
         marginTop: 2,
+        marginBottom: 2,
     },
     tabBarItem: {
         borderWidth: 0,
