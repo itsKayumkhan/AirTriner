@@ -46,33 +46,41 @@ export async function transferToTrainer(stripe: Stripe, params: {
         return { ok: false, reason: 'account_lookup_failed', code: err?.code };
     }
 
-    // 2. Resolve the source charge for proper transfer accounting + currency.
-    //    When source_transaction is set, the transfer currency MUST match the
-    //    source charge's currency (Stripe rejects USD transfer from a CAD charge).
+    // 2. Resolve the source charge + the currency the transfer must use.
+    //    When source_transaction is set, the transfer currency must match the
+    //    BALANCE TRANSACTION currency, not the charge's presentment currency.
+    //    A platform whose Stripe settlement currency is CAD will see USD charges
+    //    settle to a CAD balance — Transfer must be CAD even though the charge
+    //    was USD. We expand balance_transaction.currency to read this directly.
     let sourceTransaction: string | undefined;
     let sourceCurrency: string | undefined;
-    let piLookupFailed = false;
     if (stripePaymentIntentId) {
         try {
             const pi = await stripe.paymentIntents.retrieve(stripePaymentIntentId, {
-                expand: ['latest_charge'],
+                expand: ['latest_charge.balance_transaction'],
             });
             const latest = (pi.latest_charge ?? null) as string | Stripe.Charge | null;
+            const readBalanceCurrency = (charge: Stripe.Charge | null): string | undefined => {
+                if (!charge) return undefined;
+                const bt = (charge.balance_transaction ?? null) as string | Stripe.BalanceTransaction | null;
+                if (bt && typeof bt === 'object' && bt.currency) return bt.currency.toLowerCase();
+                return undefined;
+            };
             if (typeof latest === 'string') {
                 sourceTransaction = latest;
+                // No expanded charge available — fall back to PI currency.
                 if (pi.currency) sourceCurrency = pi.currency.toLowerCase();
             } else if (latest && typeof latest === 'object') {
                 sourceTransaction = latest.id;
-                sourceCurrency = (latest.currency || pi.currency || '').toLowerCase() || undefined;
+                sourceCurrency =
+                    readBalanceCurrency(latest)
+                    || (latest.currency || pi.currency || '').toLowerCase()
+                    || undefined;
             }
         } catch (err: any) {
-            piLookupFailed = true;
             console.warn('[stripe-transfer] PI lookup failed', {
                 txId, stripePaymentIntentId, code: err?.code, message: err?.message,
             });
-            // If the saved PI no longer exists in Stripe, the platform can still
-            // transfer from its general balance — but the audit trail is broken.
-            // Surface this clearly instead of letting Stripe error opaquely.
             if (err?.code === 'resource_missing') {
                 return {
                     ok: false,
