@@ -3,6 +3,7 @@
 // ============================================
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
+import { stripeCurrency } from '@/lib/currency';
 
 export async function POST(req: NextRequest) {
     try {
@@ -37,7 +38,7 @@ export async function POST(req: NextRequest) {
                     ? { price: monthlyPriceId, quantity: 1 }
                     : {
                           price_data: {
-                              currency: 'usd',
+                              currency: stripeCurrency(),
                               product_data: {
                                   name: 'AirTrainr Coach — Monthly',
                                   description: 'Full access: bookings, messaging, payments & analytics',
@@ -51,7 +52,7 @@ export async function POST(req: NextRequest) {
                     ? { price: annualPriceId, quantity: 1 }
                     : {
                           price_data: {
-                              currency: 'usd',
+                              currency: stripeCurrency(),
                               product_data: {
                                   name: 'AirTrainr Coach — Annual',
                                   description: 'Full access: bookings, messaging, payments & analytics (Save $50/yr)',

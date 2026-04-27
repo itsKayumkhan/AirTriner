@@ -1,4 +1,5 @@
 import Stripe from 'stripe';
+import { stripeCurrency } from './currency';
 
 export type TransferAttempt =
     | { ok: true; transferId: string }
@@ -70,7 +71,8 @@ export async function transferToTrainer(stripe: Stripe, params: {
         }
     }
 
-    const transferCurrency = sourceCurrency || 'usd';
+    // sourceCurrency wins (must match charge), platform default fallback otherwise.
+    const transferCurrency = stripeCurrency(sourceCurrency);
 
     // 3. Transfer
     try {
