@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
     View, Text, StyleSheet, Pressable, ActivityIndicator, Alert, LayoutAnimation,
-    Switch, TextInput,
+    Switch, TextInput, Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -159,6 +159,8 @@ export default function EditProfileScreen({ navigation }: any) {
     const [avatarUrl, setAvatarUrl] = useState(user?.avatarUrl || '');
     const [avatarLoading, setAvatarLoading] = useState(false);
     const [avatarPendingApproval, setAvatarPendingApproval] = useState(false);
+    const [bannerUrl, setBannerUrl] = useState((tp as any)?.banner_url || '');
+    const [bannerLoading, setBannerLoading] = useState(false);
     const [headline, setHeadline] = useState(tp?.headline || '');
     const [bio, setBio] = useState(tp?.bio || '');
     const [yearsExp, setYearsExp] = useState(String(tp?.years_experience || '0'));
@@ -295,6 +297,86 @@ export default function EditProfileScreen({ navigation }: any) {
             } finally {
                 setAvatarLoading(false);
             }
+        }
+    };
+
+    /* ── banner picker (trainer-only) ── */
+    const handlePickBanner = async () => {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+            Alert.alert('Permission needed', 'Please allow photo access to upload a banner.');
+            return;
+        }
+
+        const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ['images'],
+            allowsEditing: true,
+            aspect: [16, 9],
+            quality: 0.7,
+        });
+
+        if (!result.canceled && result.assets[0]) {
+            setBannerLoading(true);
+            try {
+                const asset = result.assets[0];
+                // ~2MB cap
+                if ((asset as any).fileSize && (asset as any).fileSize > 2 * 1024 * 1024) {
+                    Alert.alert('File too large', 'Please choose a banner under 2MB.');
+                    setBannerLoading(false);
+                    return;
+                }
+                const fileName = `banners/${user!.id}_${Date.now()}.jpg`;
+
+                const response = await fetch(asset.uri);
+                const blob = await response.blob();
+
+                const { error: uploadError } = await supabase.storage
+                    .from('avatars')
+                    .upload(fileName, blob, { contentType: 'image/jpeg', upsert: true });
+
+                if (uploadError) {
+                    Alert.alert('Upload Failed', uploadError.message);
+                    setBannerLoading(false);
+                    return;
+                }
+
+                const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(fileName);
+
+                const { error: updateError } = await supabase
+                    .from('trainer_profiles')
+                    .update({ banner_url: publicUrl })
+                    .eq('user_id', user!.id);
+                if (updateError) {
+                    Alert.alert('Save Failed', updateError.message);
+                    setBannerLoading(false);
+                    return;
+                }
+                setBannerUrl(publicUrl);
+            } catch (error: any) {
+                Alert.alert('Upload Failed', error.message || 'Could not upload banner.');
+            } finally {
+                setBannerLoading(false);
+            }
+        }
+    };
+
+    const handleRemoveBanner = async () => {
+        if (!user) return;
+        try {
+            setBannerLoading(true);
+            const { error: updateError } = await supabase
+                .from('trainer_profiles')
+                .update({ banner_url: null })
+                .eq('user_id', user.id);
+            if (updateError) {
+                Alert.alert('Remove Failed', updateError.message);
+                return;
+            }
+            setBannerUrl('');
+        } catch (error: any) {
+            Alert.alert('Remove Failed', error.message || 'Could not remove banner.');
+        } finally {
+            setBannerLoading(false);
         }
     };
 
@@ -487,6 +569,7 @@ export default function EditProfileScreen({ navigation }: any) {
                         state: stateVal.trim(),
                         travel_radius_miles: radiusMiles,
                         training_locations: trainingLocations,
+                        banner_url: bannerUrl || null,
                     }, { onConflict: 'user_id' });
                 if (trainerError) throw trainerError;
             }
@@ -754,6 +837,65 @@ export default function EditProfileScreen({ navigation }: any) {
             )}
 
             {/* ── Professional Info (trainer) ── */}
+            {/* ── Cover Banner (trainer) ── */}
+            {isTrainer && (
+                <SectionCard title="Cover Banner" delay={325}>
+                    <Text style={styles.bannerHelp}>
+                        A wide image shown at the top of your public profile. If you skip this, a default sport image is used.
+                    </Text>
+                    <View style={styles.bannerPreviewWrap}>
+                        {bannerUrl ? (
+                            <View style={styles.bannerPreview}>
+                                <Image
+                                    source={{ uri: bannerUrl }}
+                                    style={styles.bannerImage}
+                                    resizeMode="cover"
+                                />
+                                {bannerLoading && (
+                                    <View style={styles.bannerLoadingOverlay}>
+                                        <ActivityIndicator color="#fff" size="small" />
+                                    </View>
+                                )}
+                            </View>
+                        ) : (
+                            <View style={[styles.bannerPreview, styles.bannerPlaceholder]}>
+                                <Ionicons name="image-outline" size={28} color={Colors.textMuted} />
+                                <Text style={styles.bannerPlaceholderText}>
+                                    No banner — sport default will be used
+                                </Text>
+                                {bannerLoading && (
+                                    <View style={styles.bannerLoadingOverlay}>
+                                        <ActivityIndicator color="#fff" size="small" />
+                                    </View>
+                                )}
+                            </View>
+                        )}
+                    </View>
+                    <View style={styles.bannerActionsRow}>
+                        <Button
+                            title={bannerUrl ? 'Replace' : 'Upload'}
+                            onPress={handlePickBanner}
+                            disabled={bannerLoading}
+                            variant="primary"
+                            size="sm"
+                            icon="cloud-upload-outline"
+                            style={{ flex: 1 }}
+                        />
+                        {bannerUrl ? (
+                            <Button
+                                title="Remove"
+                                onPress={handleRemoveBanner}
+                                disabled={bannerLoading}
+                                variant="secondary"
+                                size="sm"
+                                icon="trash-outline"
+                                style={{ flex: 1 }}
+                            />
+                        ) : null}
+                    </View>
+                </SectionCard>
+            )}
+
             {isTrainer && (
                 <SectionCard title="Professional Info" delay={350}>
                     <Input
@@ -1047,6 +1189,50 @@ const styles = StyleSheet.create({
     },
     sectionCard: {
         marginBottom: Spacing.xxl,
+    },
+
+    /* Banner */
+    bannerHelp: {
+        fontSize: FontSize.sm,
+        color: Colors.textSecondary,
+        marginBottom: Spacing.md,
+    },
+    bannerPreviewWrap: {
+        marginBottom: Spacing.md,
+    },
+    bannerPreview: {
+        width: '100%',
+        aspectRatio: 16 / 9,
+        borderRadius: BorderRadius.lg,
+        overflow: 'hidden',
+        backgroundColor: Colors.glass,
+        borderWidth: 1,
+        borderColor: Colors.glassBorder,
+    },
+    bannerImage: {
+        width: '100%',
+        height: '100%',
+    },
+    bannerPlaceholder: {
+        justifyContent: 'center',
+        alignItems: 'center',
+        gap: Spacing.sm,
+    },
+    bannerPlaceholderText: {
+        fontSize: FontSize.sm,
+        color: Colors.textMuted,
+        textAlign: 'center',
+        paddingHorizontal: Spacing.lg,
+    },
+    bannerLoadingOverlay: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: 'rgba(0,0,0,0.45)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    bannerActionsRow: {
+        flexDirection: 'row',
+        gap: Spacing.sm,
     },
 
     /* Rows */

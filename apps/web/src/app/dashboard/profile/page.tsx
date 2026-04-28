@@ -10,6 +10,7 @@ import LocationAutocomplete, { type LocationValue } from "@/components/forms/Loc
 import { detectCountry, radiusUnit, formatRadius, kmToMi, miToKm } from "@/lib/units";
 import { toast } from "@/components/ui/Toast";
 import { ALLOWED_SESSION_DURATIONS, normalizeSessionPricing, defaultSessionPricing } from "@/lib/session-pricing";
+import { computeTrainerCompleteness } from "@/lib/profile-completeness";
 
 // Convert DB jsonb session_pricing to form state shape (string prices for inputs).
 function hydratePricingFromDb(raw: unknown, hourlyRate: number): Record<"30" | "45" | "60", { price: string; enabled: boolean }> {
@@ -114,6 +115,13 @@ export default function ProfilePage() {
         }
     }, [router]);
 
+    // Raw user + trainer_profile rows snapshotted at load time. Used to feed
+    // computeTrainerCompleteness() for the completeness banner. The form state
+    // does not carry training_locations or all the JSONB shapes we need, so we
+    // keep a parallel snapshot here.
+    const [rawUser, setRawUser] = useState<any | null>(null);
+    const [rawTrainerProfile, setRawTrainerProfile] = useState<any | null>(null);
+
     const [statusData, setStatusData] = useState({
         isPerformanceVerified: false,
         isPro: false,
@@ -124,10 +132,12 @@ export default function ProfilePage() {
     const loadProfile = async (u: AuthUser) => {
         const { data: userData } = await supabase.from("users").select("*").eq("id", u.id).single();
         if (userData?.avatar_url) setAvatarUrl(userData.avatar_url);
+        setRawUser(userData || null);
         let loaded: typeof form;
 
         if (u.role === "trainer" && u.trainerProfile) {
             const { data: tp } = await supabase.from("trainer_profiles").select("*").eq("user_id", u.id).single();
+            setRawTrainerProfile(tp || null);
             const { data: disputes } = await supabase
                 .from("disputes")
                 .select("id, booking:bookings!inner(trainer_id)")
@@ -529,6 +539,63 @@ export default function ProfilePage() {
                     </button>
                 </div>
             </div>
+
+            {/* Profile Completeness Banner (trainers only) */}
+            {isTrainer && (() => {
+                // Build a live snapshot: form drives most fields, but training_locations
+                // and the canonical session_pricing JSONB live on rawTrainerProfile.
+                // Bio/phone/etc reflect the user's current edits, even before save.
+                const liveUser = {
+                    first_name: form.firstName,
+                    last_name: form.lastName,
+                    phone: form.phone,
+                    date_of_birth: form.dateOfBirth,
+                    avatar_url: avatarUrl,
+                };
+                const livePricing: Record<string, { price: number; enabled: boolean }> = {};
+                (Object.keys(form.sessionPricing) as Array<"30" | "45" | "60">).forEach((k) => {
+                    const e = form.sessionPricing[k];
+                    livePricing[k] = { price: Number(e.price) || 0, enabled: !!e.enabled };
+                });
+                const liveTrainer = {
+                    bio: form.bio,
+                    sports: form.sports,
+                    city: form.city,
+                    years_experience: form.yearsExperience === "" ? null : Number(form.yearsExperience),
+                    session_pricing: livePricing,
+                    training_locations: rawTrainerProfile?.training_locations ?? [],
+                };
+                const c = computeTrainerCompleteness(liveUser, liveTrainer);
+                const pct = Math.round((c.filled / c.total) * 100);
+                if (c.complete) {
+                    return (
+                        <div className="bg-green-500/10 border border-green-500/20 rounded-2xl p-4 mb-4 flex items-center gap-3">
+                            <CheckCircle size={18} className="text-green-400 flex-shrink-0" />
+                            <div className="text-sm">
+                                <span className="font-black text-green-400">Profile complete ({c.filled} / {c.total})</span>
+                                <span className="text-text-main/70"> — your profile is eligible for athlete search once admin verifies you.</span>
+                            </div>
+                        </div>
+                    );
+                }
+                return (
+                    <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-4 mb-4">
+                        <div className="flex items-center gap-3 mb-2">
+                            <AlertTriangle size={18} className="text-amber-400 flex-shrink-0" />
+                            <div className="text-sm">
+                                <span className="font-black text-amber-400">Profile completeness: {c.filled} / {c.total} ({pct}%)</span>
+                                <span className="text-text-main/70"> — fill missing fields to make your profile public.</span>
+                            </div>
+                        </div>
+                        <div className="h-1.5 rounded-full bg-white/[0.05] overflow-hidden mb-2">
+                            <div className="h-full bg-amber-400 transition-all" style={{ width: `${pct}%` }} />
+                        </div>
+                        <div className="text-xs text-text-main/60">
+                            Missing: <span className="text-text-main/90 font-bold">{c.missing.join(", ")}</span>
+                        </div>
+                    </div>
+                );
+            })()}
 
             {/* Profile Header Card */}
             <div className="bg-surface border border-white/[0.06] rounded-2xl p-6 mb-4">

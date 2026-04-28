@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { getSession, AuthUser } from "@/lib/auth";
 import { supabase, TrainerProfileRow, ReviewRow } from "@/lib/supabase";
 import { formatSportName } from "@/lib/format";
+import { trainerPublicGate, publicGateAthleteMessage } from "@/lib/trainer-gate";
 
 type TrainerData = TrainerProfileRow & {
     user: { first_name: string; last_name: string; email: string };
@@ -24,6 +25,8 @@ export default function TrainerProfilePage() {
     const [reviews, setReviews] = useState<ReviewWithReviewer[]>([]);
     const [loading, setLoading] = useState(true);
     const [requireVerification, setRequireVerification] = useState(true);
+    const [gateBlocked, setGateBlocked] = useState(false);
+    const [gateMessage, setGateMessage] = useState<string>("");
 
     const trainerId = params.id as string;
 
@@ -60,9 +63,26 @@ export default function TrainerProfilePage() {
             // 3. Get user info
             const { data: userData } = await supabase
                 .from("users")
-                .select("first_name, last_name, email")
+                .select("id, first_name, last_name, email, avatar_url, is_suspended, deleted_at, phone, date_of_birth")
                 .eq("id", trainerId)
                 .single();
+
+            // Public-visibility gate: athletes can't view trainers who fail the gate.
+            // Trainers viewing their own profile get a preview pass-through.
+            const session = getSession();
+            const isSelfView = !!session && session.id === trainerId;
+            if (!isSelfView) {
+                const gateResult = trainerPublicGate({
+                    user: userData as any,
+                    trainerProfile: tp as any,
+                });
+                if (!gateResult.ok) {
+                    setGateBlocked(true);
+                    setGateMessage(publicGateAthleteMessage(gateResult));
+                    setLoading(false);
+                    return;
+                }
+            }
 
             // 4. Get Dispute count
             const { data: disputesData } = await supabase
@@ -120,6 +140,27 @@ export default function TrainerProfilePage() {
         return (
             <div style={{ display: "flex", justifyContent: "center", padding: "80px 20px" }}>
                 <div style={{ width: "40px", height: "40px", border: "3px solid var(--gray-200)", borderTopColor: "var(--primary)", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+            </div>
+        );
+    }
+
+    if (gateBlocked) {
+        return (
+            <div style={{ display: "flex", justifyContent: "center", padding: "80px 20px" }}>
+                <div style={{ maxWidth: "440px", width: "100%", textAlign: "center", padding: "40px 32px", borderRadius: "var(--radius-lg)", background: "var(--surface)", border: "1px solid var(--gray-200)" }}>
+                    <h2 style={{ fontWeight: 800, marginBottom: "12px", fontFamily: "var(--font-display)", fontSize: "22px" }}>
+                        Not available right now
+                    </h2>
+                    <p style={{ color: "var(--gray-500)", marginBottom: "24px", fontWeight: 500, fontSize: "14px" }}>
+                        {gateMessage || "This trainer isn't accepting bookings right now."}
+                    </p>
+                    <button
+                        onClick={() => router.back()}
+                        style={{ padding: "10px 24px", borderRadius: "var(--radius-md)", background: "var(--gradient-primary)", color: "white", border: "none", fontWeight: 700, cursor: "pointer" }}
+                    >
+                        Back
+                    </button>
+                </div>
             </div>
         );
     }

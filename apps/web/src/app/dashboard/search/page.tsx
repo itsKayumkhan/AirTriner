@@ -13,11 +13,12 @@ import type { TrainerPin } from "@/components/search/FindTrainerMap";
 import { formatSportName } from "@/lib/format";
 import LocationAutocomplete, { type LocationValue } from "@/components/forms/LocationAutocomplete";
 import { normalizeSessionPricing, minEnabledPrice, enabledDurations } from "@/lib/session-pricing";
+import { trainerPublicGate } from "@/lib/trainer-gate";
 
 const FindTrainerMap = dynamic(() => import("@/components/search/FindTrainerMap"), { ssr: false });
 
 type TrainerWithUser = TrainerProfileRow & {
-    user: { first_name: string; last_name: string; avatar_url: string | null };
+    user: { first_name: string; last_name: string; avatar_url: string | null; phone: string | null; date_of_birth: string | null };
     avg_rating: number;
     review_count: number;
     matchScore: number;
@@ -283,10 +284,10 @@ export default function SearchTrainersPage() {
             const userIds = profiles.map((p: TrainerProfileRow) => p.user_id);
             const { data: users } = await supabase
                 .from("users")
-                .select("id, first_name, last_name, avatar_url, role")
+                .select("id, first_name, last_name, avatar_url, role, phone, date_of_birth, is_suspended, deleted_at")
                 .in("id", userIds);
 
-            const usersMap = new Map((users || []).map((u: { id: string, first_name: string, last_name: string, avatar_url: string | null, role: string }) => [u.id, u]));
+            const usersMap = new Map((users || []).map((u: any) => [u.id, u]));
 
             // 4. Fetch Disputes for verification logic (Feature 7.2)
             const { data: disputesData } = await supabase
@@ -395,6 +396,11 @@ export default function SearchTrainersPage() {
 
     const filteredTrainers = useMemo(() => {
         const result = trainers.filter((t) => {
+            // Single source of truth: enforces verification + active subscription
+            // + profile completeness + user-active (not suspended / not soft-deleted).
+            const gate = trainerPublicGate({ user: t.user as any, trainerProfile: t as any });
+            if (!gate.ok) return false;
+
             if (nameFilter) {
                 const fullName = `${t.user?.first_name || ""} ${t.user?.last_name || ""}`.toLowerCase();
                 if (!fullName.includes(nameFilter.toLowerCase())) return false;

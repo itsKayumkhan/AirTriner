@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
     View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator,
-    Modal, TextInput, Platform, Pressable, Image,
+    Modal, TextInput, Platform, Pressable, Image, ImageBackground,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import Animated, {
     FadeInDown, FadeInUp, useSharedValue, useAnimatedStyle, withSpring,
 } from 'react-native-reanimated';
@@ -20,6 +21,7 @@ import {
 } from '../../components/ui';
 import Founding50Badge from '../../components/Founding50Badge';
 import { normalizeSessionPricing, priceFor, enabledDurations } from '../../lib/session-pricing';
+import { trainerPublicGate, GateResult } from '../../lib/trainer-gate';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -72,6 +74,25 @@ const formatHour = (hour: number, minute: number = 0): string => {
     const h = hour % 12 || 12;
     const mm = String(minute).padStart(2, '0');
     return `${h}:${mm} ${period}`;
+};
+
+// Sports-specific wide cover images (mirrors web /dashboard/trainers/[id])
+const SPORT_COVERS: Record<string, string> = {
+    tennis: 'https://images.unsplash.com/photo-1595435934249-5df7ed86e1c0?w=1600&auto=format&fit=crop&q=80',
+    soccer: 'https://images.unsplash.com/photo-1579952363873-27f3bade9f55?w=1600&auto=format&fit=crop&q=80',
+    basketball: 'https://images.unsplash.com/photo-1546519638-68e109498ffc?w=1600&auto=format&fit=crop&q=80',
+    swimming: 'https://images.unsplash.com/photo-1530549387789-4c1017266635?w=1600&auto=format&fit=crop&q=80',
+    track_and_field: 'https://images.unsplash.com/photo-1552674605-db6ffd4facb5?w=1600&auto=format&fit=crop&q=80',
+    hockey: 'https://images.unsplash.com/photo-1580748141549-71748dbe0bdc?w=1600&auto=format&fit=crop&q=80',
+    golf: 'https://images.unsplash.com/photo-1535139262971-c51845709a48?w=1600&auto=format&fit=crop&q=80',
+    martial_arts: 'https://images.unsplash.com/photo-1555597673-b21d5c935865?w=1600&auto=format&fit=crop&q=80',
+    default: 'https://images.unsplash.com/photo-1526676037777-05a232554f77?w=1600&auto=format&fit=crop&q=80',
+};
+
+const getSportCover = (sports: string[]): string => {
+    if (!sports || sports.length === 0) return SPORT_COVERS.default;
+    const slug = String(sports[0]).toLowerCase().replace(/\s+&\s+/g, '_and_').replace(/\s+/g, '_');
+    return SPORT_COVERS[slug] || SPORT_COVERS.default;
 };
 
 /** Pressable card wrapper with scale feedback */
@@ -155,6 +176,62 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
 
     // Admin-uploaded sport images keyed by slug (see sports.image_url)
     const [sportImages, setSportImages] = useState<Record<string, string>>({});
+
+    // ─── Public-visibility gate (re-fetch + re-validate on mount) ───
+    // Discover lists can be stale and push notifications deep-link straight here,
+    // so we must independently confirm the trainer is still bookable.
+    const [gateChecking, setGateChecking] = useState(true);
+    const [gateResult, setGateResult] = useState<GateResult | null>(null);
+    const isSelfView = !!user && !!trainerId && user.id === trainerId;
+
+    useEffect(() => {
+        let cancelled = false;
+        const runGate = async () => {
+            if (!trainerId) {
+                if (!cancelled) {
+                    setGateResult({ ok: false, reason: 'profile_missing' });
+                    setGateChecking(false);
+                }
+                return;
+            }
+            // Self-view exempt: trainer previewing their own profile bypasses gate.
+            if (user && user.id === trainerId) {
+                if (!cancelled) {
+                    setGateResult({ ok: true });
+                    setGateChecking(false);
+                }
+                return;
+            }
+            try {
+                const [userRes, profileRes] = await Promise.all([
+                    supabase
+                        .from('users')
+                        .select('is_suspended, deleted_at, first_name, last_name, phone, date_of_birth, avatar_url')
+                        .eq('id', trainerId)
+                        .maybeSingle(),
+                    supabase
+                        .from('trainer_profiles')
+                        .select('verification_status, subscription_status, bio, sports, city, years_experience, session_pricing, training_locations')
+                        .eq('user_id', trainerId)
+                        .maybeSingle(),
+                ]);
+                if (cancelled) return;
+                const result = trainerPublicGate({
+                    user: userRes.data as any,
+                    trainerProfile: profileRes.data as any,
+                });
+                setGateResult(result);
+            } catch {
+                if (!cancelled) setGateResult({ ok: false, reason: 'profile_missing' });
+            } finally {
+                if (!cancelled) setGateChecking(false);
+            }
+        };
+        runGate();
+        return () => {
+            cancelled = true;
+        };
+    }, [trainerId, user]);
 
     useEffect(() => {
         fetchReviews();
@@ -621,6 +698,48 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
 
     const reviewCount = trainer.total_reviews || reviews.length;
 
+    const coverImage = (trainer.banner_url as string | null | undefined) || getSportCover(sports);
+
+    // ─── Gate guards (run BEFORE rendering bookable content) ───
+    // While we re-fetch and re-validate, show a loading state. This prevents
+    // briefly flashing a gated trainer's hero/booking UI before yanking it.
+    if (gateChecking) {
+        return (
+            <ScreenWrapper scrollable={false}>
+                <ScreenHeader title="" onBack={() => navigation.goBack()} />
+                <View style={styles.gateFallback}>
+                    <ActivityIndicator size="large" color={Colors.primary} />
+                </View>
+            </ScreenWrapper>
+        );
+    }
+
+    // Gate failed (and not self-view): hide cover, pricing, slots, book button.
+    if (gateResult && !gateResult.ok && !isSelfView) {
+        return (
+            <ScreenWrapper scrollable={false}>
+                <ScreenHeader title="" onBack={() => navigation.goBack()} />
+                <View style={styles.gateFallback}>
+                    <Ionicons
+                        name="lock-closed-outline"
+                        size={64}
+                        color={Colors.textSecondary}
+                    />
+                    <Text style={styles.gateFallbackTitle}>Not available</Text>
+                    <Text style={styles.gateFallbackBody}>
+                        This trainer isn't accepting bookings right now.
+                    </Text>
+                    <TouchableOpacity
+                        style={styles.gateFallbackButton}
+                        onPress={() => navigation.goBack()}
+                    >
+                        <Text style={styles.gateFallbackButtonText}>Go back</Text>
+                    </TouchableOpacity>
+                </View>
+            </ScreenWrapper>
+        );
+    }
+
     return (
         <ScreenWrapper scrollable refreshing={false}>
             {/* Header with Back Button */}
@@ -628,6 +747,22 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
                 title=""
                 onBack={() => navigation.goBack()}
             />
+
+            {/* ─── 0. COVER BANNER ─── */}
+            <View style={styles.coverWrap}>
+                <ImageBackground source={{ uri: coverImage }} style={styles.coverImage} resizeMode="cover">
+                    <LinearGradient
+                        colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.55)']}
+                        style={StyleSheet.absoluteFill}
+                    />
+                    {isPerformanceVerified && (
+                        <View style={styles.coverVerifiedPill}>
+                            <Ionicons name="shield-checkmark" size={14} color={Colors.success} />
+                            <Text style={styles.coverVerifiedText}>Performance Verified</Text>
+                        </View>
+                    )}
+                </ImageBackground>
+            </View>
 
             {/* ─── 1. HERO SECTION ─── */}
             <Animated.View entering={FadeInDown.duration(250)} style={styles.heroSection}>
@@ -693,9 +828,6 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
                             </View>
                         );
                     })}
-                    {isPerformanceVerified && (
-                        <Badge label="Performance Verified" color={Colors.success} bgColor={Colors.successLight} size="md" />
-                    )}
                     {isProCoach && (
                         <Badge label="Pro Coach" color={Colors.primary} bgColor={Colors.primaryGlow} size="md" />
                     )}
@@ -1439,6 +1571,40 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
 }
 
 const styles = StyleSheet.create({
+    // ─── Cover Banner ───
+    coverWrap: {
+        marginHorizontal: -Spacing.lg,
+        marginTop: -Spacing.md,
+        marginBottom: Spacing.lg,
+        borderRadius: BorderRadius.lg,
+        overflow: 'hidden',
+    },
+    coverImage: {
+        width: '100%',
+        height: 220,
+        justifyContent: 'flex-start',
+    },
+    coverVerifiedPill: {
+        position: 'absolute',
+        top: Spacing.md,
+        right: Spacing.md,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        backgroundColor: Colors.successLight,
+        borderColor: Colors.success,
+        borderWidth: 1,
+        paddingHorizontal: Spacing.md,
+        paddingVertical: 6,
+        borderRadius: BorderRadius.pill,
+        ...Shadows.small,
+    },
+    coverVerifiedText: {
+        fontSize: FontSize.xs,
+        fontWeight: FontWeight.semibold,
+        color: Colors.success,
+    },
+
     // ─── Hero Section ───
     heroSection: {
         alignItems: 'center',
@@ -2265,5 +2431,37 @@ const styles = StyleSheet.create({
         fontSize: FontSize.lg,
         color: Colors.primary,
         fontWeight: FontWeight.bold,
+    },
+
+    // ─── Public-visibility gate fallback ───
+    gateFallback: {
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingHorizontal: Spacing.xl,
+        gap: Spacing.md,
+    },
+    gateFallbackTitle: {
+        fontSize: FontSize.xl,
+        fontWeight: FontWeight.bold,
+        color: Colors.text,
+        marginTop: Spacing.md,
+    },
+    gateFallbackBody: {
+        fontSize: FontSize.md,
+        color: Colors.textSecondary,
+        textAlign: 'center',
+        marginBottom: Spacing.lg,
+    },
+    gateFallbackButton: {
+        paddingHorizontal: Spacing.xl,
+        paddingVertical: Spacing.md,
+        borderRadius: BorderRadius.pill,
+        backgroundColor: Colors.primary,
+    },
+    gateFallbackButtonText: {
+        color: Colors.textInverse,
+        fontSize: FontSize.md,
+        fontWeight: FontWeight.semibold,
     },
 });

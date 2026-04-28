@@ -10,6 +10,7 @@ import { FoundingBadgeTooltip } from "@/components/ui/FoundingBadge";
 import { toast } from "@/components/ui/Toast";
 import { formatSportName } from "@/lib/format";
 import { normalizeSessionPricing, priceFor, enabledDurations } from "@/lib/session-pricing";
+import { trainerPublicGate, publicGateAthleteMessage } from "@/lib/trainer-gate";
 
 type Review = {
     id: string;
@@ -110,6 +111,8 @@ export default function BookTrainerPage() {
     const [trainerProfileId, setTrainerProfileId] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [pageError, setPageError] = useState<string | null>(null);
+    const [gateBlocked, setGateBlocked] = useState(false);
+    const [gateMessage, setGateMessage] = useState<string>("");
     const [processing, setProcessing] = useState(false);
     const warning = toast.warning;
     const toastError = toast.error;
@@ -485,9 +488,27 @@ export default function BookTrainerPage() {
 
             const { data: userData } = await supabase
                 .from("users")
-                .select("id, first_name, last_name, avatar_url")
+                .select("id, first_name, last_name, avatar_url, is_suspended, deleted_at, phone, date_of_birth")
                 .eq("id", profile.user_id)
                 .single();
+
+            // Public-visibility gate: ONLY athletes get blocked. Trainers viewing their
+            // own profile get a preview pass-through (so they can see what their public
+            // page WILL look like once everything is in order).
+            const session = getSession();
+            const isSelfView = !!session && session.id === profile.user_id;
+            if (!isSelfView) {
+                const gateResult = trainerPublicGate({
+                    user: userData as any,
+                    trainerProfile: profile as any,
+                });
+                if (!gateResult.ok) {
+                    setGateBlocked(true);
+                    setGateMessage(publicGateAthleteMessage(gateResult));
+                    setLoading(false);
+                    return;
+                }
+            }
 
             const { data: reviewsData } = await supabase
                 .from("reviews")
@@ -693,6 +714,27 @@ export default function BookTrainerPage() {
         return (
             <div className="flex justify-center items-center h-[60vh]">
                 <div className="w-12 h-12 border-4 border-primary/20 border-t-primary rounded-full animate-spin"></div>
+            </div>
+        );
+    }
+
+    if (gateBlocked) {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 px-6">
+                <div className="max-w-md w-full text-center rounded-3xl border border-white/[0.08] bg-white/[0.04] backdrop-blur-sm p-8 sm:p-10">
+                    <h2 className="text-xl sm:text-2xl font-black text-text-main mb-3" style={{ fontFamily: "var(--font-display)" }}>
+                        Not available right now
+                    </h2>
+                    <p className="text-text-main/60 font-semibold text-sm sm:text-base mb-6">
+                        {gateMessage || "This trainer isn't accepting bookings right now."}
+                    </p>
+                    <button
+                        onClick={() => router.back()}
+                        className="px-5 py-2.5 rounded-xl bg-primary/15 border border-primary/30 text-primary text-sm font-black uppercase tracking-[0.12em] hover:bg-primary/25 transition-all"
+                    >
+                        Back
+                    </button>
+                </div>
             </div>
         );
     }

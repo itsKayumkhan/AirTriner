@@ -9,6 +9,7 @@ import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { FoundingBadgeTooltip } from "@/components/ui/FoundingBadge";
 import dynamic from "next/dynamic";
 import { SortableTh, SortState, nextSortDir, compareValues } from "@/components/admin/SortableTh";
+import { computeTrainerCompleteness } from "@/lib/profile-completeness";
 
 const LocationMap = dynamic(() => import("@/components/admin/LocationMap"), { ssr: false });
 
@@ -77,7 +78,7 @@ export default function AdminTrainersPage() {
             const userIds = usersData.map(u => u.id);
             const { data: profilesData } = await supabase
                 .from("trainer_profiles")
-                .select("user_id, verification_status, sports, is_founding_50, verification_documents, latitude, longitude, city, state, country, profile_image_url, profile_image_status, profile_image_rejection_reason")
+                .select("user_id, verification_status, sports, is_founding_50, verification_documents, latitude, longitude, city, state, country, profile_image_url, profile_image_status, profile_image_rejection_reason, bio, years_experience, session_pricing, training_locations")
                 .in("user_id", userIds);
             const profilesMap = new Map((profilesData || []).map(p => [p.user_id, p]));
 
@@ -114,6 +115,7 @@ export default function AdminTrainersPage() {
                 const statusText = isVerified ? "Verified" : (isDeclined ? "Declined" : "Pending Review");
                 const sports = profile?.sports || [];
                 const docs: string[] = profile?.verification_documents || [];
+                const completeness = computeTrainerCompleteness(u, profile);
 
                 return {
                     id: u.id,
@@ -134,6 +136,10 @@ export default function AdminTrainersPage() {
                     profileImageUrl: profile?.profile_image_url || null,
                     profileImageStatus: profile?.profile_image_status || "none",
                     profileImageRejectionReason: profile?.profile_image_rejection_reason || null,
+                    profileComplete: completeness.complete,
+                    profileMissing: completeness.missing,
+                    profileFilled: completeness.filled,
+                    profileTotal: completeness.total,
                 };
             }));
         } catch (err) {
@@ -562,6 +568,26 @@ export default function AdminTrainersPage() {
                                                     <ImageIcon size={10} />
                                                     Image: {t.profileImageStatus}
                                                 </button>
+                                            )}
+                                            {/* Profile completeness badge — tells admin at a glance whether
+                                                the trainer has filled mandatory fields and is ready to verify. */}
+                                            {t.profileComplete ? (
+                                                <span
+                                                    title="All mandatory profile fields filled"
+                                                    className="flex items-center gap-1 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border bg-green-500/10 text-green-500 border-green-500/20"
+                                                >
+                                                    <CheckCircle size={10} />
+                                                    Profile complete
+                                                </span>
+                                            ) : (
+                                                <span
+                                                    title={`Missing: ${(t.profileMissing || []).join(", ")}`}
+                                                    className="flex items-center gap-1 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border bg-amber-500/10 text-amber-500 border-amber-500/20"
+                                                >
+                                                    <Clock size={10} />
+                                                    Missing: {(t.profileMissing || []).slice(0, 2).join(", ").toLowerCase()}
+                                                    {(t.profileMissing || []).length > 2 ? ` +${(t.profileMissing || []).length - 2}` : ""}
+                                                </span>
                                             )}
                                         </div>
                                     </td>

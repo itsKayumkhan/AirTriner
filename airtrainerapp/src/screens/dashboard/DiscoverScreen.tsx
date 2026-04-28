@@ -19,6 +19,7 @@ import {
 import Founding50Badge from '../../components/Founding50Badge';
 import TrainerMapView, { TrainerPin } from '../../components/TrainerMapView';
 import LocationAutocomplete, { LocationValue } from '../../components/LocationAutocomplete';
+import { trainerPublicGate } from '../../lib/trainer-gate';
 
 // ─── Sport categories loaded from DB, with fallback ───
 const FALLBACK_SPORT_OPTIONS: { slug: string; name: string }[] = [
@@ -321,7 +322,7 @@ export default function DiscoverScreen({ navigation }: any) {
             const userIds = profiles.map((p: any) => p.user_id);
             const { data: users } = await supabase
                 .from('users')
-                .select('id, first_name, last_name, avatar_url, role')
+                .select('id, first_name, last_name, avatar_url, role, phone, date_of_birth, is_suspended, deleted_at')
                 .in('id', userIds);
 
             const usersMap = new Map(
@@ -429,7 +430,12 @@ export default function DiscoverScreen({ navigation }: any) {
                     } as TrainerWithUser;
                 });
 
-            setTrainers(enriched);
+            // Public-visibility gate: enforces verification + active subscription
+            // + profile completeness + user-active (not suspended / not soft-deleted).
+            const gated = enriched.filter((t: any) =>
+                trainerPublicGate({ user: t.users as any, trainerProfile: t as any }).ok
+            );
+            setTrainers(gated);
         } catch (err) {
             console.error('Failed to load trainers:', err);
         } finally {

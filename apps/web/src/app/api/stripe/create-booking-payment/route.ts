@@ -11,6 +11,7 @@ import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
 import { calculateFees } from '@/lib/fees';
 import { stripeCurrency } from '@/lib/currency';
+import { trainerPublicGate } from '@/lib/trainer-gate';
 
 function formatSportName(sport: string): string {
     return sport.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
@@ -70,16 +71,36 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'This booking has already been paid' }, { status: 400 });
         }
 
-        // ── Recalculate fees using the full athlete-pays-all model ──
-        const { data: settings } = await supabase
-            .from('platform_settings')
-            .select('platform_fee_percentage')
+        // ── Trainer public-visibility gate ──
+        // No money moves until the trainer is verified, subscribed, complete,
+        // and the user account is active (not suspended/deleted).
+        const { data: trainerUser } = await supabase
+            .from('users')
+            .select('id, first_name, last_name, phone, date_of_birth, avatar_url, is_suspended, deleted_at')
+            .eq('id', booking.trainer_id)
             .maybeSingle();
 
         const { data: trainerProfile } = await supabase
             .from('trainer_profiles')
-            .select('country')
+            .select('verification_status, subscription_status, bio, sports, city, years_experience, session_pricing, training_locations, country')
             .eq('user_id', booking.trainer_id)
+            .maybeSingle();
+
+        const gate = trainerPublicGate({ user: trainerUser, trainerProfile });
+        if (!gate.ok) {
+            return NextResponse.json(
+                {
+                    error: "This trainer isn't accepting bookings right now.",
+                    reason: gate.reason,
+                },
+                { status: 409 }
+            );
+        }
+
+        // ── Recalculate fees using the full athlete-pays-all model ──
+        const { data: settings } = await supabase
+            .from('platform_settings')
+            .select('platform_fee_percentage')
             .maybeSingle();
 
         const fees = calculateFees({

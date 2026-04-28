@@ -12,17 +12,37 @@ import { ScreenWrapper, ScreenHeader, Card, Badge, EmptyState, LoadingScreen, Bu
 import { Config } from '../../lib/config';
 
 const NOTIF_ICONS: Record<string, { icon: string; color: string; bg: string }> = {
+    // Booking lifecycle
     NEW_REQUEST_NEARBY: { icon: 'location', color: Colors.primary, bg: Colors.primaryGlow },
+    BOOKING_REQUESTED: { icon: 'time', color: Colors.primary, bg: Colors.primaryGlow },
+    BOOKING_REQUEST: { icon: 'time', color: Colors.primary, bg: Colors.primaryGlow }, // alias
     BOOKING_CONFIRMED: { icon: 'checkmark-circle', color: Colors.primary, bg: Colors.primaryGlow },
+    BOOKING_ACCEPTED: { icon: 'checkmark-circle', color: Colors.success, bg: Colors.successLight }, // web alias
+    BOOKING_REJECTED: { icon: 'close-circle', color: Colors.error, bg: Colors.errorLight },
     BOOKING_CANCELLED: { icon: 'close-circle', color: Colors.error, bg: Colors.errorLight },
     BOOKING_COMPLETED: { icon: 'trophy', color: Colors.primary, bg: Colors.primaryGlow },
+    BOOKING_REFUNDED: { icon: 'card', color: Colors.warning, bg: Colors.warningLight },
     PAYMENT_RECEIVED: { icon: 'cash', color: Colors.success, bg: Colors.successLight },
+    // Reviews
     REVIEW_RECEIVED: { icon: 'star', color: Colors.primary, bg: Colors.primaryGlow },
+    REVIEW_REQUEST: { icon: 'star-outline', color: Colors.warning, bg: Colors.warningLight },
+    // Reschedule
+    RESCHEDULE_REQUESTED: { icon: 'calendar', color: Colors.primary, bg: Colors.primaryGlow },
+    RESCHEDULE_ACCEPTED: { icon: 'checkmark-circle', color: Colors.primary, bg: Colors.primaryGlow },
+    RESCHEDULE_DECLINED: { icon: 'close-circle', color: Colors.error, bg: Colors.errorLight },
+    // Profile / verification
     VERIFICATION_UPDATE: { icon: 'shield-checkmark', color: Colors.primary, bg: Colors.primaryGlow },
+    PROFILE_VERIFIED: { icon: 'shield-checkmark', color: Colors.success, bg: Colors.successLight },
+    PROFILE_REJECTED: { icon: 'shield', color: Colors.error, bg: Colors.errorLight },
+    // Subscription
     SUBSCRIPTION_EXPIRING: { icon: 'warning', color: Colors.warning, bg: Colors.warningLight },
+    // Messages — both naming conventions map to same icon
     MESSAGE_RECEIVED: { icon: 'chatbubble', color: Colors.primary, bg: Colors.primaryGlow },
+    NEW_MESSAGE: { icon: 'chatbubble', color: Colors.primary, bg: Colors.primaryGlow }, // web alias
+    // Offers
     TRAINING_OFFER: { icon: 'pricetag', color: Colors.warning, bg: Colors.warningLight },
     NEW_OFFER: { icon: 'pricetag', color: Colors.warning, bg: Colors.warningLight },
+    OFFER_RECEIVED: { icon: 'pricetag', color: Colors.warning, bg: Colors.warningLight }, // web alias
     OFFER_ACCEPTED: { icon: 'checkmark-circle', color: Colors.success, bg: Colors.successLight },
     OFFER_DECLINED: { icon: 'close-circle', color: Colors.error, bg: Colors.errorLight },
 };
@@ -214,6 +234,64 @@ export default function NotificationsScreen({ navigation }: any) {
         return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     };
 
+    // Per-type tap-through routing — mirrors web behaviour but uses native nav.
+    // Always marks the notification as read regardless of whether routing succeeds.
+    const handleNotificationPress = (notif: NotificationRow) => {
+        markAsRead(notif.id);
+
+        const raw = notif.data;
+        const data: any = !raw ? {} : (typeof raw === 'string' ? (() => { try { return JSON.parse(raw); } catch { return {}; } })() : raw);
+
+        // 1. Offer flow — keep existing offer modal behaviour
+        const offerId = data.offer_id || data.offerId;
+        if (offerId && isOfferNotification(notif.type)) {
+            handleViewOffer(notif);
+            return;
+        }
+
+        // 2. Booking-related → BookingDetail
+        if (data.booking_id || data.bookingId) {
+            navigation.navigate('BookingDetail', { bookingId: data.booking_id || data.bookingId });
+            return;
+        }
+
+        // 3. Message / chat thread
+        if (data.message_id || data.thread_id || data.conversation_id) {
+            // Chat screen requires bookingId + otherUser; without those we fall back to Messages list.
+            // TODO: ROUTE_NAME=Chat — need bookingId + otherUser; thread/conversation IDs alone aren't enough yet.
+            navigation.navigate('Messages');
+            return;
+        }
+
+        // 4. Review request/received → Reviews screen
+        if (data.review_id || notif.type === 'REVIEW_REQUEST' || notif.type === 'REVIEW_RECEIVED') {
+            const trainerId = data.trainer_id || data.trainerId;
+            navigation.navigate('Reviews', trainerId ? { trainerId } : undefined);
+            return;
+        }
+
+        // 5. Verification / profile → Verification screen
+        if (notif.type === 'PROFILE_VERIFIED' || notif.type === 'PROFILE_REJECTED' || notif.type === 'VERIFICATION_UPDATE') {
+            navigation.navigate('Verification');
+            return;
+        }
+
+        // 6. Subscription expiring → Subscription
+        if (notif.type === 'SUBSCRIPTION_EXPIRING') {
+            navigation.navigate('Subscription');
+            return;
+        }
+
+        // 7. Generic web link fallback
+        if (data.link || data.url) {
+            const url = data.link || data.url;
+            Linking.openURL(url).catch((err) => console.warn('Failed to open URL', url, err));
+            return;
+        }
+
+        // else: no-op (already marked read)
+    };
+
     const handleViewOffer = async (notif: NotificationRow) => {
         const offerId = getOfferIdFromNotification(notif);
         if (!offerId) return;
@@ -349,7 +427,7 @@ export default function NotificationsScreen({ navigation }: any) {
             <Animated.View key={item.id} entering={FadeInDown.duration(200).delay(index * 25)}>
                 <Pressable
                     style={({ pressed }) => [pressed && { opacity: 0.9, transform: [{ scale: 0.98 }] }]}
-                    onPress={() => markAsRead(item.id)}
+                    onPress={() => handleNotificationPress(item)}
                     accessibilityLabel={`Notification: ${item.title}`}
                 >
                     <Card
