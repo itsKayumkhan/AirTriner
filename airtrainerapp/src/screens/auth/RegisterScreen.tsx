@@ -79,7 +79,15 @@ export default function RegisterScreen({ navigation }: any) {
         if (!email.trim()) newErrors.email = 'Required';
         else if (!/\S+@\S+\.\S+/.test(email)) newErrors.email = 'Invalid email';
         if (!password) newErrors.password = 'Required';
-        else if (password.length < 8) newErrors.password = 'Minimum 8 characters';
+        else if (password.length < 12) newErrors.password = 'Password must be at least 12 characters long.';
+        else if (
+            !/[a-z]/.test(password) ||
+            !/[A-Z]/.test(password) ||
+            !/\d/.test(password) ||
+            !/[^A-Za-z0-9]/.test(password)
+        ) {
+            newErrors.password = 'Password must include uppercase, lowercase, a number, and a symbol.';
+        }
         if (password !== confirmPassword) newErrors.confirmPassword = 'Passwords don\'t match';
         if (!dateOfBirth.trim()) newErrors.dateOfBirth = 'Required';
         else {
@@ -135,6 +143,9 @@ export default function RegisterScreen({ navigation }: any) {
                 skillLevel: skillLevel ? skillLevel.toLowerCase() : 'beginner',
                 city: city || undefined,
                 state: state || undefined,
+                country: country || undefined,
+                latitude: lat ?? undefined,
+                longitude: lng ?? undefined,
             });
         } catch (error: any) {
             Alert.alert('Registration Failed', error.message);

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
     View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator,
     Modal, TextInput, Platform, Pressable, Image,
@@ -19,6 +19,7 @@ import {
     SectionHeader, StatCard, EmptyState, Divider,
 } from '../../components/ui';
 import Founding50Badge from '../../components/Founding50Badge';
+import { normalizeSessionPricing, priceFor, enabledDurations } from '../../lib/session-pricing';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -30,8 +31,13 @@ const getDefaultDate = () => {
     return `${yyyy}-${mm}-${dd}`;
 };
 
-const DURATION_OPTIONS = [30, 45, 60, 90];
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+const formatDurationLabel = (mins: number): string => {
+    if (mins === 60) return '1 hr';
+    if (mins === 90) return '1.5 hr';
+    return `${mins} min`;
+};
 
 type SubAccount = {
     id: string;
@@ -102,13 +108,29 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
     );
     const [bookingNotes, setBookingNotes] = useState('');
 
+    // Per-duration session pricing (mirrors web)
+    const sessionPricing = useMemo(
+        () => normalizeSessionPricing(trainer?.session_pricing, trainer?.hourly_rate),
+        [trainer?.session_pricing, trainer?.hourly_rate]
+    );
+    const offered = useMemo(() => enabledDurations(sessionPricing), [sessionPricing]);
+    const startingPrice = useMemo(() => {
+        const prices = offered
+            .map((d) => priceFor(sessionPricing, d))
+            .filter((p): p is number => p != null);
+        return prices.length ? Math.min(...prices) : Number(trainer?.hourly_rate || 50);
+    }, [offered, sessionPricing, trainer?.hourly_rate]);
+
     // New booking state
     const [selectedTime, setSelectedTime] = useState<string>('');
-    const [selectedDuration, setSelectedDuration] = useState(60);
+    const [selectedDuration, setSelectedDuration] = useState<number>(offered[0] ?? 60);
     const [availableSlots, setAvailableSlots] = useState<string[]>([]);
     const [unavailableSlots, setUnavailableSlots] = useState<Set<string>>(new Set());
     const [loadingSlots, setLoadingSlots] = useState(false);
     const [noAvailability, setNoAvailability] = useState(false);
+    // Raw (pre-duration-filter) slot count + max slot length, for "no slots" hint
+    const [rawSlotCount, setRawSlotCount] = useState(0);
+    const [maxSlotMinutes, setMaxSlotMinutes] = useState(0);
 
     // Availability calendar data
     const [availableDays, setAvailableDays] = useState<Set<number>>(new Set());
@@ -129,7 +151,7 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
     const [platformFeePercent, setPlatformFeePercent] = useState(3);
 
     // Session duration for pricing display
-    const [pricingDuration, setPricingDuration] = useState(60);
+    const [pricingDuration, setPricingDuration] = useState<number>(offered[0] ?? 60);
 
     // Admin-uploaded sport images keyed by slug (see sports.image_url)
     const [sportImages, setSportImages] = useState<Record<string, string>>({});
@@ -325,6 +347,8 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
         setLoadingSlots(true);
         setSelectedTime('');
         setNoAvailability(false);
+        setRawSlotCount(0);
+        setMaxSlotMinutes(0);
 
         try {
             const dayOfWeek = new Date(date + 'T12:00:00').getDay();
@@ -359,17 +383,11 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
                     .eq('is_active', true);
 
                 if (!recurErr && recurData?.length) {
-                    const activeDur = selectedDuration || 60;
                     recurData.forEach((r: { start_time: string; end_time: string }) => {
-                        const startMins = parseInt(r.start_time.split(':')[0]) * 60 + parseInt(r.start_time.split(':')[1]);
-                        const endMins = parseInt(r.end_time.split(':')[0]) * 60 + parseInt(r.end_time.split(':')[1]);
-                        for (let t = startMins; t + activeDur <= endMins; t += activeDur) {
-                            const sh = String(Math.floor(t / 60)).padStart(2, '0');
-                            const sm = String(t % 60).padStart(2, '0');
-                            const eh = String(Math.floor((t + activeDur) / 60)).padStart(2, '0');
-                            const em = String((t + activeDur) % 60).padStart(2, '0');
-                            recurringSlots.push({ start_time: `${sh}:${sm}`, end_time: `${eh}:${em}` });
-                        }
+                        recurringSlots.push({
+                            start_time: r.start_time,
+                            end_time: r.end_time,
+                        });
                     });
                 }
             } catch {
@@ -383,44 +401,57 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
                 return;
             }
 
-            const allTimeSlots: string[] = [];
-            const conflicting = new Set<string>();
-
+            // Build unified window list to track raw count and max window length
+            const windows: { startMin: number; endMin: number }[] = [];
             for (const slot of slots) {
-                const startMin = timeToMinutes(slot.start_time);
-                const endMin = timeToMinutes(slot.end_time);
+                windows.push({
+                    startMin: timeToMinutes(slot.start_time),
+                    endMin: timeToMinutes(slot.end_time),
+                });
+            }
+            for (const rs of recurringSlots) {
+                windows.push({
+                    startMin: timeToMinutes(rs.start_time),
+                    endMin: timeToMinutes(rs.end_time),
+                });
+            }
 
-                for (let min = startMin; min < endMin; min += 60) {
+            const rawCount = windows.length;
+            const maxLen = windows.reduce(
+                (m, w) => Math.max(m, w.endMin - w.startMin),
+                0
+            );
+            setRawSlotCount(rawCount);
+            setMaxSlotMinutes(maxLen);
+
+            // Generate candidate start times that have enough room for selectedDuration
+            const allTimeSlots: string[] = [];
+            const seen = new Set<string>();
+            for (const w of windows) {
+                for (let min = w.startMin; min + selectedDuration <= w.endMin; min += selectedDuration) {
                     const hour = Math.floor(min / 60);
                     const minute = min % 60;
                     const timeStr = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
-                    if (!allTimeSlots.includes(timeStr)) {
+                    if (!seen.has(timeStr)) {
+                        seen.add(timeStr);
                         allTimeSlots.push(timeStr);
                     }
                 }
             }
 
-            // Merge recurring slots, deduplicate by start_time
-            const existingStarts = new Set(allTimeSlots);
-            for (const rs of recurringSlots) {
-                const timeStr = rs.start_time.slice(0, 5);
-                if (!existingStarts.has(timeStr)) {
-                    allTimeSlots.push(timeStr);
-                    existingStarts.add(timeStr);
-                }
-            }
-
             allTimeSlots.sort();
 
+            const conflicting = new Set<string>();
             for (const timeStr of allTimeSlots) {
                 const slotStartMin = timeToMinutes(timeStr);
+                const slotEndMin = slotStartMin + selectedDuration;
 
                 for (const booking of existingBookings) {
                     const bookingDate = new Date(booking.scheduled_at);
                     const bookingStartMin = bookingDate.getHours() * 60 + bookingDate.getMinutes();
                     const bookingEndMin = bookingStartMin + (booking.duration_minutes || 60);
 
-                    if (slotStartMin < bookingEndMin && slotStartMin + 60 > bookingStartMin) {
+                    if (slotStartMin < bookingEndMin && slotEndMin > bookingStartMin) {
                         conflicting.add(timeStr);
                         break;
                     }
@@ -453,7 +484,7 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
         setSelectedDate(defaultDate);
         setSelectedSport(trainer.sports?.length === 1 ? trainer.sports[0] : '');
         setSelectedTime('');
-        setSelectedDuration(60);
+        setSelectedDuration(offered[0] ?? 60);
         setSelectedSubAccount(null);
         setShowSubAccountPicker(false);
         setBookingNotes('');
@@ -468,9 +499,8 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
         loadAvailableDates();
     };
 
-    // Price calculations
-    const hourlyRate = Number(trainer.hourly_rate || 50);
-    const sessionPrice = hourlyRate * (selectedDuration / 60);
+    // Price calculations (per-duration pricing, no proration)
+    const sessionPrice = priceFor(sessionPricing, selectedDuration) ?? 0;
     const platformFee = sessionPrice * (platformFeePercent / 100);
     const totalPrice = sessionPrice + platformFee;
 
@@ -487,11 +517,19 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
             Alert.alert('Select Time', 'Please select a time slot for your session.');
             return;
         }
+        const explicitPrice = priceFor(sessionPricing, selectedDuration);
+        if (explicitPrice == null) {
+            Alert.alert(
+                'Duration Unavailable',
+                `This trainer doesn't offer ${selectedDuration}-minute sessions.`
+            );
+            return;
+        }
         setShowBookingModal(false);
         setIsBooking(true);
         try {
             const scheduledAt = new Date(`${selectedDate}T${selectedTime}:00`).toISOString();
-            const price = hourlyRate * (selectedDuration / 60);
+            const price = explicitPrice;
             const fee = price * (platformFeePercent / 100);
             const totalPaid = price + fee;
 
@@ -691,8 +729,8 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
                 </View>
                 <View style={styles.statDivider} />
                 <View style={styles.statMini}>
-                    <Text style={[styles.statMiniValue, { color: Colors.primary }]}>${Number(trainer.hourly_rate || 50).toFixed(0)}</Text>
-                    <Text style={styles.statMiniLabel}>Per hr</Text>
+                    <Text style={[styles.statMiniValue, { color: Colors.primary }]}>${startingPrice.toFixed(0)}</Text>
+                    <Text style={styles.statMiniLabel}>From</Text>
                 </View>
             </Animated.View>
 
@@ -715,16 +753,18 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
             <PressableCard delay={300} style={styles.sectionWrap}>
                 <Card>
                     <View style={styles.pricingHeader}>
-                        <Text style={styles.pricingBigPrice}>${Number(trainer.hourly_rate || 50).toFixed(0)}</Text>
-                        <Text style={styles.pricingPerHr}>/hr</Text>
+                        <Text style={styles.pricingBigPrice}>
+                            ${(priceFor(sessionPricing, pricingDuration) ?? 0).toFixed(0)}
+                        </Text>
+                        <Text style={styles.pricingPerHr}>/{formatDurationLabel(pricingDuration)}</Text>
                     </View>
 
                     {/* Session duration pills */}
                     <Text style={styles.pricingSubLabel}>Session length</Text>
                     <View style={styles.pricingPillRow}>
-                        {[30, 60, 90].map((dur) => {
+                        {offered.map((dur) => {
                             const isActive = pricingDuration === dur;
-                            const calcPrice = (hourlyRate * dur / 60).toFixed(0);
+                            const p = priceFor(sessionPricing, dur);
                             return (
                                 <TouchableOpacity
                                     key={dur}
@@ -733,10 +773,10 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
                                     activeOpacity={0.7}
                                 >
                                     <Text style={[styles.pricingPillDur, isActive && styles.pricingPillTextActive]}>
-                                        {dur} min
+                                        {formatDurationLabel(dur)}
                                     </Text>
                                     <Text style={[styles.pricingPillPrice, isActive && styles.pricingPillTextActive]}>
-                                        ${calcPrice}
+                                        ${(p ?? 0).toFixed(0)}
                                     </Text>
                                 </TouchableOpacity>
                             );
@@ -980,7 +1020,7 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
                             <>
                                 <Ionicons name="calendar" size={18} color={Colors.textInverse} />
                                 <Text style={styles.bookButtonText}>
-                                    Book Session — ${Number(trainer.hourly_rate || 50).toFixed(0)}
+                                    {`Book Session — from $${startingPrice.toFixed(0)}`}
                                 </Text>
                             </>
                         )}
@@ -1128,7 +1168,11 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
                             ) : noAvailability ? (
                                 <View style={styles.noSlotsContainer}>
                                     <Ionicons name="calendar-outline" size={20} color={Colors.textTertiary} />
-                                    <Text style={styles.noSlotsText}>No availability on this date</Text>
+                                    <Text style={styles.noSlotsText}>
+                                        {rawSlotCount > 0 && maxSlotMinutes > 0 && maxSlotMinutes < selectedDuration
+                                            ? `No slots fit this session length. The trainer's slots are up to ${maxSlotMinutes} min long. Try a shorter session.`
+                                            : 'No slots available for this day'}
+                                    </Text>
                                 </View>
                             ) : availableSlots.length > 0 ? (
                                 <View style={styles.timeSlotsGrid}>
@@ -1170,30 +1214,34 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
                                 <Text style={styles.slotsHintText}>Enter a valid date to see available times</Text>
                             )}
 
-                            {/* Duration Selector */}
+                            {/* Duration Selector — only enabled durations from session_pricing */}
                             <Text style={styles.modalLabel}>Duration</Text>
                             <View style={styles.durationRow}>
-                                {DURATION_OPTIONS.map((dur) => (
-                                    <TouchableOpacity
-                                        key={dur}
-                                        style={[
-                                            styles.durationChip,
-                                            selectedDuration === dur && styles.durationChipSelected,
-                                        ]}
-                                        onPress={() => setSelectedDuration(dur)}
-                                        activeOpacity={0.7}
-                                        accessibilityLabel={`${dur} minutes`}
-                                    >
-                                        <Text
+                                {offered.map((dur) => {
+                                    const p = priceFor(sessionPricing, dur);
+                                    const isSelected = selectedDuration === dur;
+                                    return (
+                                        <TouchableOpacity
+                                            key={dur}
                                             style={[
-                                                styles.durationChipText,
-                                                selectedDuration === dur && styles.durationChipTextSelected,
+                                                styles.durationChip,
+                                                isSelected && styles.durationChipSelected,
                                             ]}
+                                            onPress={() => setSelectedDuration(dur)}
+                                            activeOpacity={0.7}
+                                            accessibilityLabel={`${dur} minutes, $${(p ?? 0).toFixed(0)}`}
                                         >
-                                            {dur} min
-                                        </Text>
-                                    </TouchableOpacity>
-                                ))}
+                                            <Text
+                                                style={[
+                                                    styles.durationChipText,
+                                                    isSelected && styles.durationChipTextSelected,
+                                                ]}
+                                            >
+                                                {`${formatDurationLabel(dur)} · $${(p ?? 0).toFixed(0)}`}
+                                            </Text>
+                                        </TouchableOpacity>
+                                    );
+                                })}
                             </View>
 
                             {/* Sport Selector */}

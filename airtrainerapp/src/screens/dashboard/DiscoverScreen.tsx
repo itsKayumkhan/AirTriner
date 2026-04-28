@@ -10,6 +10,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { supabase, TrainerProfileRow, UserRow, AthleteProfileRow } from '../../lib/supabase';
 import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows, Layout } from '../../theme';
 import { formatSportName } from '../../lib/format';
+import { formatMoney } from '../../lib/currency';
+import { normalizeSessionPricing, minEnabledPrice, enabledDurations } from '../../lib/session-pricing';
 import {
     ScreenWrapper, Avatar, Badge, Button,
     EmptyState, LoadingScreen,
@@ -221,6 +223,10 @@ const SkeletonList = () => (
     </View>
 );
 
+
+// Min enabled session price for a trainer (mirrors web). Falls back to hourly_rate.
+const tMinPrice = (t: any) =>
+    minEnabledPrice(normalizeSessionPricing(t.session_pricing, t.hourly_rate)) ?? Number(t.hourly_rate);
 
 export default function DiscoverScreen({ navigation }: any) {
     const { user } = useAuth();
@@ -463,8 +469,8 @@ export default function DiscoverScreen({ navigation }: any) {
                 if (!loc.includes(locationFilter.toLowerCase())) return false;
             }
 
-            // Price
-            if (maxRate < 300 && Number(t.hourly_rate) > maxRate) return false;
+            // Price (use min enabled session price; falls back to hourly_rate)
+            if (maxRate < 300 && tMinPrice(t) > maxRate) return false;
 
             // Rating
             if (minRating > 0 && t.avg_rating < minRating) return false;
@@ -494,10 +500,10 @@ export default function DiscoverScreen({ navigation }: any) {
                 result.sort((a, b) => b.matchScore - a.matchScore);
                 break;
             case 'price_low':
-                result.sort((a, b) => Number(a.hourly_rate) - Number(b.hourly_rate));
+                result.sort((a, b) => tMinPrice(a) - tMinPrice(b));
                 break;
             case 'price_high':
-                result.sort((a, b) => Number(b.hourly_rate) - Number(a.hourly_rate));
+                result.sort((a, b) => tMinPrice(b) - tMinPrice(a));
                 break;
             case 'rating':
                 result.sort((a, b) => b.avg_rating - a.avg_rating);
@@ -738,28 +744,39 @@ export default function DiscoverScreen({ navigation }: any) {
                     ) : null}
 
                     {/* BOTTOM: Price + CTA */}
-                    <View style={styles.cardBottom}>
-                        <View style={styles.priceBlock}>
-                            <Text style={styles.priceAmount}>
-                                ${Number(item.hourly_rate || 0).toFixed(0)}
-                            </Text>
-                            <Text style={styles.priceUnit}>/hr</Text>
-                        </View>
+                    {(() => {
+                        const pricing = normalizeSessionPricing((item as any).session_pricing, item.hourly_rate);
+                        const enabled = enabledDurations(pricing);
+                        const minPrice = minEnabledPrice(pricing) ?? Number(item.hourly_rate || 0);
+                        const isMulti = enabled.length > 1;
+                        return (
+                            <View style={styles.cardBottom}>
+                                <View style={styles.priceBlock}>
+                                    {isMulti && <Text style={styles.priceFromLabel}>from </Text>}
+                                    <Text style={styles.priceAmount}>
+                                        {formatMoney(minPrice, { dec: 0 })}
+                                    </Text>
+                                    <Text style={styles.priceUnit}>
+                                        {isMulti ? '' : ' / 1hr'}
+                                    </Text>
+                                </View>
 
-                        <TouchableOpacity
-                            style={styles.viewProfileButton}
-                            activeOpacity={0.8}
-                            onPress={() =>
-                                navigation.navigate('TrainerDetail', {
-                                    trainerId: item.user_id,
-                                    trainer: item,
-                                })
-                            }
-                        >
-                            <Text style={styles.viewProfileText}>View Profile</Text>
-                            <Ionicons name="arrow-forward" size={16} color="#FFFFFF" />
-                        </TouchableOpacity>
-                    </View>
+                                <TouchableOpacity
+                                    style={styles.viewProfileButton}
+                                    activeOpacity={0.8}
+                                    onPress={() =>
+                                        navigation.navigate('TrainerDetail', {
+                                            trainerId: item.user_id,
+                                            trainer: item,
+                                        })
+                                    }
+                                >
+                                    <Text style={styles.viewProfileText}>View Profile</Text>
+                                    <Ionicons name="arrow-forward" size={16} color="#FFFFFF" />
+                                </TouchableOpacity>
+                            </View>
+                        );
+                    })()}
                 </Pressable>
             </Animated.View>
         );
@@ -1633,6 +1650,13 @@ const styles = StyleSheet.create({
     priceBlock: {
         flexDirection: 'row',
         alignItems: 'baseline',
+    },
+    priceFromLabel: {
+        fontSize: FontSize.xs,
+        fontWeight: FontWeight.medium,
+        color: Colors.primary,
+        opacity: 0.6,
+        marginRight: 2,
     },
     priceAmount: {
         fontSize: FontSize.xxl,

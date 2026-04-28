@@ -25,7 +25,20 @@ type ConnectStatus = {
     bankName: string | null;
     dashboardUrl: string | null;
     accountId?: string;
+    requirements?: {
+        currently_due: string[];
+        eventually_due: string[];
+        past_due: string[];
+        pending_verification: string[];
+        disabled_reason: string | null;
+    };
+    needsPlatformSetup?: boolean;
+    notice?: string;
 };
+
+function humanizeRequirement(key: string): string {
+    return key.replace(/[_.]/g, ' ');
+}
 
 type Transaction = {
     id: string;
@@ -226,8 +239,10 @@ export default function PaymentMethodsScreen({ navigation }: any) {
     /* ─── Derived states (mirrors web logic) ─── */
     const isFullyConnected =
         connectStatus?.hasAccount && connectStatus?.onboardingComplete && connectStatus?.payoutsEnabled;
-    const isPartial = connectStatus?.hasAccount && !connectStatus?.onboardingComplete;
+    const isPartial =
+        connectStatus?.hasAccount && (!connectStatus?.onboardingComplete || !connectStatus?.payoutsEnabled);
     const isNotConnected = !connectStatus?.hasAccount;
+    const currentlyDue = connectStatus?.requirements?.currently_due ?? [];
 
     return (
         <ScreenWrapper
@@ -250,6 +265,25 @@ export default function PaymentMethodsScreen({ navigation }: any) {
                                 <Pressable onPress={() => user && fetchConnectStatus()}>
                                     <Text style={styles.errorRetry}>Try again</Text>
                                 </Pressable>
+                            </View>
+                        </View>
+                    </Card>
+                </Animated.View>
+            )}
+
+            {/* ── NOTICE BANNER (server-provided) ── */}
+            {connectStatus?.notice && (
+                <Animated.View entering={FadeInDown.duration(200)}>
+                    <Card style={styles.noticeCard}>
+                        <View style={styles.errorRow}>
+                            <Ionicons name="information-circle" size={18} color={Colors.warning} />
+                            <View style={{ flex: 1 }}>
+                                <Text style={styles.noticeText}>{connectStatus.notice}</Text>
+                                {connectStatus.needsPlatformSetup && (
+                                    <Text style={styles.noticeAdminHint}>
+                                        Admin: platform Stripe Connect setup is required.
+                                    </Text>
+                                )}
                             </View>
                         </View>
                     </Card>
@@ -347,6 +381,20 @@ export default function PaymentMethodsScreen({ navigation }: any) {
                                     Your Stripe account was created but onboarding is not complete.
                                     You need to finish adding your bank details and identity verification.
                                 </Text>
+
+                                {currentlyDue.length > 0 && (
+                                    <View style={styles.requirementsBlock}>
+                                        <Text style={styles.requirementsHeading}>Pending</Text>
+                                        {currentlyDue.map((req) => (
+                                            <View key={req} style={styles.requirementRow}>
+                                                <Text style={styles.requirementBullet}>•</Text>
+                                                <Text style={styles.requirementText}>
+                                                    {humanizeRequirement(req)}
+                                                </Text>
+                                            </View>
+                                        ))}
+                                    </View>
+                                )}
                             </Card>
 
                             <Button
@@ -357,6 +405,16 @@ export default function PaymentMethodsScreen({ navigation }: any) {
                                 loading={connecting}
                                 disabled={connecting}
                             />
+
+                            {connectStatus?.dashboardUrl && (
+                                <Pressable
+                                    style={({ pressed }) => [styles.dashboardLink, pressed && { opacity: 0.8 }]}
+                                    onPress={() => Linking.openURL(connectStatus.dashboardUrl!)}
+                                >
+                                    <Ionicons name="open-outline" size={16} color={Colors.textSecondary} />
+                                    <Text style={styles.dashboardLinkText}>Open Stripe Dashboard</Text>
+                                </Pressable>
+                            )}
                         </>
                     )}
 
@@ -665,6 +723,56 @@ const styles = StyleSheet.create({
         fontSize: FontSize.sm,
         color: Colors.textSecondary,
         lineHeight: 20,
+    },
+    requirementsBlock: {
+        marginTop: Spacing.md,
+        paddingTop: Spacing.md,
+        borderTopWidth: 1,
+        borderTopColor: Colors.warning + '28',
+        gap: 4,
+    },
+    requirementsHeading: {
+        fontSize: FontSize.xs,
+        fontWeight: FontWeight.bold,
+        color: Colors.warning,
+        letterSpacing: 1,
+        marginBottom: 4,
+    },
+    requirementRow: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        gap: Spacing.sm,
+    },
+    requirementBullet: {
+        fontSize: FontSize.sm,
+        color: Colors.warning,
+        lineHeight: 20,
+    },
+    requirementText: {
+        flex: 1,
+        fontSize: FontSize.sm,
+        color: Colors.text,
+        lineHeight: 20,
+        textTransform: 'capitalize',
+    },
+
+    // Notice banner
+    noticeCard: {
+        borderColor: Colors.warning + '44',
+        backgroundColor: Colors.warning + '0D',
+        marginBottom: Spacing.md,
+    },
+    noticeText: {
+        fontSize: FontSize.sm,
+        fontWeight: FontWeight.semibold,
+        color: Colors.warning,
+        lineHeight: 20,
+    },
+    noticeAdminHint: {
+        fontSize: FontSize.xs,
+        color: Colors.textSecondary,
+        marginTop: 4,
+        fontStyle: 'italic',
     },
 
     // Not connected

@@ -18,6 +18,10 @@ interface AuthContextType {
         skillLevel?: string;
         city?: string;
         state?: string;
+        country?: string;
+        zipCode?: string;
+        latitude?: number;
+        longitude?: number;
         travelRadius?: number;
     }) => Promise<void>;
     logout: () => Promise<void>;
@@ -86,6 +90,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         skillLevel?: string;
         city?: string;
         state?: string;
+        country?: string;
+        zipCode?: string;
+        latitude?: number;
+        longitude?: number;
         travelRadius?: number;
     }) => {
         isManualAuthRef.current = true;

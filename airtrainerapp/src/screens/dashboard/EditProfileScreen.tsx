@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
     View, Text, StyleSheet, Pressable, ActivityIndicator, Alert, LayoutAnimation,
+    Switch, TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -11,6 +12,12 @@ import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import LocationAutocomplete, { LocationValue } from '../../components/LocationAutocomplete';
 import { detectCountry, radiusUnit, miToKm, kmToMi } from '../../lib/units';
+import { PLATFORM_CURRENCY_SYMBOL } from '../../lib/currency';
+import {
+    ALLOWED_SESSION_DURATIONS,
+    normalizeSessionPricing,
+    type AllowedDuration,
+} from '../../lib/session-pricing';
 import {
     ScreenWrapper, Card, Button, Input, Avatar, Divider,
 } from '../../components/ui';
@@ -28,8 +35,15 @@ const TRAINING_TYPES = [
     { key: 'in_season', label: 'In-Season' },
 ];
 const TRAINING_TIMES = ['Morning', 'Afternoon', 'Evening'];
-const SESSION_LENGTH_OPTIONS = [30, 45, 60, 90];
 const SEX_OPTIONS = ['Male', 'Female', 'Other', 'Prefer not to say'];
+
+type SessionPricingState = Record<`${AllowedDuration}`, { price: string; enabled: boolean }>;
+
+const DEFAULT_SESSION_PRICING_STATE: SessionPricingState = {
+    '30': { price: '25', enabled: false },
+    '45': { price: '37.5', enabled: false },
+    '60': { price: '50', enabled: true },
+};
 const SKILL_LEVELS = ['beginner', 'intermediate', 'advanced', 'pro'] as const;
 
 /** Returns true if the user is likely in Canada based on postal code or country */
@@ -147,7 +161,6 @@ export default function EditProfileScreen({ navigation }: any) {
     const [avatarPendingApproval, setAvatarPendingApproval] = useState(false);
     const [headline, setHeadline] = useState(tp?.headline || '');
     const [bio, setBio] = useState(tp?.bio || '');
-    const [hourlyRate, setHourlyRate] = useState(String(tp?.hourly_rate || '50'));
     const [yearsExp, setYearsExp] = useState(String(tp?.years_experience || '0'));
     const [selectedSports, setSelectedSports] = useState<string[]>(tp?.sports || []);
     const [selectedTrainingTypes, setSelectedTrainingTypes] = useState<string[]>((tp as any)?.trainingTypes || []);
@@ -159,7 +172,20 @@ export default function EditProfileScreen({ navigation }: any) {
     const [isSaving, setIsSaving] = useState(false);
     const [trainingLocations, setTrainingLocations] = useState<string[]>((tp as any)?.training_locations || []);
     const [locationInput, setLocationInput] = useState('');
-    const [sessionLengths, setSessionLengths] = useState<number[]>((tp as any)?.session_lengths || [60]);
+    const [sessionPricing, setSessionPricing] = useState<SessionPricingState>(() => {
+        if (!isTrainer) return DEFAULT_SESSION_PRICING_STATE;
+        const normalized = normalizeSessionPricing(
+            (tp as any)?.session_pricing,
+            tp?.hourly_rate ?? 50
+        );
+        const out = { ...DEFAULT_SESSION_PRICING_STATE };
+        for (const d of ALLOWED_SESSION_DURATIONS) {
+            const key = String(d) as `${AllowedDuration}`;
+            const e = normalized[key];
+            if (e) out[key] = { price: String(e.price), enabled: !!e.enabled };
+        }
+        return out;
+    });
     const [locationLoading, setLocationLoading] = useState(false);
     const [selectedTrainingTimes, setSelectedTrainingTimes] = useState<string[]>(
         user?.athleteProfile?.preferredTrainingTimes || []
@@ -318,10 +344,21 @@ export default function EditProfileScreen({ navigation }: any) {
             prev.includes(time) ? prev.filter((t) => t !== time) : [...prev, time]
         );
 
-    const toggleSessionLength = (len: number) =>
-        setSessionLengths((prev) =>
-            prev.includes(len) ? prev.filter((l) => l !== len) : [...prev, len]
-        );
+    const toggleDurationEnabled = (d: AllowedDuration) => {
+        setSessionPricing((prev) => {
+            const key = String(d) as `${AllowedDuration}`;
+            return { ...prev, [key]: { ...prev[key], enabled: !prev[key].enabled } };
+        });
+        setFieldErrors((p) => { const n = { ...p }; delete n.sessionPricing; return n; });
+    };
+
+    const setDurationPrice = (d: AllowedDuration, price: string) => {
+        setSessionPricing((prev) => {
+            const key = String(d) as `${AllowedDuration}`;
+            return { ...prev, [key]: { ...prev[key], price } };
+        });
+        setFieldErrors((p) => { const n = { ...p }; delete n.sessionPricing; return n; });
+    };
 
     const addTrainingLocation = () => {
         const trimmed = locationInput.trim();
@@ -360,8 +397,21 @@ export default function EditProfileScreen({ navigation }: any) {
             if (!bio?.trim()) errors.bio = 'Bio is required';
             else if (bio.trim().length < 50) errors.bio = 'Bio must be at least 50 characters';
             if (selectedSports.length === 0) errors.sports = 'Select at least one sport';
-            const rate = parseFloat(hourlyRate);
-            if (!rate || rate < 10) errors.hourlyRate = 'Minimum rate is $10/hr';
+            const enabledKeys = ALLOWED_SESSION_DURATIONS.filter(
+                (d) => sessionPricing[String(d) as `${AllowedDuration}`].enabled
+            );
+            if (enabledKeys.length === 0) {
+                errors.sessionPricing = 'Enable at least one session length';
+            } else {
+                for (const d of enabledKeys) {
+                    const key = String(d) as `${AllowedDuration}`;
+                    const n = parseFloat(sessionPricing[key].price);
+                    if (!Number.isFinite(n) || n <= 0) {
+                        errors.sessionPricing = `Enter a valid price for ${d} min sessions`;
+                        break;
+                    }
+                }
+            }
         } else {
             if (selectedSports.length === 0) errors.sports = 'Select at least one sport';
             if (!skillLevel) errors.skillLevel = 'Please select your skill level';
@@ -401,13 +451,34 @@ export default function EditProfileScreen({ navigation }: any) {
                 : displayRadius;
 
             if (isTrainer) {
+                // Build session pricing payload: numeric prices, only includes all 3 durations.
+                const sessionPricingPayload: Record<string, { price: number; enabled: boolean }> = {};
+                const enabledLengths: number[] = [];
+                for (const d of ALLOWED_SESSION_DURATIONS) {
+                    const key = String(d) as `${AllowedDuration}`;
+                    const entry = sessionPricing[key];
+                    const priceNum = parseFloat(entry.price);
+                    sessionPricingPayload[key] = {
+                        price: Number.isFinite(priceNum) && priceNum > 0 ? priceNum : 0,
+                        enabled: !!entry.enabled,
+                    };
+                    if (entry.enabled) enabledLengths.push(d);
+                }
+                // Always include at least one — fall back to [60] if none enabled.
+                const sessionLengthsPayload = enabledLengths.length > 0 ? enabledLengths : [60];
+                // Keep hourly_rate in sync with 60-min price for legacy consumers.
+                const sixtyPrice = parseFloat(sessionPricing['60'].price);
+                const hourlyRatePayload = Number.isFinite(sixtyPrice) && sixtyPrice > 0 ? sixtyPrice : 50;
+
                 const { error: trainerError } = await supabase
                     .from('trainer_profiles')
                     .upsert({
                         user_id: user.id,
                         headline: headline.trim() || null,
                         bio: bio.trim() || null,
-                        hourly_rate: parseFloat(hourlyRate) || 50,
+                        hourly_rate: hourlyRatePayload,
+                        session_pricing: sessionPricingPayload,
+                        session_lengths: sessionLengthsPayload,
                         years_experience: parseInt(yearsExp) || 0,
                         sports: selectedSports,
                         trainingTypes: selectedTrainingTypes,
@@ -416,7 +487,6 @@ export default function EditProfileScreen({ navigation }: any) {
                         state: stateVal.trim(),
                         travel_radius_miles: radiusMiles,
                         training_locations: trainingLocations,
-                        session_lengths: sessionLengths,
                     }, { onConflict: 'user_id' });
                 if (trainerError) throw trainerError;
             }
@@ -706,29 +776,63 @@ export default function EditProfileScreen({ navigation }: any) {
                         error={fieldErrors.bio}
                     />
                     <Text style={styles.charCount}>{bio.length}/1000</Text>
-                    <View style={styles.row}>
-                        <View style={{ flex: 1 }}>
-                            <Input
-                                label="Hourly Rate ($)"
-                                value={hourlyRate}
-                                onChangeText={setHourlyRate}
-                                placeholder="50"
-                                keyboardType="numeric"
-                                icon="cash-outline"
-                                error={fieldErrors.hourlyRate}
-                            />
-                        </View>
-                        <View style={{ flex: 1 }}>
-                            <Input
-                                label="Years Experience"
-                                value={yearsExp}
-                                onChangeText={setYearsExp}
-                                placeholder="0"
-                                keyboardType="numeric"
-                                icon="time-outline"
-                            />
-                        </View>
-                    </View>
+                    <Input
+                        label="Years Experience"
+                        value={yearsExp}
+                        onChangeText={setYearsExp}
+                        placeholder="0"
+                        keyboardType="numeric"
+                        icon="time-outline"
+                    />
+                </SectionCard>
+            )}
+
+            {/* ── Session Pricing (trainer) ── */}
+            {isTrainer && (
+                <SectionCard title="Session Pricing" delay={375}>
+                    <Text style={styles.pricingHelp}>
+                        Enable the session lengths you offer and set a price for each.
+                    </Text>
+                    {ALLOWED_SESSION_DURATIONS.map((d) => {
+                        const key = String(d) as `${AllowedDuration}`;
+                        const entry = sessionPricing[key];
+                        const enabled = entry.enabled;
+                        return (
+                            <View key={d} style={[styles.pricingRow, !enabled && styles.pricingRowDisabled]}>
+                                <View style={styles.pricingHeader}>
+                                    <Text style={[styles.pricingDuration, !enabled && styles.pricingDurationDisabled]}>
+                                        {d} min
+                                    </Text>
+                                    <Switch
+                                        value={enabled}
+                                        onValueChange={() => toggleDurationEnabled(d)}
+                                        trackColor={{ false: Colors.border, true: Colors.primary }}
+                                        thumbColor="#fff"
+                                    />
+                                </View>
+                                <View style={[styles.priceInputWrap, !enabled && styles.priceInputWrapDisabled]}>
+                                    <Text style={[styles.priceSymbol, !enabled && styles.priceSymbolDisabled]}>
+                                        {PLATFORM_CURRENCY_SYMBOL}
+                                    </Text>
+                                    <TextInput
+                                        style={[styles.priceInput, !enabled && styles.priceInputDisabled]}
+                                        value={entry.price}
+                                        onChangeText={(t) => setDurationPrice(d, t)}
+                                        placeholder="0"
+                                        placeholderTextColor={Colors.textTertiary}
+                                        keyboardType="decimal-pad"
+                                        editable={enabled}
+                                    />
+                                    <Text style={[styles.priceSuffix, !enabled && styles.priceSymbolDisabled]}>
+                                        / session
+                                    </Text>
+                                </View>
+                            </View>
+                        );
+                    })}
+                    {fieldErrors.sessionPricing && (
+                        <Text style={styles.fieldError}>{fieldErrors.sessionPricing}</Text>
+                    )}
                 </SectionCard>
             )}
 
@@ -784,24 +888,7 @@ export default function EditProfileScreen({ navigation }: any) {
 
             {/* ── Preferences Card ── */}
             <SectionCard title="Preferences" delay={500}>
-                {isTrainer && (
-                    <>
-                        <Text style={styles.chipLabel}>Session Lengths</Text>
-                        <View style={styles.chipContainer}>
-                            {SESSION_LENGTH_OPTIONS.map((len) => (
-                                <Chip
-                                    key={len}
-                                    label={`${len}m`}
-                                    active={sessionLengths.includes(len)}
-                                    onPress={() => toggleSessionLength(len)}
-                                />
-                            ))}
-                        </View>
-                        <Divider />
-                    </>
-                )}
-
-                <Text style={[styles.chipLabel, isTrainer ? { marginTop: Spacing.md } : undefined]}>
+                <Text style={styles.chipLabel}>
                     Preferred Times
                 </Text>
                 <View style={styles.chipContainer}>
@@ -1119,5 +1206,74 @@ const styles = StyleSheet.create({
         marginBottom: Spacing.xxxl,
         ...Shadows.glow,
         borderRadius: BorderRadius.md,
+    },
+
+    /* Session pricing */
+    pricingHelp: {
+        fontSize: FontSize.sm,
+        color: Colors.textSecondary,
+        marginBottom: Spacing.md,
+    },
+    pricingRow: {
+        backgroundColor: Colors.surface,
+        borderWidth: 1,
+        borderColor: Colors.border,
+        borderRadius: BorderRadius.md,
+        padding: Spacing.md,
+        marginBottom: Spacing.md,
+    },
+    pricingRowDisabled: {
+        opacity: 0.55,
+    },
+    pricingHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: Spacing.sm,
+    },
+    pricingDuration: {
+        fontSize: FontSize.md,
+        fontWeight: FontWeight.semibold,
+        color: Colors.text,
+    },
+    pricingDurationDisabled: {
+        color: Colors.textSecondary,
+    },
+    priceInputWrap: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: Colors.background,
+        borderWidth: 1,
+        borderColor: Colors.border,
+        borderRadius: BorderRadius.sm,
+        paddingHorizontal: Spacing.md,
+        height: 44,
+    },
+    priceInputWrapDisabled: {
+        backgroundColor: Colors.glass,
+    },
+    priceSymbol: {
+        fontSize: FontSize.md,
+        fontWeight: FontWeight.semibold,
+        color: Colors.text,
+        marginRight: Spacing.xs,
+    },
+    priceSymbolDisabled: {
+        color: Colors.textTertiary,
+    },
+    priceInput: {
+        flex: 1,
+        fontSize: FontSize.md,
+        fontWeight: FontWeight.medium,
+        color: Colors.text,
+        paddingVertical: 0,
+    },
+    priceInputDisabled: {
+        color: Colors.textTertiary,
+    },
+    priceSuffix: {
+        fontSize: FontSize.sm,
+        color: Colors.textSecondary,
+        marginLeft: Spacing.xs,
     },
 });

@@ -9,6 +9,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { supabase, BookingRow } from '../../lib/supabase';
 import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows } from '../../theme';
 import { formatSportName } from '../../lib/format';
+import { formatMoney } from '../../lib/currency';
 import ScreenWrapper from '../../components/ui/ScreenWrapper';
 import ScreenHeader from '../../components/ui/ScreenHeader';
 import Card from '../../components/ui/Card';
@@ -159,13 +160,36 @@ export default function EarningsScreen({ navigation }: any) {
     const onRefresh = () => loadEarnings(true);
 
     // --- Trainer stats ---
+    // AirTrainr's fee model is "athletes pay all fees, trainer keeps 100% of price",
+    // so total earned == net == trainer payout. No platform/Stripe deductions
+    // are taken from the trainer side — the old "Net Earnings" subtraction was
+    // a leftover from an earlier model and confused trainers about what they get.
     const totalEarnings = completedBookings.reduce((s, b) => s + Number(b.price), 0);
-    const totalFees = completedBookings.reduce((s, b) => s + Number((b as any).platform_fee || b.price * 0.03), 0);
-    const netEarnings = totalEarnings - totalFees;
+    const totalSessionsDone = completedBookings.length;
+    const avgPerSession = totalSessionsDone > 0 ? totalEarnings / totalSessionsDone : 0;
+
+    // This-month earnings (calendar month, local time)
+    const _now = new Date();
+    const _monthStart = new Date(_now.getFullYear(), _now.getMonth(), 1);
+    const thisMonthBookings = completedBookings.filter((b) => {
+        const d = new Date(b.scheduled_at || (b as any).created_at);
+        return d >= _monthStart;
+    });
+    const thisMonthEarnings = thisMonthBookings.reduce((s, b) => s + Number(b.price), 0);
+    const thisMonthSessions = thisMonthBookings.length;
+
     const pendingPayout = upcomingPaid.reduce((s, b) => s + Number(b.payment_transaction?.trainer_payout || 0), 0);
     const heldCompletedPayout = heldCompletedTransactions.reduce((s, t) => s + Number(t.trainer_payout), 0);
     const totalEscrow = pendingPayout + heldCompletedPayout;
     const totalEscrowSessions = upcomingPaid.length + heldCompletedTransactions.length;
+
+    // Next payout: earliest hold_until from completed-but-still-held transactions
+    const _heldDates = heldCompletedTransactions
+        .map((t) => (t.hold_until ? new Date(t.hold_until) : null))
+        .filter((d): d is Date => !!d && !Number.isNaN(d.getTime()));
+    const nextPayoutDate = _heldDates.length > 0
+        ? new Date(Math.min(..._heldDates.map((d) => d.getTime())))
+        : null;
 
     // --- Athlete stats ---
     const athleteTotalPaid = completedBookings.reduce((s, b) => s + Number(b.total_paid || b.price), 0);
@@ -261,7 +285,7 @@ export default function EarningsScreen({ navigation }: any) {
             {/* Summary cards */}
             {isTrainer ? (
                 <Animated.View entering={FadeInDown.duration(250)} style={styles.statsGrid}>
-                    {/* Total Earned - gradient card */}
+                    {/* 1. Total Earned (lifetime) - gradient card */}
                     <LinearGradient
                         colors={[Colors.gradientStart, Colors.gradientEnd]}
                         start={{ x: 0, y: 0 }}
@@ -269,21 +293,49 @@ export default function EarningsScreen({ navigation }: any) {
                         style={styles.gradientStat}
                     >
                         <Text style={styles.gradientStatLabel}>TOTAL EARNED</Text>
-                        <Text style={styles.gradientStatValue}>${totalEarnings.toFixed(2)}</Text>
+                        <Text style={styles.gradientStatValue}>{formatMoney(totalEarnings)}</Text>
+                        <Text style={styles.gradientStatSub}>
+                            {totalSessionsDone} session{totalSessionsDone !== 1 ? 's' : ''} · 100% of rate
+                        </Text>
                     </LinearGradient>
-                    {/* Net Earnings card */}
-                    <Card style={styles.escrowCard}>
-                        <Text style={styles.escrowLabel}>NET EARNINGS</Text>
-                        <Text style={[styles.escrowValue, { color: Colors.primary }]}>${netEarnings.toFixed(2)}</Text>
+
+                    {/* 2. This Month - highlighted (primary tint) */}
+                    <Card style={StyleSheet.flatten([styles.escrowCard, styles.monthCard])}>
+                        <Text style={styles.escrowLabel}>
+                            {_now.toLocaleString('en-US', { month: 'long' }).toUpperCase()}
+                        </Text>
+                        <Text style={[styles.escrowValue, { color: Colors.primary }]}>
+                            {formatMoney(thisMonthEarnings)}
+                        </Text>
+                        <Text style={styles.escrowSubtext}>
+                            {thisMonthSessions} session{thisMonthSessions !== 1 ? 's' : ''} this month
+                        </Text>
                     </Card>
-                    {/* In Escrow card */}
+
+                    {/* 3. Avg / Session */}
+                    <Card style={styles.escrowCard}>
+                        <Text style={styles.escrowLabel}>AVG / SESSION</Text>
+                        <Text style={[styles.escrowValue, { color: Colors.text }]}>
+                            {formatMoney(avgPerSession)}
+                        </Text>
+                        <Text style={styles.escrowSubtext}>across all completed sessions</Text>
+                    </Card>
+
+                    {/* 4. In Escrow */}
                     <Card style={styles.escrowCard}>
                         <View style={styles.escrowLabelRow}>
                             <Ionicons name="time-outline" size={12} color={Colors.warning} />
                             <Text style={styles.escrowLabel}>IN ESCROW</Text>
                         </View>
-                        <Text style={[styles.escrowValue, { color: Colors.warning }]}>${totalEscrow.toFixed(2)}</Text>
-                        <Text style={styles.escrowSubtext}>{totalEscrowSessions} session{totalEscrowSessions !== 1 ? 's' : ''} pending</Text>
+                        <Text style={[styles.escrowValue, { color: Colors.warning }]}>
+                            {formatMoney(totalEscrow)}
+                        </Text>
+                        <Text style={styles.escrowSubtext}>
+                            {totalEscrowSessions} pending
+                            {nextPayoutDate
+                                ? ` · next ${nextPayoutDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+                                : ''}
+                        </Text>
                     </Card>
                 </Animated.View>
             ) : (
@@ -295,7 +347,7 @@ export default function EarningsScreen({ navigation }: any) {
                         style={styles.gradientStat}
                     >
                         <Text style={styles.gradientStatLabel}>TOTAL PAID</Text>
-                        <Text style={styles.gradientStatValue}>${athleteTotalPaid.toFixed(2)}</Text>
+                        <Text style={styles.gradientStatValue}>{formatMoney(athleteTotalPaid)}</Text>
                         <Text style={styles.gradientStatSub}>
                             {athleteTransactions.filter(t => t.status !== 'refunded').length} payment{athleteTransactions.filter(t => t.status !== 'refunded').length !== 1 ? 's' : ''}
                         </Text>
@@ -305,7 +357,7 @@ export default function EarningsScreen({ navigation }: any) {
                             <Ionicons name="time-outline" size={12} color={Colors.warning} />
                             <Text style={styles.escrowLabel}>IN ESCROW</Text>
                         </View>
-                        <Text style={[styles.escrowValue, { color: Colors.warning }]}>${athleteInEscrow.toFixed(2)}</Text>
+                        <Text style={[styles.escrowValue, { color: Colors.warning }]}>{formatMoney(athleteInEscrow)}</Text>
                         <Text style={styles.escrowSubtext}>{upcomingPaid.length} upcoming session{upcomingPaid.length !== 1 ? 's' : ''}</Text>
                     </Card>
                     <StatCard
@@ -317,7 +369,7 @@ export default function EarningsScreen({ navigation }: any) {
                     {athleteRefunded > 0 && (
                         <StatCard
                             label="Refunded"
-                            value={`$${athleteRefunded.toFixed(2)}`}
+                            value={formatMoney(athleteRefunded)}
                             icon="arrow-undo-outline"
                             color={Colors.info}
                         />
@@ -368,9 +420,9 @@ export default function EarningsScreen({ navigation }: any) {
                                         <Text style={styles.payoutDateSmall}>After session</Text>
                                     )}
                                     <Text style={[styles.payoutAmount, { color: Colors.warning }]}>
-                                        ${Number(b.payment_transaction?.trainer_payout || 0).toFixed(2)}
+                                        {formatMoney(b.payment_transaction?.trainer_payout || 0)}
                                     </Text>
-                                    <Text style={styles.payoutDateSmall}>of ${Number(b.total_paid).toFixed(2)} paid</Text>
+                                    <Text style={styles.payoutDateSmall}>of {formatMoney(b.total_paid)} paid</Text>
                                 </View>
                             </View>
                         );
@@ -380,7 +432,7 @@ export default function EarningsScreen({ navigation }: any) {
                             <Ionicons name="trending-up-outline" size={14} color={Colors.warning} />
                             <Text style={styles.payoutFooterText}>Complete sessions to release funds</Text>
                         </View>
-                        <Text style={styles.payoutFooterTotal}>Total: ${pendingPayout.toFixed(2)}</Text>
+                        <Text style={styles.payoutFooterTotal}>Total: {formatMoney(pendingPayout)}</Text>
                     </View>
                 </Card>
             )}
@@ -403,7 +455,7 @@ export default function EarningsScreen({ navigation }: any) {
                                 <Text style={styles.monthlyMonth}>{month}</Text>
                                 <Text style={styles.monthlySessions}>{data.sessions} session{data.sessions !== 1 ? 's' : ''}</Text>
                             </View>
-                            <Text style={styles.monthlyAmount}>${data.amount.toFixed(2)}</Text>
+                            <Text style={styles.monthlyAmount}>{formatMoney(data.amount)}</Text>
                         </View>
                     ))}
                 </Card>
@@ -434,7 +486,7 @@ export default function EarningsScreen({ navigation }: any) {
                                     </Text>
                                 </View>
                                 <Text style={[styles.historyAmount, { color: Colors.success }]}>
-                                    ${Number(b.price).toFixed(2)}
+                                    {formatMoney(b.price)}
                                 </Text>
                             </View>
                         ))
@@ -468,7 +520,7 @@ export default function EarningsScreen({ navigation }: any) {
                                         ? { color: Colors.info, textDecorationLine: 'line-through', opacity: 0.6 }
                                         : { color: Colors.success },
                                 ]}>
-                                    ${Number(tx.amount).toFixed(2)}
+                                    {formatMoney(tx.amount)}
                                 </Text>
                             </View>
                         ))
@@ -518,6 +570,10 @@ const styles = StyleSheet.create({
         flexBasis: '45%' as any,
         borderLeftWidth: 2,
         borderLeftColor: 'rgba(255,171,0,0.5)',
+    },
+    monthCard: {
+        borderLeftColor: Colors.primary,
+        backgroundColor: 'rgba(99,102,241,0.06)',
     },
     escrowLabelRow: {
         flexDirection: 'row',
