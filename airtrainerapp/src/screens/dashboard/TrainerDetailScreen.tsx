@@ -184,6 +184,7 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
     const [gateChecking, setGateChecking] = useState(true);
     const [gateResult, setGateResult] = useState<GateResult | null>(null);
     const isSelfView = !!user && !!trainerId && user.id === trainerId;
+    const isAdmin = user?.role === 'admin';
 
     useEffect(() => {
         let cancelled = false;
@@ -195,8 +196,8 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
                 }
                 return;
             }
-            // Self-view exempt: trainer previewing their own profile bypasses gate.
-            if (user && user.id === trainerId) {
+            // Self-view or admin exempt: bypass gate.
+            if ((user && user.id === trainerId) || isAdmin) {
                 if (!cancelled) {
                     setGateResult({ ok: true });
                     setGateChecking(false);
@@ -713,8 +714,8 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
         );
     }
 
-    // Gate failed (and not self-view): hide cover, pricing, slots, book button.
-    if (gateResult && !gateResult.ok && !isSelfView) {
+    // Gate failed (and not self-view/admin): hide cover, pricing, slots, book button.
+    if (gateResult && !gateResult.ok && !isSelfView && !isAdmin) {
         return (
             <ScreenWrapper scrollable={false}>
                 <ScreenHeader title="" onBack={() => navigation.goBack()} />
@@ -1004,8 +1005,8 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
                     )}
                 </Card>
 
-                {/* Mini Map (native only) */}
-                {trainer.latitude && trainer.longitude && MAPS_AVAILABLE && (() => {
+                {/* Mini Map (native only — disabled on Android to avoid addViewAt crash) */}
+                {trainer.latitude && trainer.longitude && MAPS_AVAILABLE && Platform.OS !== 'android' && (() => {
                     const lat = Number(trainer.latitude);
                     const lng = Number(trainer.longitude);
                     if (isNaN(lat) || isNaN(lng)) return null;
@@ -1013,7 +1014,6 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
                         <View style={styles.miniMapContainer}>
                             <MapView
                                 style={styles.miniMap}
-                                provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
                                 initialRegion={{
                                     latitude: lat,
                                     longitude: lng,
@@ -1054,6 +1054,15 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
                         </View>
                     );
                 })()}
+                {/* Android: show a static location card instead of crashing MapView */}
+                {trainer.latitude && trainer.longitude && Platform.OS === 'android' && (
+                    <View style={[styles.miniMapContainer, { justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.surface }]}>
+                        <Ionicons name="map-outline" size={32} color={Colors.textTertiary} />
+                        <Text style={{ color: Colors.textSecondary, fontSize: FontSize.sm, marginTop: Spacing.sm }}>
+                            {trainer.city || ''}{trainer.state ? `, ${trainer.state}` : ''}
+                        </Text>
+                    </View>
+                )}
             </PressableCard>
 
             {/* ─── 6. REVIEWS SECTION ─── */}
