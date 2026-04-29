@@ -12,12 +12,17 @@ import { createClient } from '@supabase/supabase-js';
 import { calculateFees } from '@/lib/fees';
 import { stripeCurrency } from '@/lib/currency';
 import { trainerPublicGate } from '@/lib/trainer-gate';
+import { requireSessionUser } from '@/lib/session-auth';
+import { normalizeSessionPricing, priceFor } from '@/lib/session-pricing';
 
 function formatSportName(sport: string): string {
     return sport.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 export async function POST(req: NextRequest) {
+    const auth = await requireSessionUser(req);
+    if ('error' in auth) return auth.error;
+
     const supabase = createClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -32,9 +37,11 @@ export async function POST(req: NextRequest) {
         });
 
         const body = await req.json();
-        const { bookingId, athleteId, athleteEmail } = body;
+        const { bookingId, athleteEmail } = body;
+        // Ignore body-supplied athleteId — trust the authenticated session only
+        const athleteId = auth.user.id;
 
-        if (!bookingId || !athleteId || !athleteEmail) {
+        if (!bookingId || !athleteEmail) {
             return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
         }
 
@@ -82,7 +89,7 @@ export async function POST(req: NextRequest) {
 
         const { data: trainerProfile } = await supabase
             .from('trainer_profiles')
-            .select('verification_status, subscription_status, bio, sports, city, years_experience, session_pricing, training_locations, country')
+            .select('verification_status, subscription_status, bio, sports, city, years_experience, session_pricing, hourly_rate, training_locations, country')
             .eq('user_id', booking.trainer_id)
             .maybeSingle();
 
@@ -97,6 +104,27 @@ export async function POST(req: NextRequest) {
             );
         }
 
+        // ── Canonical server-side price (defends against booking row tampering) ──
+        const sp = normalizeSessionPricing(trainerProfile?.session_pricing, trainerProfile?.hourly_rate);
+        const canonicalPrice = priceFor(sp, Number(booking.duration_minutes));
+        if (canonicalPrice == null) {
+            return NextResponse.json(
+                { error: 'Trainer does not offer this duration' },
+                { status: 400 }
+            );
+        }
+        if (Math.abs(canonicalPrice - Number(booking.price)) > 0.01) {
+            console.warn(
+                `[create-booking-payment] Booking ${bookingId} price mismatch — row had $${booking.price}, canonical $${canonicalPrice}. Updating booking row.`
+            );
+            await supabase
+                .from('bookings')
+                .update({ price: canonicalPrice })
+                .eq('id', bookingId);
+            // mutate local copy so downstream code sees the corrected value
+            (booking as any).price = canonicalPrice;
+        }
+
         // ── Recalculate fees using the full athlete-pays-all model ──
         const { data: settings } = await supabase
             .from('platform_settings')
@@ -104,7 +132,7 @@ export async function POST(req: NextRequest) {
             .maybeSingle();
 
         const fees = calculateFees({
-            price: Number(booking.price),
+            price: canonicalPrice,
             platformFeePercentage: settings?.platform_fee_percentage,
             trainerCountry: trainerProfile?.country,
         });
@@ -175,6 +203,7 @@ export async function POST(req: NextRequest) {
                 taxLabel: fees.taxLabel || '',
                 trainerCountry: fees.trainerCountry || '',
                 trainerPayout: String(fees.trainerPayout),
+                serverPriceCanonical: String(canonicalPrice),
             },
         });
 

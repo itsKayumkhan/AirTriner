@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { getSession, AuthUser } from "@/lib/auth";
 import { supabase, BookingRow } from "@/lib/supabase";
+import { apiFetch } from "@/lib/api-fetch";
 import {
     Inbox, Activity, Clock, DollarSign, MapPin, Star, Check, X,
     RefreshCw, FileText, CalendarClock, CreditCard, ShieldCheck,
@@ -127,13 +128,17 @@ export default function BookingsPage() {
     const cancelWithReason = async (bookingId: string, reason: string) => {
         setActionLoading(bookingId);
         try {
-            if (paidBookingIds.has(bookingId)) {
-                const res = await fetch("/api/stripe/refund-booking", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ bookingId, cancelledBy: user?.role, reason }) });
-                const data = await res.json();
-                if (!res.ok) { toastError("Refund Failed", data.error); return; }
+            // Server (POST /api/booking/[id]/cancel) handles refund chaining
+            // for paid bookings + status update + cancelled_at timestamp.
+            const res = await apiFetch(`/api/booking/${bookingId}/cancel`, {
+                method: "POST",
+                body: JSON.stringify({ reason }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) { toastError("Cancel Failed", data?.error || "Could not cancel booking"); return; }
+            if (data?.refunded) {
                 setPaidBookingIds((p) => { const n = new Set(p); n.delete(bookingId); return n; });
             }
-            await supabase.from("bookings").update({ status: "cancelled", cancelled_at: new Date().toISOString(), cancellation_reason: reason, updated_at: new Date().toISOString() }).eq("id", bookingId);
             if (user) loadBookings(user);
         } catch (err) { console.error(err); }
         finally { setActionLoading(null); }
@@ -142,8 +147,16 @@ export default function BookingsPage() {
     const updateStatus = async (bookingId: string, newStatus: string) => {
         setActionLoading(bookingId);
         try {
-            const { data, error } = await supabase.from("bookings").update({ status: newStatus, updated_at: new Date().toISOString() }).eq("id", bookingId).select("*");
-            if (error || !data?.length) { toastError("Failed", error?.message || "Permission denied"); return; }
+            if (newStatus === "completed") {
+                // Server (POST /api/booking/[id]/complete) is now the gate for
+                // marking sessions complete (state-machine + ownership check).
+                const res = await apiFetch(`/api/booking/${bookingId}/complete`, { method: "POST" });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) { toastError("Failed", data?.error || "Could not mark complete"); return; }
+            } else {
+                const { data, error } = await supabase.from("bookings").update({ status: newStatus, updated_at: new Date().toISOString() }).eq("id", bookingId).select("*");
+                if (error || !data?.length) { toastError("Failed", error?.message || "Permission denied"); return; }
+            }
             setBookings((p) => p.map((b) => b.id === bookingId ? { ...b, status: newStatus as BookingRow["status"] } : b));
             const labels: Record<string, string> = { confirmed: "Booking Confirmed", completed: "Session Complete", cancelled: "Cancelled", rejected: "Rejected" };
             toastSuccess(labels[newStatus] || "Updated");
@@ -186,7 +199,11 @@ export default function BookingsPage() {
         setActionLoading(bookingId);
         try {
             await supabase.from("reschedule_requests").update({ status: accept ? "accepted" : "declined", updated_at: new Date().toISOString() }).eq("id", rescheduleId);
-            await supabase.from("bookings").update({ ...(accept && proposedTime ? { scheduled_at: proposedTime } : {}), status: "confirmed", updated_at: new Date().toISOString() }).eq("id", bookingId);
+            // Only mutate booking on accept. Decline must NOT touch booking.status —
+            // the booking remains in whatever state it was (typically 'confirmed').
+            if (accept) {
+                await supabase.from("bookings").update({ ...(proposedTime ? { scheduled_at: proposedTime } : {}), status: "confirmed", updated_at: new Date().toISOString() }).eq("id", bookingId);
+            }
             const booking = bookings.find((b) => b.id === bookingId);
             if (booking?.reschedule_request) {
                 await supabase.from("notifications").insert({ user_id: booking.reschedule_request.initiated_by, type: accept ? "RESCHEDULE_ACCEPTED" : "RESCHEDULE_DECLINED", title: accept ? "Reschedule Accepted" : "Reschedule Declined", body: accept ? `Reschedule for ${booking.sport} accepted!` : `Reschedule for ${booking.sport} declined.`, data: { booking_id: bookingId }, read: false });
@@ -201,56 +218,27 @@ export default function BookingsPage() {
         setSubmittingReview(true);
         try {
             const existingId = reviewBooking.review?.id;
-            let error;
 
             if (existingId) {
-                // UPDATE existing review
-                ({ error } = await supabase.from("reviews")
+                // UPDATE existing review (no API route for edits yet — keep direct).
+                const { error } = await supabase.from("reviews")
                     .update({ rating: reviewRating, review_text: reviewText || null })
-                    .eq("id", existingId));
+                    .eq("id", existingId);
+                if (error) throw error;
             } else {
-                // Check for duplicate review before inserting
-                const { data: existingReview } = await supabase
-                    .from('reviews')
-                    .select('id')
-                    .eq('booking_id', reviewBooking.id)
-                    .eq('reviewer_id', user.id)
-                    .single();
-
-                if (existingReview) {
-                    toastError('Already Reviewed', 'You have already submitted a review for this booking');
-                    setSubmittingReview(false);
-                    return;
-                }
-
-                // INSERT new review
-                ({ error } = await supabase.from("reviews").insert({
-                    booking_id: reviewBooking.id,
-                    reviewer_id: user.id,
-                    reviewee_id: reviewBooking.trainer_id,
-                    rating: reviewRating,
-                    review_text: reviewText || null,
-                    is_public: true,
-                }));
-                if (!error) {
-                    await supabase.from("notifications").insert({
-                        user_id: reviewBooking.trainer_id,
-                        type: "REVIEW_RECEIVED",
-                        title: "New Review",
-                        body: `You got a ${reviewRating}-star review for ${reviewBooking.sport}.`,
-                        data: { booking_id: reviewBooking.id },
-                        read: false,
-                    });
-                }
-            }
-
-            if (error) throw error;
-
-            // Recalculate trainer's average_rating and total_reviews
-            const { data: allReviews } = await supabase.from("reviews").select("rating").eq("reviewee_id", reviewBooking.trainer_id);
-            if (allReviews && allReviews.length > 0) {
-                const avg = Math.round((allReviews.reduce((s: number, r: { rating: number }) => s + r.rating, 0) / allReviews.length) * 10) / 10;
-                await supabase.from("trainer_profiles").update({ average_rating: avg, total_reviews: allReviews.length }).eq("user_id", reviewBooking.trainer_id);
+                // Server (POST /api/reviews) handles: duplicate check, insert,
+                // notification fan-out, and trainer average_rating/total_reviews
+                // recompute. No client-side recompute or notification needed.
+                const res = await apiFetch("/api/reviews", {
+                    method: "POST",
+                    body: JSON.stringify({
+                        bookingId: reviewBooking.id,
+                        rating: reviewRating,
+                        reviewText: reviewText || null,
+                    }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data?.error || "Could not submit review.");
             }
 
             // Update local state — all bookings with same trainer+sport get the updated review

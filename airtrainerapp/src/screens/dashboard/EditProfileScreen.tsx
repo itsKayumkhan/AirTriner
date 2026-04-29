@@ -276,17 +276,31 @@ export default function EditProfileScreen({ navigation }: any) {
                 const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(fileName);
 
                 if (isTrainer) {
-                    // Trainers: save to pending_avatar_url for admin review
-                    const { error: pendingError } = await supabase
-                        .from('users')
-                        .update({ pending_avatar_url: publicUrl })
-                        .eq('id', user!.id);
-                    if (pendingError) {
-                        // Column may not exist yet — fall back to direct update
+                    // Trainers: a new profile photo re-triggers admin verification.
+                    // Mirrors the web `dashboard/trainer/setup` flow.
+                    const { error: tpError } = await supabase
+                        .from('trainer_profiles')
+                        .update({
+                            profile_image_url: publicUrl,
+                            profile_image_status: 'pending',
+                            profile_image_rejection_reason: null,
+                            verification_status: 'pending',
+                            is_verified: false,
+                        })
+                        .eq('user_id', user!.id);
+                    if (tpError) {
+                        // Some columns may not exist on older schemas — fall back so
+                        // the user still sees their avatar update.
                         await supabase.from('users').update({ avatar_url: publicUrl }).eq('id', user!.id);
                         setAvatarUrl(publicUrl);
                     } else {
+                        await supabase.from('users').update({ avatar_url: publicUrl }).eq('id', user!.id);
+                        setAvatarUrl(publicUrl);
                         setAvatarPendingApproval(true);
+                        Alert.alert(
+                            'Re-verification needed',
+                            'Your new profile photo will be reviewed by an admin. Your profile is hidden from search results until approved.'
+                        );
                     }
                 } else {
                     await supabase.from('users').update({ avatar_url: publicUrl }).eq('id', user!.id);

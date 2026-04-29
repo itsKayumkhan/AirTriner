@@ -8,6 +8,7 @@ import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
 import { calculateFees } from '@/lib/fees';
 import { stripeCurrency } from '@/lib/currency';
+import { requireSessionUser } from '@/lib/session-auth';
 
 function formatSportName(sport: string): string {
     return sport.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
@@ -20,6 +21,9 @@ export async function POST(req: NextRequest) {
     );
 
     try {
+        const auth = await requireSessionUser(req);
+        if ('error' in auth) return auth.error;
+
         if (!process.env.STRIPE_SECRET_KEY) {
             return NextResponse.json({ error: 'Stripe not configured. Add STRIPE_SECRET_KEY to .env' }, { status: 500 });
         }
@@ -29,9 +33,10 @@ export async function POST(req: NextRequest) {
         });
 
         const body = await req.json();
-        const { offerId, athleteId, athleteEmail } = body;
+        const { offerId, athleteEmail } = body;
+        const athleteId = auth.user.id;
 
-        if (!offerId || !athleteId || !athleteEmail) {
+        if (!offerId || !athleteEmail) {
             return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
         }
 
@@ -40,11 +45,15 @@ export async function POST(req: NextRequest) {
             .from('training_offers')
             .select('*')
             .eq('id', offerId)
-            .eq('athlete_id', athleteId)
             .single();
 
         if (offerError || !offer) {
             return NextResponse.json({ error: 'Offer not found' }, { status: 404 });
+        }
+
+        // Verify offer is addressed to authenticated athlete
+        if (offer.athlete_id !== athleteId) {
+            return NextResponse.json({ error: 'Forbidden — offer not addressed to this athlete' }, { status: 403 });
         }
 
         if (offer.status !== 'pending') {
@@ -108,6 +117,23 @@ export async function POST(req: NextRequest) {
         // Build session date display
         const proposed = offer.proposed_dates as any || {};
         const scheduledAt = proposed.scheduledAt || null;
+
+        // Pre-flight: if this offer is for a camp slot, peek at current spotsRemaining
+        // so the athlete doesn't get sent to Stripe Checkout for a sold-out camp.
+        // Atomic protection still happens server-side in book_camp_spot RPC.
+        const campNamePreflight: string = proposed?.camp?.name || '';
+        if (campNamePreflight) {
+            const { data: tpCamps } = await supabase
+                .from('trainer_profiles')
+                .select('camp_offerings')
+                .eq('user_id', resolvedTrainerUserId)
+                .maybeSingle();
+            const camps = Array.isArray(tpCamps?.camp_offerings) ? tpCamps!.camp_offerings as any[] : [];
+            const camp = camps.find((c) => c?.name === campNamePreflight);
+            if (camp && Number(camp.spotsRemaining ?? 0) <= 0) {
+                return NextResponse.json({ error: 'Camp is sold out' }, { status: 409 });
+            }
+        }
         const sessionDateStr = scheduledAt
             ? new Date(scheduledAt).toLocaleDateString('en-US', {
                 weekday: 'short', month: 'short', day: 'numeric',

@@ -5,8 +5,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
+import { requireSessionUser } from '@/lib/session-auth';
 
 export async function POST(req: NextRequest) {
+    const auth = await requireSessionUser(req);
+    if ('error' in auth) return auth.error;
+
     const supabase = createClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -20,6 +24,22 @@ export async function POST(req: NextRequest) {
         const { bookingId, cancelledBy, reason } = await req.json();
         if (!bookingId) {
             return NextResponse.json({ error: 'Missing bookingId' }, { status: 400 });
+        }
+
+        // Ownership check: caller must be the athlete, trainer, or admin
+        const { data: bookingOwn } = await supabase
+            .from('bookings')
+            .select('athlete_id, trainer_id')
+            .eq('id', bookingId)
+            .maybeSingle();
+        if (!bookingOwn) {
+            return NextResponse.json({ error: 'Booking not found' }, { status: 404 });
+        }
+        const isAdmin = auth.user.role === 'admin';
+        const isAthlete = bookingOwn.athlete_id === auth.user.id;
+        const isTrainer = bookingOwn.trainer_id === auth.user.id;
+        if (!isAdmin && !isAthlete && !isTrainer) {
+            return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
         }
 
         // Get the payment transaction (any status — branch below)

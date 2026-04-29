@@ -234,62 +234,110 @@ export default function NotificationsScreen({ navigation }: any) {
         return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     };
 
-    // Per-type tap-through routing — mirrors web behaviour but uses native nav.
-    // Always marks the notification as read regardless of whether routing succeeds.
+    // Per-type tap-through routing — switches on notification.type to mirror
+    // web's 25+ deep-link routes. Always marks the notification as read first
+    // regardless of whether routing succeeds. Unknown types fall back to
+    // data.url via Linking, then no-op.
     const handleNotificationPress = (notif: NotificationRow) => {
         markAsRead(notif.id);
 
         const raw = notif.data;
         const data: any = !raw ? {} : (typeof raw === 'string' ? (() => { try { return JSON.parse(raw); } catch { return {}; } })() : raw);
+        const bookingId = data.booking_id || data.bookingId;
+        const trainerId = data.trainer_id || data.trainerId;
+        const goBookingDetail = () => {
+            if (bookingId) navigation.navigate('BookingDetail', { bookingId });
+            else navigation.navigate('Bookings');
+        };
 
-        // 1. Offer flow — keep existing offer modal behaviour
-        const offerId = data.offer_id || data.offerId;
-        if (offerId && isOfferNotification(notif.type)) {
-            handleViewOffer(notif);
-            return;
+        switch (notif.type) {
+            // Booking lifecycle → BookingDetail
+            case 'BOOKING_REQUESTED':
+            case 'BOOKING_REQUEST':
+            case 'NEW_REQUEST_NEARBY':
+            case 'BOOKING_ACCEPTED':
+            case 'BOOKING_CONFIRMED':
+            case 'BOOKING_REJECTED':
+            case 'BOOKING_CANCELLED':
+            case 'BOOKING_COMPLETED':
+            case 'BOOKING_REFUNDED':
+            case 'PAYMENT_RECEIVED':
+            case 'RESCHEDULE_REQUESTED':
+            case 'RESCHEDULE_ACCEPTED':
+            case 'RESCHEDULE_DECLINED':
+                goBookingDetail();
+                return;
+
+            // Messages → Chat needs bookingId + otherUser; we only reliably
+            // have bookingId here, so fall back to BookingDetail (which
+            // surfaces the chat) when bookingId exists, else Messages list.
+            case 'MESSAGE_RECEIVED':
+            case 'NEW_MESSAGE':
+                if (bookingId) goBookingDetail();
+                else navigation.navigate('Messages');
+                return;
+
+            // Reviews — request or received
+            case 'REVIEW_REQUEST':
+            case 'REVIEW_RECEIVED':
+                if (bookingId) {
+                    navigation.navigate('BookingDetail', { bookingId });
+                } else {
+                    navigation.navigate('Reviews', trainerId ? { trainerId } : undefined);
+                }
+                return;
+
+            // Offers → existing modal flow
+            case 'OFFER_RECEIVED':
+            case 'OFFER_ACCEPTED':
+            case 'OFFER_DECLINED':
+            case 'TRAINING_OFFER':
+            case 'NEW_OFFER':
+                if (getOfferIdFromNotification(notif)) {
+                    handleViewOffer(notif);
+                } else {
+                    navigation.navigate('TrainingOffers');
+                }
+                return;
+
+            // Profile / verification → EditProfile (Verification screen exists too)
+            case 'PROFILE_VERIFIED':
+            case 'PROFILE_REJECTED':
+                navigation.navigate('EditProfile');
+                return;
+            case 'VERIFICATION_UPDATE':
+                navigation.navigate('Verification');
+                return;
+
+            // Subscription family → Subscription screen
+            case 'SUBSCRIPTION_EXPIRING':
+            case 'SUBSCRIPTION_EXPIRED':
+            case 'SUBSCRIPTION_RENEWED':
+            case 'SUBSCRIPTION_CANCELLED':
+            case 'SUBSCRIPTION_TRIAL_ENDING':
+            case 'SUBSCRIPTION_PAYMENT_FAILED':
+                navigation.navigate('Subscription');
+                return;
+
+            default:
+                // Unknown type → SUBSCRIPTION_* prefix catch-all, then bookingId,
+                // then data.url, then no-op.
+                if (notif.type?.startsWith('SUBSCRIPTION_')) {
+                    navigation.navigate('Subscription');
+                    return;
+                }
+                if (bookingId) {
+                    navigation.navigate('BookingDetail', { bookingId });
+                    return;
+                }
+                const url = data.link || data.url;
+                if (url) {
+                    Linking.openURL(url).catch((err) => console.warn('Failed to open URL', url, err));
+                    return;
+                }
+                // no-op (already marked read)
+                return;
         }
-
-        // 2. Booking-related → BookingDetail
-        if (data.booking_id || data.bookingId) {
-            navigation.navigate('BookingDetail', { bookingId: data.booking_id || data.bookingId });
-            return;
-        }
-
-        // 3. Message / chat thread
-        if (data.message_id || data.thread_id || data.conversation_id) {
-            // Chat screen requires bookingId + otherUser; without those we fall back to Messages list.
-            // TODO: ROUTE_NAME=Chat — need bookingId + otherUser; thread/conversation IDs alone aren't enough yet.
-            navigation.navigate('Messages');
-            return;
-        }
-
-        // 4. Review request/received → Reviews screen
-        if (data.review_id || notif.type === 'REVIEW_REQUEST' || notif.type === 'REVIEW_RECEIVED') {
-            const trainerId = data.trainer_id || data.trainerId;
-            navigation.navigate('Reviews', trainerId ? { trainerId } : undefined);
-            return;
-        }
-
-        // 5. Verification / profile → Verification screen
-        if (notif.type === 'PROFILE_VERIFIED' || notif.type === 'PROFILE_REJECTED' || notif.type === 'VERIFICATION_UPDATE') {
-            navigation.navigate('Verification');
-            return;
-        }
-
-        // 6. Subscription expiring → Subscription
-        if (notif.type === 'SUBSCRIPTION_EXPIRING') {
-            navigation.navigate('Subscription');
-            return;
-        }
-
-        // 7. Generic web link fallback
-        if (data.link || data.url) {
-            const url = data.link || data.url;
-            Linking.openURL(url).catch((err) => console.warn('Failed to open URL', url, err));
-            return;
-        }
-
-        // else: no-op (already marked read)
     };
 
     const handleViewOffer = async (notif: NotificationRow) => {

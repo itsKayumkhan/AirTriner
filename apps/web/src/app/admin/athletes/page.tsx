@@ -329,8 +329,8 @@ export default function AdminAthletesPage() {
             </div>
 
             {/* Table */}
-            <div className="bg-gradient-to-b from-surface to-surface/50 border border-white/5 rounded-[24px] overflow-hidden shadow-2xl">
-                <div className="overflow-x-auto">
+            <div className="bg-gradient-to-b from-surface to-surface/50 border border-white/5 rounded-[24px] shadow-2xl">
+                <div className="overflow-x-auto admin-table-scroll" style={{ scrollbarColor: 'rgba(255,255,255,0.2) transparent', scrollbarWidth: 'thin' }}>
                     <table className="w-full text-left border-collapse whitespace-nowrap">
                         <thead>
                             <tr className="border-b border-white/5 text-[10px] uppercase font-black tracking-widest text-text-main/40 bg-white/5">

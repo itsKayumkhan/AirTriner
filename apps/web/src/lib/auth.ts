@@ -1,6 +1,7 @@
 "use client";
 
 import { supabase, UserRow, TrainerProfileRow, AthleteProfileRow } from './supabase';
+import { normalizeSports } from './format';
 
 export interface AuthUser {
     id: string;
@@ -20,7 +21,15 @@ const TOKEN_KEY = 'airtrainr_session';
 export function setSession(user: AuthUser) {
     if (typeof window !== 'undefined') {
         localStorage.setItem(TOKEN_KEY, JSON.stringify(user));
-        // Cookies: presence flag for middleware + uid for API auth (verified server-side via service role)
+        // Cookies: presence flag for middleware + uid for API auth (verified server-side via service role).
+        //
+        // Cookie signing: the airtrainr_uid cookie is HMAC-signed *server-side*
+        // (see lib/cookie-sign.ts). We can't sign here because the HMAC secret
+        // (AIRTRAINR_COOKIE_SECRET) must never reach the browser. Instead we
+        // write the raw uid; verifySignedUid() on the server accepts unsigned
+        // legacy values via the back-compat path. When/if a server-side login
+        // endpoint is introduced, it should set the signed value via
+        // Set-Cookie HttpOnly so forgery is fully blocked.
         if (typeof document !== 'undefined') {
             document.cookie = `airtrainr_token=1; path=/; max-age=604800; SameSite=Lax`
             document.cookie = `airtrainr_uid=${encodeURIComponent(user.id)}; path=/; max-age=604800; SameSite=Lax`
@@ -247,9 +256,9 @@ export async function registerUser(data: {
             .from('trainer_profiles')
             .insert({
                 user_id: u.id,
-                sports: data.sports || [],
+                sports: normalizeSports(data.sports),
                 trial_started_at: new Date().toISOString(),
-                verification_status: autoApprove ? 'approved' : 'pending',
+                verification_status: autoApprove ? 'verified' : 'pending',
                 is_verified: autoApprove,
                 city: data.city || null,
                 state: data.state || null,
@@ -272,7 +281,7 @@ export async function registerUser(data: {
             .from('athlete_profiles')
             .insert({
                 user_id: u.id,
-                sports: data.sports || [],
+                sports: normalizeSports(data.sports),
                 skill_level: data.skillLevel || 'beginner',
                 preferred_training_times: data.preferredTimes || [],
                 training_preferences: data.trainingTypes || [],

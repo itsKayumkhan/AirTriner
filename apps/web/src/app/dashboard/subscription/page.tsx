@@ -42,6 +42,8 @@ export default function SubscriptionPage() {
     const [checkoutLoading, setCheckoutLoading] = useState<"monthly" | "annual" | null>(null);
     const [founding50Count, setFounding50Count] = useState(0);
     const [applyingFounding50, setApplyingFounding50] = useState(false);
+    const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+    const [cancelling, setCancelling] = useState(false);
     const [popup, setPopup] = useState<{
         type: "success" | "error" | "info";
         title: string;
@@ -140,6 +142,40 @@ export default function SubscriptionPage() {
             console.error("Subscribe error:", err);
             setPopup({ type: "error", title: "Checkout Failed", message: err.message || "Please try again." });
             setCheckoutLoading(null);
+        }
+    };
+
+    // -----------------------------------------------
+    // Cancel subscription (period-end)
+    // -----------------------------------------------
+    const handleCancelSubscription = async () => {
+        setCancelling(true);
+        try {
+            const res = await fetch("/api/stripe/cancel-subscription", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || "Failed to cancel subscription");
+
+            const willEnd = data.willEndAt
+                ? new Date(data.willEndAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })
+                : null;
+
+            setShowCancelConfirm(false);
+            setPopup({
+                type: "success",
+                title: "Subscription Cancelled",
+                message: willEnd
+                    ? `Your subscription will end on ${willEnd}. You'll keep full access until then.`
+                    : "Your subscription has been cancelled.",
+            });
+            // Refresh profile to reflect any DB changes
+            fetchData();
+        } catch (err: any) {
+            setPopup({ type: "error", title: "Cancel Failed", message: err.message || "Please try again." });
+        } finally {
+            setCancelling(false);
         }
     };
 
@@ -266,6 +302,18 @@ export default function SubscriptionPage() {
                             </span>
                         </div>
                     )}
+                </div>
+            )}
+
+            {/* Cancel subscription action — only when active */}
+            {isActive && (
+                <div className="flex justify-end">
+                    <button
+                        onClick={() => setShowCancelConfirm(true)}
+                        className="px-4 py-2 rounded-xl border border-red-500/20 text-red-500/70 font-bold text-xs uppercase tracking-wider hover:bg-red-500/10 hover:text-red-400 transition-all"
+                    >
+                        Cancel subscription
+                    </button>
                 </div>
             )}
 
@@ -465,6 +513,43 @@ export default function SubscriptionPage() {
                     ))}
                 </div>
             </div>
+
+            {/* Cancel confirmation modal */}
+            {showCancelConfirm && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+                    <div className="bg-[#1A1C23] border border-white/10 rounded-2xl p-7 shadow-2xl max-w-sm w-full">
+                        <div className="flex flex-col items-center text-center">
+                            <div className="w-14 h-14 rounded-2xl bg-red-500/20 text-red-500 flex items-center justify-center mb-5">
+                                <AlertTriangle size={28} />
+                            </div>
+                            <h3 className="text-lg font-black uppercase tracking-wide mb-2 text-red-400">Cancel Subscription?</h3>
+                            <p className="text-text-main/70 text-sm leading-relaxed mb-6">
+                                Your subscription stays active until{" "}
+                                <strong className="text-text-main">
+                                    {expiry?.date || "the end of the current period"}
+                                </strong>
+                                ; after that you&apos;ll lose access to bookings, payments, and search visibility. Continue?
+                            </p>
+                            <div className="flex gap-3 w-full">
+                                <button
+                                    onClick={() => setShowCancelConfirm(false)}
+                                    disabled={cancelling}
+                                    className="flex-1 py-3 rounded-full bg-white/5 border border-white/10 text-text-main font-black text-sm uppercase tracking-widest hover:bg-white/10 transition-all disabled:opacity-50"
+                                >
+                                    Keep
+                                </button>
+                                <button
+                                    onClick={handleCancelSubscription}
+                                    disabled={cancelling}
+                                    className="flex-1 py-3 rounded-full bg-red-500/15 border border-red-500/30 text-red-400 font-black text-sm uppercase tracking-widest hover:bg-red-500/25 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                                >
+                                    {cancelling ? <><Loader2 size={14} className="animate-spin" /> Cancelling</> : "Confirm"}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Popup */}
             {popup && (

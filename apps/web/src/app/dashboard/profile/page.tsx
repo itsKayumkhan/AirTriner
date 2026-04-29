@@ -11,6 +11,7 @@ import { detectCountry, radiusUnit, formatRadius, kmToMi, miToKm } from "@/lib/u
 import { toast } from "@/components/ui/Toast";
 import { ALLOWED_SESSION_DURATIONS, normalizeSessionPricing, defaultSessionPricing } from "@/lib/session-pricing";
 import { computeTrainerCompleteness } from "@/lib/profile-completeness";
+import { normalizeSports } from "@/lib/format";
 
 // Convert DB jsonb session_pricing to form state shape (string prices for inputs).
 function hydratePricingFromDb(raw: unknown, hourlyRate: number): Record<"30" | "45" | "60", { price: string; enabled: boolean }> {
@@ -359,7 +360,7 @@ export default function ProfilePage() {
                     headline: form.headline || null,
                     hourly_rate: Number(form.hourlyRate),
                     years_experience: Number(form.yearsExperience),
-                    sports: form.sports,
+                    sports: normalizeSports(form.sports),
                     preferredTrainingTimes: form.preferredTimes,
                     travel_radius_miles: Number(form.travelRadius),
                     city: form.city || null,
@@ -379,7 +380,7 @@ export default function ProfilePage() {
                 const profileUpdate: Record<string, unknown> = {
                     user_id: user.id,
                     bio: form.bio || null,
-                    sports: form.sports,
+                    sports: normalizeSports(form.sports),
                     skill_level: form.skillLevel,
                     address_line1: form.addressLine1 || null,
                     city: form.city || null,

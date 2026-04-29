@@ -6,6 +6,7 @@ import {
     ShieldAlert, ChevronRight, Scale, Zap, TrendingUp, StickyNote, Save
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { adminFetch } from "@/lib/admin-fetch";
 import PopupModal from "@/components/common/PopupModal";
 
 export default function AdminDisputesPage() {
@@ -101,35 +102,13 @@ export default function AdminDisputesPage() {
             async () => {
                 setProcessing(true);
                 try {
-                    if (action === 'refund') {
-                        const res = await fetch('/api/stripe/refund-booking', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ bookingId: selectedDispute.bookingId, cancelledBy: 'admin', reason: `Dispute resolved: ${selectedDispute.reason}` })
-                        });
-                        const data = await res.json().catch(() => ({}));
-                        if (!res.ok) throw new Error(data?.error || `Stripe refund failed (HTTP ${res.status})`);
-
-                        const { error: bookErr } = await supabase
-                            .from("bookings")
-                            .update({ status: 'cancelled' })
-                            .eq("id", selectedDispute.bookingId);
-                        if (bookErr) throw bookErr;
-                    } else {
-                        const { error: ptErr } = await supabase
-                            .from("payment_transactions")
-                            .update({ status: 'released', released_at: new Date().toISOString() })
-                            .eq("booking_id", selectedDispute.bookingId)
-                            .eq("status", "held");
-                        if (ptErr) throw ptErr;
-                    }
-
-                    const { error: dispErr } = await supabase.from("disputes").update({
-                        status: 'resolved',
-                        resolved_at: new Date().toISOString(),
-                        resolution: action === 'refund' ? "refund_athlete" : "payout_trainer"
-                    }).eq("id", selectedDispute.id);
-                    if (dispErr) throw dispErr;
+                    const res = await adminFetch('/api/admin/resolve-dispute', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ disputeId: selectedDispute.id, action })
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (!res.ok) throw new Error(data?.error || `Action failed (HTTP ${res.status})`);
 
                     setDisputes(prev => prev.map(d => d.id === selectedDispute.id ? { ...d, status: 'resolved' } : d));
                     setSelectedDispute((prev: any) => prev ? { ...prev, status: 'resolved' } : null);

@@ -11,6 +11,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { Config } from '../../lib/config';
+import { apiFetchJson } from '../../lib/api-fetch';
 import { createNotification, scheduleRebookReminder } from '../../lib/notifications';
 import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows } from '../../theme';
 import {
@@ -168,17 +169,27 @@ export default function BookingDetailScreen({ route, navigation }: any) {
                 onPress: async () => {
                     setIsSaving(true);
                     try {
-                        const updateData: any = { status: newStatus, updated_at: new Date().toISOString() };
                         if (newStatus === 'cancelled') {
-                            updateData.cancelled_at = new Date().toISOString();
-                            updateData.cancellation_reason = isTrainer ? 'Cancelled by trainer' : 'Cancelled by athlete';
+                            await apiFetchJson(`/api/booking/${bookingId}/cancel`, {
+                                method: 'POST',
+                                body: JSON.stringify({
+                                    reason: isTrainer ? 'Cancelled by trainer' : 'Cancelled by athlete',
+                                }),
+                            });
+                        } else if (newStatus === 'completed') {
+                            await apiFetchJson(`/api/booking/${bookingId}/complete`, {
+                                method: 'POST',
+                            });
+                        } else {
+                            // confirmed / no_show — keep direct update for now
+                            // (no dedicated server route yet).
+                            const updateData: any = { status: newStatus, updated_at: new Date().toISOString() };
+                            const { error } = await supabase
+                                .from('bookings')
+                                .update(updateData)
+                                .eq('id', bookingId);
+                            if (error) throw error;
                         }
-
-                        const { error } = await supabase
-                            .from('bookings')
-                            .update(updateData)
-                            .eq('id', bookingId);
-                        if (error) throw error;
 
                         const notifMap: Record<string, { type: string; title: string; body: string }> = {
                             completed: {
@@ -227,16 +238,10 @@ export default function BookingDetailScreen({ route, navigation }: any) {
         if (!rejectReason.trim()) return;
         setIsRejecting(true);
         try {
-            const { error } = await supabase
-                .from('bookings')
-                .update({
-                    status: 'cancelled',
-                    cancellation_reason: rejectReason.trim(),
-                    cancelled_at: new Date().toISOString(),
-                    updated_at: new Date().toISOString(),
-                })
-                .eq('id', bookingId);
-            if (error) throw error;
+            await apiFetchJson(`/api/booking/${bookingId}/cancel`, {
+                method: 'POST',
+                body: JSON.stringify({ reason: rejectReason.trim() }),
+            });
 
             if (otherUser) {
                 await createNotification({
@@ -283,16 +288,10 @@ export default function BookingDetailScreen({ route, navigation }: any) {
         if (!cancelReason.trim()) return;
         setIsCancelling(true);
         try {
-            const { error } = await supabase
-                .from('bookings')
-                .update({
-                    status: 'cancelled',
-                    cancellation_reason: cancelReason.trim(),
-                    cancelled_at: new Date().toISOString(),
-                    updated_at: new Date().toISOString(),
-                })
-                .eq('id', bookingId);
-            if (error) throw error;
+            await apiFetchJson(`/api/booking/${bookingId}/cancel`, {
+                method: 'POST',
+                body: JSON.stringify({ reason: cancelReason.trim() }),
+            });
 
             if (otherUser) {
                 await createNotification({
@@ -425,34 +424,16 @@ export default function BookingDetailScreen({ route, navigation }: any) {
         }
         setIsSubmittingReview(true);
         try {
-            const { error: insertError } = await supabase.from('reviews').insert({
-                booking_id: booking.id,
-                trainer_id: booking.trainer_id,
-                reviewer_id: user!.id,
-                reviewee_id: booking.trainer_id,
-                rating: reviewRating,
-                review_text: reviewComment.trim() || null,
-                created_at: new Date().toISOString(),
+            // Server inserts review + recomputes trainer_profiles.average_rating
+            // and total_reviews. Auth via x-airtrainr-uid.
+            await apiFetchJson('/api/reviews', {
+                method: 'POST',
+                body: JSON.stringify({
+                    bookingId: booking.id,
+                    rating: reviewRating,
+                    reviewText: reviewComment.trim() || null,
+                }),
             });
-            if (insertError) throw insertError;
-
-            const { data: profileData, error: profileFetchError } = await supabase
-                .from('trainer_profiles')
-                .select('average_rating, total_reviews')
-                .eq('user_id', booking.trainer_id)
-                .single();
-            if (profileFetchError) throw profileFetchError;
-
-            const currentCount = profileData?.total_reviews ?? 0;
-            const currentAvg = profileData?.average_rating ?? 0;
-            const newCount = currentCount + 1;
-            const newAvg = ((currentAvg * currentCount) + reviewRating) / newCount;
-
-            const { error: updateError } = await supabase
-                .from('trainer_profiles')
-                .update({ average_rating: newAvg, total_reviews: newCount })
-                .eq('user_id', booking.trainer_id);
-            if (updateError) throw updateError;
 
             await createNotification({
                 userId: booking.trainer_id,

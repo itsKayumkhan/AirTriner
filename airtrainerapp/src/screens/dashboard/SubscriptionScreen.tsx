@@ -13,6 +13,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as WebBrowser from 'expo-web-browser';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
+import { apiFetchJson } from '../../lib/api-fetch';
 import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows } from '../../theme';
 import { ScreenWrapper, ScreenHeader, Card, Badge, LoadingScreen, Button, SectionHeader, ListItem } from '../../components/ui';
 
@@ -91,6 +92,7 @@ export default function SubscriptionScreen({ navigation }: any) {
     const [f50Applied, setF50Applied] = useState(false);
     const [f50Count, setF50Count] = useState<number | null>(null);
     const [f50Applying, setF50Applying] = useState(false);
+    const [cancelling, setCancelling] = useState(false);
 
     const fetchProfile = useCallback(async () => {
         if (!user?.id) return;
@@ -175,6 +177,37 @@ export default function SubscriptionScreen({ navigation }: any) {
         } finally {
             setSubscribing(false);
         }
+    };
+
+    const handleCancelSubscription = () => {
+        Alert.alert(
+            'Cancel Subscription?',
+            "You'll keep access until the end of the current billing period.",
+            [
+                { text: 'Keep Subscription', style: 'cancel' },
+                {
+                    text: 'Cancel',
+                    style: 'destructive',
+                    onPress: async () => {
+                        setCancelling(true);
+                        try {
+                            await apiFetchJson('/api/stripe/cancel-subscription', {
+                                method: 'POST',
+                            });
+                            Alert.alert(
+                                'Subscription Cancelled',
+                                "You'll retain access until the end of your billing period."
+                            );
+                            fetchProfile();
+                        } catch (e: any) {
+                            Alert.alert('Error', e.message || 'Could not cancel subscription.');
+                        } finally {
+                            setCancelling(false);
+                        }
+                    },
+                },
+            ]
+        );
     };
 
     const handleApplyF50 = async () => {
@@ -414,16 +447,23 @@ export default function SubscriptionScreen({ navigation }: any) {
                 </>
             )}
 
-            {/* Active -- manage note */}
+            {/* Active -- manage / cancel */}
             {isActive && (
                 <Card variant="outlined" style={styles.manageNote}>
                     <View style={styles.manageNoteRow}>
                         <Ionicons name="information-circle-outline" size={18} color={Colors.textSecondary} />
                         <Text style={styles.manageNoteText}>
-                            To manage or cancel your subscription, contact{' '}
-                            <Text style={{ color: Colors.primary }}>support@airtrainr.com</Text>
+                            Cancelling stops auto-renewal. You keep access until your billing
+                            period ends.
                         </Text>
                     </View>
+                    <Button
+                        title={cancelling ? 'Cancelling…' : 'Cancel Subscription'}
+                        onPress={handleCancelSubscription}
+                        loading={cancelling}
+                        disabled={cancelling}
+                        variant="outline"
+                    />
                 </Card>
             )}
 

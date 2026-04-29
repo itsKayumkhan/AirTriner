@@ -5,8 +5,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
+import { requireSessionUser } from '@/lib/session-auth';
 
 export async function POST(req: NextRequest) {
+    const auth = await requireSessionUser(req);
+    if ('error' in auth) return auth.error;
+
     const supabase = createClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -26,6 +30,26 @@ export async function POST(req: NextRequest) {
         const session = await stripe.checkout.sessions.retrieve(sessionId);
         if (session.payment_status !== 'paid') {
             return NextResponse.json({ error: 'Payment not completed' }, { status: 400 });
+        }
+
+        // Ownership: Stripe session metadata must match the bookingId from
+        // the body AND the authenticated caller. Prevents an attacker from
+        // confirming someone else's booking using a Stripe session they paid for.
+        if (
+            session.metadata?.bookingId !== bookingId ||
+            session.metadata?.athleteId !== auth.user.id
+        ) {
+            return NextResponse.json({ error: 'Booking ownership mismatch' }, { status: 403 });
+        }
+
+        // Safeguard: the booking row's athlete_id must also match the caller
+        const { data: bookingOwn } = await supabase
+            .from('bookings')
+            .select('athlete_id')
+            .eq('id', bookingId)
+            .maybeSingle();
+        if (!bookingOwn || bookingOwn.athlete_id !== auth.user.id) {
+            return NextResponse.json({ error: 'Booking ownership mismatch' }, { status: 403 });
         }
 
         // Idempotency: skip if already recorded

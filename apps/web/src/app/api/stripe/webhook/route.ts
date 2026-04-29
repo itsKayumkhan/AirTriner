@@ -28,16 +28,16 @@ export async function POST(req: NextRequest) {
 
     let event: Stripe.Event;
 
+    if (!webhookSecret) {
+        console.error('[webhook] STRIPE_WEBHOOK_SECRET is not set');
+        return NextResponse.json({ error: 'Webhook not configured' }, { status: 500 });
+    }
+    if (!sig) {
+        return NextResponse.json({ error: 'Missing stripe-signature header' }, { status: 400 });
+    }
+
     try {
-        if (webhookSecret && sig) {
-            event = stripe.webhooks.constructEvent(body, sig, webhookSecret);
-        } else {
-            // Dev mode: parse without verification (only allow in development)
-            if (process.env.NODE_ENV === 'production') {
-                return NextResponse.json({ error: 'Missing webhook secret in production' }, { status: 400 });
-            }
-            event = JSON.parse(body) as Stripe.Event;
-        }
+        event = stripe.webhooks.constructEvent(body, sig, webhookSecret);
     } catch (err: any) {
         console.error('[webhook] Signature verification failed:', err.message);
         return NextResponse.json({ error: `Webhook Error: ${err.message}` }, { status: 400 });
@@ -317,49 +317,61 @@ export async function POST(req: NextRequest) {
                             hold_until: holdUntil.toISOString(),
                         });
 
-                    // 4. Camp spots management
-                    // trainerId should be users.id (resolved by create-offer-payment), but add fallback for safety
+                    // 4. Camp spots management — atomic decrement via RPC
+                    // Race-safe: trainer_profiles row is locked FOR UPDATE inside the function,
+                    // and the booking id is used as an idempotency key so Stripe webhook retries
+                    // don't double-decrement.
                     if (campName && trainerId) {
-                        let retries = 3;
-                        while (retries > 0) {
-                            let { data: trainerProfile } = await supabaseAdmin
+                        // Resolve to users.id if trainerId is actually a trainer_profiles PK
+                        let resolvedUserId = trainerId;
+                        const probe = await supabaseAdmin
+                            .from('trainer_profiles')
+                            .select('user_id')
+                            .eq('user_id', trainerId)
+                            .maybeSingle();
+                        if (!probe.data) {
+                            const fallback = await supabaseAdmin
                                 .from('trainer_profiles')
-                                .select('camp_offerings, user_id')
-                                .eq('user_id', trainerId)
+                                .select('user_id')
+                                .eq('id', trainerId)
                                 .maybeSingle();
+                            if (fallback.data?.user_id) resolvedUserId = fallback.data.user_id;
+                        }
 
-                            // Fallback: trainerId might be trainer_profiles PK
-                            if (!trainerProfile) {
-                                const fallback = await supabaseAdmin
-                                    .from('trainer_profiles')
-                                    .select('camp_offerings, user_id')
-                                    .eq('id', trainerId)
-                                    .maybeSingle();
-                                trainerProfile = fallback.data;
+                        const { data: rpcRows, error: rpcError } = await supabaseAdmin.rpc('book_camp_spot', {
+                            p_user_id: resolvedUserId,
+                            p_camp_name: campName,
+                            p_idempotency_key: newBooking.id,
+                        });
+
+                        if (rpcError) {
+                            console.error(`[webhook] book_camp_spot RPC failed for booking ${newBooking.id}:`, rpcError);
+                        } else {
+                            const row = Array.isArray(rpcRows) ? rpcRows[0] : rpcRows;
+                            const status = row?.status as string | undefined;
+                            const remaining = row?.remaining as number | undefined;
+
+                            if (status === 'booked') {
+                                console.log(`[webhook] Camp spot booked for ${campName} (booking ${newBooking.id}); ${remaining} remaining`);
+                            } else if (status === 'already_booked') {
+                                console.log(`[webhook] Camp spot already decremented for booking ${newBooking.id} (idempotent retry); ${remaining} remaining`);
+                            } else if (status === 'full') {
+                                console.warn(`[webhook] OVERSOLD ATTEMPT: camp ${campName} full but payment already taken (booking ${newBooking.id})`);
+                                await supabaseAdmin.from('admin_audit_log').insert({
+                                    actor_id: null,
+                                    action: 'camp_oversold_attempt',
+                                    target_type: 'booking',
+                                    target_id: String(newBooking.id),
+                                    payload: {
+                                        camp_name: campName,
+                                        trainer_id: resolvedUserId,
+                                        athlete_id: athleteId,
+                                        amount: Number(totalAmount),
+                                    },
+                                });
+                            } else {
+                                console.warn(`[webhook] book_camp_spot returned status=${status} for booking ${newBooking.id}`);
                             }
-
-                            if (!trainerProfile?.camp_offerings || !Array.isArray(trainerProfile.camp_offerings)) break;
-
-                            const campIndex = trainerProfile.camp_offerings.findIndex((c: any) => c.name === campName);
-                            if (campIndex === -1) break;
-
-                            const currentCamp = trainerProfile.camp_offerings[campIndex] as any;
-                            const currentSpots = currentCamp.spotsRemaining ?? currentCamp.maxSpots ?? 0;
-
-                            if (currentSpots <= 0) break; // Camp full, but payment already done — don't block
-
-                            const updatedCamps = trainerProfile.camp_offerings.map((c: any, i: number) => {
-                                if (i === campIndex) return { ...c, spotsRemaining: currentSpots - 1 };
-                                return c;
-                            });
-
-                            const { error: updateError } = await supabaseAdmin
-                                .from('trainer_profiles')
-                                .update({ camp_offerings: updatedCamps })
-                                .eq('user_id', trainerProfile.user_id);
-
-                            if (!updateError) break;
-                            retries--;
                         }
                     }
 
@@ -561,7 +573,31 @@ export async function POST(req: NextRequest) {
                 const userId = subscription.metadata?.userId;
                 if (!userId) break;
 
-                if (subscription.status === 'active') {
+                // Map Stripe subscription.status -> DB subscription_status
+                //   active / trialing                       -> 'active'
+                //   past_due / unpaid / incomplete / paused -> 'past_due'
+                //   canceled / incomplete_expired           -> 'cancelled'
+                const stripeStatus = subscription.status;
+                let dbStatus: 'active' | 'past_due' | 'cancelled' | null = null;
+                if (stripeStatus === 'active' || stripeStatus === 'trialing') {
+                    dbStatus = 'active';
+                } else if (
+                    stripeStatus === 'past_due' ||
+                    stripeStatus === 'unpaid' ||
+                    stripeStatus === 'incomplete' ||
+                    stripeStatus === 'paused'
+                ) {
+                    dbStatus = 'past_due';
+                } else if (stripeStatus === 'canceled' || stripeStatus === 'incomplete_expired') {
+                    dbStatus = 'cancelled';
+                }
+
+                if (!dbStatus) {
+                    console.log(`[webhook] subscription.updated: unmapped status '${stripeStatus}' for user ${userId} — skipping`);
+                    break;
+                }
+
+                if (dbStatus === 'active') {
                     const currentPeriodEnd = new Date(((subscription as unknown as { current_period_end?: number }).current_period_end ?? 0) * 1000);
                     await supabaseAdmin
                         .from('trainer_profiles')
@@ -570,12 +606,43 @@ export async function POST(req: NextRequest) {
                             subscription_expires_at: currentPeriodEnd.toISOString(),
                         })
                         .eq('user_id', userId);
-                } else if (subscription.status === 'canceled' || subscription.status === 'unpaid') {
+                } else {
+                    const updates: Record<string, unknown> = { subscription_status: dbStatus };
+                    if (dbStatus === 'cancelled') {
+                        updates.subscription_expires_at = new Date().toISOString();
+                    }
                     await supabaseAdmin
                         .from('trainer_profiles')
-                        .update({ subscription_status: 'cancelled' })
+                        .update(updates)
                         .eq('user_id', userId);
+
+                    // Notify trainer about dunning / cancellation
+                    try {
+                        if (dbStatus === 'past_due') {
+                            await supabaseAdmin.from('notifications').insert({
+                                user_id: userId,
+                                type: 'SUBSCRIPTION_PAST_DUE',
+                                title: 'Payment Issue — Subscription Past Due',
+                                body: 'We could not collect your latest subscription payment. Your trainer profile is hidden from search until billing is updated. Please update your payment method to restore visibility.',
+                                data: { url: '/dashboard/settings', stripe_status: stripeStatus },
+                                read: false,
+                            });
+                        } else if (dbStatus === 'cancelled') {
+                            await supabaseAdmin.from('notifications').insert({
+                                user_id: userId,
+                                type: 'SUBSCRIPTION_CANCELLED',
+                                title: 'Subscription Cancelled',
+                                body: 'Your trainer subscription has been cancelled and your profile is no longer visible in search. Reactivate any time from settings.',
+                                data: { url: '/dashboard/settings', stripe_status: stripeStatus },
+                                read: false,
+                            });
+                        }
+                    } catch (notifErr) {
+                        console.warn('[webhook] Failed to insert subscription status notification:', notifErr);
+                    }
                 }
+
+                console.log(`[webhook] subscription.updated: stripe='${stripeStatus}' -> db='${dbStatus}' (user ${userId})`);
                 break;
             }
 
@@ -584,8 +651,8 @@ export async function POST(req: NextRequest) {
         }
     } catch (err: any) {
         console.error('[webhook] Error processing event:', err);
-        // Return 200 to prevent Stripe from retrying — log the error instead
-        return NextResponse.json({ received: true, error: err.message });
+        // Return 500 so Stripe retries the event
+        return NextResponse.json({ error: err.message || 'Internal error' }, { status: 500 });
     }
 
     return NextResponse.json({ received: true });

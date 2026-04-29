@@ -35,6 +35,7 @@ import {
 } from "lucide-react";
 import { toast } from "@/components/ui/Toast";
 import { detectCountry, radiusUnit, miToKm, kmToMi } from "@/lib/units";
+import { normalizeSports } from "@/lib/format";
 
 const FALLBACK_SPORTS: { id: string; name: string; slug: string }[] = [
     { id: "hockey", name: "Hockey", slug: "hockey" },
@@ -326,7 +327,7 @@ export default function TrainerEditProfilePage() {
         try {
             const updateData: Record<string, unknown> = {
                 bio: formData.bio,
-                sports: formData.sports,
+                sports: normalizeSports(formData.sports),
                 years_experience: Math.max(0, parseInt(formData.yearsExperience) || 0),
                 hourly_rate: parseFloat(sessionPricing["60"].price) || parseFloat(formData.hourlyRate) || 75,
                 session_pricing: {
@@ -338,7 +339,7 @@ export default function TrainerEditProfilePage() {
                 city: formData.city || null,
                 state: formData.state || null,
                 zip_code: formData.zipCode || null,
-                travel_radius_miles: detectCountry(formData.zipCode) === "CA"
+                travel_radius_miles: (formData.country === "CA" || detectCountry(formData.zipCode) === "CA")
                     ? Math.round(kmToMi(parseInt(displayRadius) || 20))
                     : parseInt(displayRadius) || 20,
                 target_skill_levels: formData.targetSkillLevels,
@@ -575,6 +576,8 @@ export default function TrainerEditProfilePage() {
                     profile_image_url: imageUrl,
                     profile_image_status: "pending",
                     profile_image_rejection_reason: null,
+                    verification_status: "pending",
+                    is_verified: false,
                 })
                 .eq("user_id", user.id);
 
@@ -597,8 +600,8 @@ export default function TrainerEditProfilePage() {
             setProfileImageUrl(imageUrl);
             setProfileImageStatus("pending");
             setProfileImageRejectionReason(null);
-            setPopup({ type: "success", message: "Photo uploaded — pending admin approval." });
-            toast.success("Photo uploaded!");
+            setPopup({ type: "success", message: "Your new photo will be reviewed by an admin before your profile becomes searchable again." });
+            toast.success("Photo uploaded — pending admin re-verification.");
         } catch (err: unknown) {
             console.error("Profile image upload error:", err);
             const message = err instanceof Error && err.message?.includes("not found")

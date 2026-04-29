@@ -1,22 +1,48 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { getSession, AuthUser } from "@/lib/auth";
 import { supabase, NotificationRow } from "@/lib/supabase";
 import { OfferModal } from "@/components/notifications/OfferModal";
-import { Bell, CheckCircle, XCircle, PartyPopper, MapPin, Star, Wallet, MessageSquare } from "lucide-react";
+import { Bell, CheckCircle, XCircle, PartyPopper, MapPin, Star, Wallet, MessageSquare, Calendar, RefreshCw, ShieldCheck, ShieldAlert, AlertCircle } from "lucide-react";
 import { useNotifications } from "@/context/NotificationContext";
 
 interface OfferNotificationData {
     offer_id?: string;
     offer_status?: string;
+    booking_id?: string;
+    sender_id?: string;
+    thread_id?: string;
+    other_user_id?: string;
+    url?: string;
     [key: string]: unknown;
 }
+
+const OFFER_TYPES = new Set(["OFFER_RECEIVED", "OFFER_ACCEPTED", "OFFER_DECLINED", "OFFER_REJECTED"]);
+const BOOKING_TYPES = new Set([
+    "BOOKING_REQUEST",
+    "BOOKING_REQUESTED",
+    "BOOKING_ACCEPTED",
+    "BOOKING_REJECTED",
+    "BOOKING_REFUNDED",
+    "BOOKING_CANCELLED",
+    "BOOKING_COMPLETED",
+    "BOOKING_CONFIRMED",
+]);
+const RESCHEDULE_TYPES = new Set([
+    "RESCHEDULE_REQUEST",
+    "RESCHEDULE_REQUESTED",
+    "RESCHEDULE_ACCEPTED",
+    "RESCHEDULE_DECLINED",
+]);
+const MESSAGE_TYPES = new Set(["MESSAGE_RECEIVED", "NEW_MESSAGE"]);
+const PROFILE_TYPES = new Set(["PROFILE_VERIFIED", "PROFILE_REJECTED"]);
 
 export default function NotificationsPage() {
     const { markAllRead: ctxMarkAllRead, clearAllNotifications: ctxClearAll } = useNotifications();
     const searchParams = useSearchParams();
+    const router = useRouter();
     const [user, setUser] = useState<AuthUser | null>(null);
     const [notifications, setNotifications] = useState<NotificationRow[]>([]);
     const [loading, setLoading] = useState(true);
@@ -212,43 +238,137 @@ export default function NotificationsPage() {
     const unreadCount = notifications.filter(n => !n.read).length;
 
     const typeIcons: Record<string, React.ReactNode> = {
-        BOOKING_CONFIRMED:   <CheckCircle   className="text-sky-400 w-5 h-5 shrink-0" />,
-        BOOKING_REJECTED:    <XCircle        className="text-red-400 w-5 h-5 shrink-0" />,
-        BOOKING_CANCELLED:   <XCircle        className="text-red-400 w-5 h-5 shrink-0" />,
-        BOOKING_COMPLETED:   <PartyPopper    className="text-emerald-400 w-5 h-5 shrink-0" />,
-        NEW_REQUEST_NEARBY:  <MapPin         className="text-primary w-5 h-5 shrink-0" />,
-        REVIEW_RECEIVED:     <Star           className="text-amber-400 w-5 h-5 shrink-0" />,
-        PAYMENT_RECEIVED:    <Wallet         className="text-green-400 w-5 h-5 shrink-0" />,
-        NEW_MESSAGE:         <MessageSquare  className="text-violet-400 w-5 h-5 shrink-0" />,
-        RESCHEDULE_ACCEPTED: <CheckCircle    className="text-sky-400 w-5 h-5 shrink-0" />,
-        RESCHEDULE_DECLINED: <XCircle        className="text-red-400 w-5 h-5 shrink-0" />,
-        REVIEW_REQUEST:      <Star           className="text-amber-400 w-5 h-5 shrink-0" />,
+        BOOKING_CONFIRMED:    <CheckCircle   className="text-sky-400 w-5 h-5 shrink-0" />,
+        BOOKING_REQUESTED:    <Calendar      className="text-primary w-5 h-5 shrink-0" />,
+        BOOKING_ACCEPTED:     <CheckCircle   className="text-sky-400 w-5 h-5 shrink-0" />,
+        BOOKING_REJECTED:     <XCircle       className="text-red-400 w-5 h-5 shrink-0" />,
+        BOOKING_CANCELLED:    <XCircle       className="text-red-400 w-5 h-5 shrink-0" />,
+        BOOKING_REFUNDED:     <Wallet        className="text-amber-400 w-5 h-5 shrink-0" />,
+        BOOKING_COMPLETED:    <PartyPopper   className="text-emerald-400 w-5 h-5 shrink-0" />,
+        NEW_REQUEST_NEARBY:   <MapPin        className="text-primary w-5 h-5 shrink-0" />,
+        REVIEW_RECEIVED:      <Star          className="text-amber-400 w-5 h-5 shrink-0" />,
+        REVIEW_REQUEST:       <Star          className="text-amber-400 w-5 h-5 shrink-0" />,
+        PAYMENT_RECEIVED:     <Wallet        className="text-green-400 w-5 h-5 shrink-0" />,
+        NEW_MESSAGE:          <MessageSquare className="text-violet-400 w-5 h-5 shrink-0" />,
+        MESSAGE_RECEIVED:     <MessageSquare className="text-violet-400 w-5 h-5 shrink-0" />,
+        RESCHEDULE_REQUESTED: <RefreshCw     className="text-primary w-5 h-5 shrink-0" />,
+        RESCHEDULE_ACCEPTED:  <CheckCircle   className="text-sky-400 w-5 h-5 shrink-0" />,
+        RESCHEDULE_DECLINED:  <XCircle       className="text-red-400 w-5 h-5 shrink-0" />,
+        OFFER_RECEIVED:       <PartyPopper   className="text-primary w-5 h-5 shrink-0" />,
+        OFFER_ACCEPTED:       <CheckCircle   className="text-emerald-400 w-5 h-5 shrink-0" />,
+        OFFER_DECLINED:       <XCircle       className="text-red-400 w-5 h-5 shrink-0" />,
+        PROFILE_VERIFIED:     <ShieldCheck   className="text-emerald-400 w-5 h-5 shrink-0" />,
+        PROFILE_REJECTED:     <ShieldAlert   className="text-red-400 w-5 h-5 shrink-0" />,
+        SUBSCRIPTION_PAST_DUE: <AlertCircle  className="text-red-400 w-5 h-5 shrink-0" />,
+        SUBSCRIPTION_CANCELLED: <AlertCircle className="text-red-400 w-5 h-5 shrink-0" />,
     };
     const typeBg: Record<string, string> = {
-        BOOKING_CONFIRMED:   "bg-sky-500/15 border-sky-500/30",
-        BOOKING_REJECTED:    "bg-red-500/15 border-red-500/30",
-        BOOKING_CANCELLED:   "bg-red-500/15 border-red-500/30",
-        BOOKING_COMPLETED:   "bg-emerald-500/15 border-emerald-500/30",
-        NEW_REQUEST_NEARBY:  "bg-primary/15 border-primary/30",
-        REVIEW_RECEIVED:     "bg-amber-500/15 border-amber-500/30",
-        PAYMENT_RECEIVED:    "bg-green-500/15 border-green-500/30",
-        NEW_MESSAGE:         "bg-violet-500/15 border-violet-500/30",
-        RESCHEDULE_ACCEPTED: "bg-sky-500/15 border-sky-500/30",
-        RESCHEDULE_DECLINED: "bg-red-500/15 border-red-500/30",
-        REVIEW_REQUEST:      "bg-amber-500/15 border-amber-500/30",
+        BOOKING_CONFIRMED:    "bg-sky-500/15 border-sky-500/30",
+        BOOKING_REQUESTED:    "bg-primary/15 border-primary/30",
+        BOOKING_ACCEPTED:     "bg-sky-500/15 border-sky-500/30",
+        BOOKING_REJECTED:     "bg-red-500/15 border-red-500/30",
+        BOOKING_CANCELLED:    "bg-red-500/15 border-red-500/30",
+        BOOKING_REFUNDED:     "bg-amber-500/15 border-amber-500/30",
+        BOOKING_COMPLETED:    "bg-emerald-500/15 border-emerald-500/30",
+        NEW_REQUEST_NEARBY:   "bg-primary/15 border-primary/30",
+        REVIEW_RECEIVED:      "bg-amber-500/15 border-amber-500/30",
+        REVIEW_REQUEST:       "bg-amber-500/15 border-amber-500/30",
+        PAYMENT_RECEIVED:     "bg-green-500/15 border-green-500/30",
+        NEW_MESSAGE:          "bg-violet-500/15 border-violet-500/30",
+        MESSAGE_RECEIVED:     "bg-violet-500/15 border-violet-500/30",
+        RESCHEDULE_REQUESTED: "bg-primary/15 border-primary/30",
+        RESCHEDULE_ACCEPTED:  "bg-sky-500/15 border-sky-500/30",
+        RESCHEDULE_DECLINED:  "bg-red-500/15 border-red-500/30",
+        OFFER_RECEIVED:       "bg-primary/15 border-primary/30",
+        OFFER_ACCEPTED:       "bg-emerald-500/15 border-emerald-500/30",
+        OFFER_DECLINED:       "bg-red-500/15 border-red-500/30",
+        PROFILE_VERIFIED:     "bg-emerald-500/15 border-emerald-500/30",
+        PROFILE_REJECTED:     "bg-red-500/15 border-red-500/30",
+        SUBSCRIPTION_PAST_DUE: "bg-red-500/15 border-red-500/30",
+        SUBSCRIPTION_CANCELLED: "bg-red-500/15 border-red-500/30",
     };
     const typeDot: Record<string, string> = {
-        BOOKING_CONFIRMED:   "bg-sky-400",
-        BOOKING_REJECTED:    "bg-red-400",
-        BOOKING_CANCELLED:   "bg-red-400",
-        BOOKING_COMPLETED:   "bg-emerald-400",
-        NEW_REQUEST_NEARBY:  "bg-primary",
-        REVIEW_RECEIVED:     "bg-amber-400",
-        PAYMENT_RECEIVED:    "bg-green-400",
-        NEW_MESSAGE:         "bg-violet-400",
-        RESCHEDULE_ACCEPTED: "bg-sky-400",
-        RESCHEDULE_DECLINED: "bg-red-400",
-        REVIEW_REQUEST:      "bg-amber-400",
+        BOOKING_CONFIRMED:    "bg-sky-400",
+        BOOKING_REQUESTED:    "bg-primary",
+        BOOKING_ACCEPTED:     "bg-sky-400",
+        BOOKING_REJECTED:     "bg-red-400",
+        BOOKING_CANCELLED:    "bg-red-400",
+        BOOKING_REFUNDED:     "bg-amber-400",
+        BOOKING_COMPLETED:    "bg-emerald-400",
+        NEW_REQUEST_NEARBY:   "bg-primary",
+        REVIEW_RECEIVED:      "bg-amber-400",
+        REVIEW_REQUEST:       "bg-amber-400",
+        PAYMENT_RECEIVED:     "bg-green-400",
+        NEW_MESSAGE:          "bg-violet-400",
+        MESSAGE_RECEIVED:     "bg-violet-400",
+        RESCHEDULE_REQUESTED: "bg-primary",
+        RESCHEDULE_ACCEPTED:  "bg-sky-400",
+        RESCHEDULE_DECLINED:  "bg-red-400",
+        OFFER_RECEIVED:       "bg-primary",
+        OFFER_ACCEPTED:       "bg-emerald-400",
+        OFFER_DECLINED:       "bg-red-400",
+        PROFILE_VERIFIED:     "bg-emerald-400",
+        PROFILE_REJECTED:     "bg-red-400",
+        SUBSCRIPTION_PAST_DUE: "bg-red-400",
+        SUBSCRIPTION_CANCELLED: "bg-red-400",
+    };
+
+    const handleNotificationClick = (n: NotificationRow) => {
+        if (!n.read) markAsRead(n.id);
+
+        const data = (n.data || {}) as OfferNotificationData;
+        const type = n.type;
+
+        // Offer types -> open existing modal
+        if (OFFER_TYPES.has(type)) {
+            setSelectedNotification(n);
+            setShowOfferModal(true);
+            return;
+        }
+
+        // Review request -> reviews page
+        if (type === "REVIEW_REQUEST") {
+            router.push(`/dashboard/reviews`);
+            return;
+        }
+
+        // Booking events -> bookings list with id query param
+        if (BOOKING_TYPES.has(type)) {
+            router.push(`/dashboard/bookings?id=${data.booking_id || ""}`);
+            return;
+        }
+
+        // Reschedule events -> bookings list (jump to booking if known)
+        if (RESCHEDULE_TYPES.has(type)) {
+            if (data.booking_id) {
+                router.push(`/dashboard/bookings?id=${data.booking_id}`);
+            } else {
+                router.push(`/dashboard/bookings`);
+            }
+            return;
+        }
+
+        // Messages -> messages thread (or list if no thread id)
+        if (MESSAGE_TYPES.has(type)) {
+            const otherId = data.other_user_id || data.sender_id || data.thread_id;
+            if (otherId) {
+                router.push(`/dashboard/messages/${otherId}`);
+            } else {
+                router.push(`/dashboard/messages`);
+            }
+            return;
+        }
+
+        // Profile verification -> profile page
+        if (PROFILE_TYPES.has(type)) {
+            router.push(`/dashboard/profile`);
+            return;
+        }
+
+        // Generic data.url fallback — internal /dashboard paths only (open-redirect safe)
+        if (typeof data.url === "string" && data.url.startsWith("/dashboard/")) {
+            router.push(data.url);
+        }
     };
 
     const timeAgo = (date: string) => {
@@ -319,11 +439,8 @@ export default function NotificationsPage() {
                     {notifications.map((n) => (
                         <div
                             key={n.id}
-                            onClick={() => !n.read && markAsRead(n.id)}
-                            className={`px-6 py-5 flex items-start gap-4 border-b border-white/[0.04] last:border-0 transition-all ${n.read
-                                ? "hover:bg-white/[0.02] cursor-default"
-                                : "bg-white/[0.025] hover:bg-white/[0.04] cursor-pointer"
-                                }`}
+                            onClick={() => handleNotificationClick(n)}
+                            className="px-6 py-5 flex items-start gap-4 border-b border-white/[0.04] last:border-0 transition-all cursor-pointer hover:bg-white/[0.04]"
                         >
                             <div className={`mt-0.5 shrink-0 p-2 rounded-xl border ${typeBg[n.type] || "bg-white/[0.04] border-white/[0.06]"}`}>
                                 {typeIcons[n.type] || <Bell className="text-text-main/40 w-4 h-4" />}

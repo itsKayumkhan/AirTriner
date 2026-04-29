@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { getSession, AuthUser } from "@/lib/auth";
 import { supabase, TrainerProfileRow } from "@/lib/supabase";
+import { apiFetch } from "@/lib/api-fetch";
 import { Star, MapPin, MessageSquare, BadgeCheck, ChevronLeft, ChevronRight, Trophy, Calendar as CalendarIcon, Clock, Sparkles, Award, Quote, ShieldCheck, Zap } from "lucide-react";
 import { ReviewSection } from "@/components/trainers/ReviewSection";
 import { FoundingBadgeTooltip } from "@/components/ui/FoundingBadge";
@@ -627,85 +628,28 @@ export default function BookTrainerPage() {
 
             const scheduledAt = new Date(`${selectedDate}T${hrs.toString().padStart(2, "0")}:${minutes}:00`);
 
-            // === Double Booking Prevention ===
-            // Check for overlapping bookings for this trainer
-            const requestedStart = scheduledAt.getTime();
-            const requestedEnd = requestedStart + durationMinutes * 60 * 1000;
-
-            // Get all active bookings for this trainer on the same day (±1 day buffer)
-            const dayStart = new Date(scheduledAt);
-            dayStart.setHours(0, 0, 0, 0);
-            const dayEnd = new Date(scheduledAt);
-            dayEnd.setHours(23, 59, 59, 999);
-
-            const { data: existingBookings } = await supabase
-                .from("bookings")
-                .select("scheduled_at, duration_minutes")
-                .eq("trainer_id", trainer.user_id)
-                .in("status", ["pending", "confirmed", "reschedule_requested"])
-                .gte("scheduled_at", dayStart.toISOString())
-                .lte("scheduled_at", dayEnd.toISOString());
-
-            // Check for time-range overlaps
-            const hasOverlap = (existingBookings || []).some(b => {
-                const existingStart = new Date(b.scheduled_at).getTime();
-                const existingEnd = existingStart + (b.duration_minutes || 60) * 60 * 1000;
-                return requestedStart < existingEnd && requestedEnd > existingStart;
+            // Server (POST /api/booking/create) handles: ownership/auth, self-booking
+            // block, double-booking overlap check, price recompute (session +
+            // platform + Stripe + tax) and inserts the row. Keep client logic
+            // minimal — just submit the intent.
+            const res = await apiFetch("/api/booking/create", {
+                method: "POST",
+                body: JSON.stringify({
+                    trainerId: trainer.user_id,
+                    sport: selectedSport,
+                    scheduledAt: scheduledAt.toISOString(),
+                    durationMinutes,
+                    trainingLocation: selectedLocation || null,
+                }),
             });
-
-            if (hasOverlap) {
-                warning("Time Slot Taken", "This trainer already has a booking at this time. Please select a different slot.");
-                setProcessing(false);
-                return;
-            }
-            // === End Double Booking Prevention ===
-
-            // Fetch platform fee from settings (fresh per request)
-            const { data: feeSettings } = await supabase
-                .from("platform_settings")
-                .select("platform_fee_percentage")
-                .maybeSingle();
-
-            const explicitPrice = priceFor(sessionPricing, durationMinutes);
-            if (explicitPrice == null) {
-                toast.error(`This trainer doesn't offer ${durationMinutes}-minute sessions.`);
-                setProcessing(false);
-                return;
-            }
-            const sessionPrice = explicitPrice;
-
-            // Compute full athlete-pays-all breakdown (platform + Stripe + tax)
-            const { calculateFees } = await import("@/lib/fees");
-            const fees = calculateFees({
-                price: sessionPrice,
-                platformFeePercentage: feeSettings?.platform_fee_percentage,
-                trainerCountry: (trainer as { country?: string | null })?.country ?? null,
-            });
-
-            const insertData = {
-                athlete_id: user.id,
-                trainer_id: trainer.user_id,
-                sport: selectedSport,
-                scheduled_at: scheduledAt.toISOString(),
-                duration_minutes: durationMinutes,
-                training_location: selectedLocation || null,
-                status: 'pending',
-                price: fees.sessionFee,
-                platform_fee: fees.platformFee,
-                stripe_fee: fees.stripeFee,
-                tax_amount: fees.taxAmount,
-                tax_label: fees.taxLabel || null,
-                total_paid: fees.totalPaid,
-            };
-
-            const { error } = await supabase.from("bookings").insert(insertData);
-
-            if (error) throw error;
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data?.error || "Booking failed");
             success("Booking Requested!", "Your session request has been sent to the trainer.");
             setTimeout(() => router.push("/dashboard/bookings"), 1200);
         } catch (error) {
             console.error("Booking failed:", error);
-            toastError("Booking Failed", "Something went wrong. Please try again.");
+            const msg = error instanceof Error ? error.message : "Something went wrong. Please try again.";
+            toastError("Booking Failed", msg);
             setProcessing(false);
         }
     };

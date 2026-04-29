@@ -105,6 +105,30 @@ body {
   scrollbar-width: none;     /* Firefox */
 }
 
+/* Opt-in: show a visible horizontal scrollbar for wide tables (admin lists)
+   so admins can see when columns are cut off and scroll right. Used by
+   .admin-table-scroll. */
+.admin-table-scroll::-webkit-scrollbar {
+  display: block;
+  height: 10px;
+}
+.admin-table-scroll::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 10px;
+}
+.admin-table-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+}
+.admin-table-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.35);
+}
+.admin-table-scroll {
+  scrollbar-width: thin;
+  -ms-overflow-style: auto;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
 ::selection {
   background: #45D0FF;
   color: #0A0D14;

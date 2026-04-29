@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { verifySignedUid } from './cookie-sign';
 
 const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -10,7 +11,16 @@ const supabaseAdmin = createClient(
 export type AdminContext = { userId: string };
 
 export async function requireAdmin(req: NextRequest): Promise<{ ctx: AdminContext } | { error: NextResponse }> {
-    const userId = req.headers.get('x-admin-user-id') || req.cookies.get('airtrainr_uid')?.value;
+    const headerUid = req.headers.get('x-admin-user-id');
+    const cookieRaw = req.cookies.get('airtrainr_uid')?.value;
+    let userId: string | null = headerUid || null;
+    if (!userId && cookieRaw) {
+        userId = verifySignedUid(cookieRaw);
+        // signed-but-invalid → reject as forgery
+        if (cookieRaw.includes('.') && userId === null) {
+            return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
+        }
+    }
     if (!userId) {
         return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
     }

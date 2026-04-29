@@ -22,6 +22,7 @@ import {
 import Founding50Badge from '../../components/Founding50Badge';
 import { normalizeSessionPricing, priceFor, enabledDurations } from '../../lib/session-pricing';
 import { trainerPublicGate, GateResult } from '../../lib/trainer-gate';
+import { apiFetchJson } from '../../lib/api-fetch';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -606,25 +607,23 @@ export default function TrainerDetailScreen({ route, navigation }: any) {
         setIsBooking(true);
         try {
             const scheduledAt = new Date(`${selectedDate}T${selectedTime}:00`).toISOString();
-            const price = explicitPrice;
-            const fee = price * (platformFeePercent / 100);
-            const totalPaid = price + fee;
 
-            const { data: booking, error } = await supabase.from('bookings').insert({
-                athlete_id: user!.id,
-                trainer_id: trainerId,
-                sub_account_id: selectedSubAccount?.id || null,
-                sport: selectedSport,
-                scheduled_at: scheduledAt,
-                duration_minutes: selectedDuration,
-                price,
-                platform_fee: fee,
-                total_paid: totalPaid,
-                status: 'pending',
-                status_history: [{ status: 'pending', timestamp: new Date().toISOString() }],
-            }).select().single();
-
-            if (error) throw error;
+            // Server-authoritative booking creation — auth via x-airtrainr-uid,
+            // server recomputes price + enforces gating + double-booking check.
+            const { booking } = await apiFetchJson<{ booking: any }>(
+                '/api/booking/create',
+                {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        trainerId,
+                        sport: selectedSport,
+                        scheduledAt,
+                        durationMinutes: selectedDuration,
+                        trainingLocation: selectedSubAccount?.id ? null : null,
+                        subAccountId: selectedSubAccount?.id ?? null,
+                    }),
+                }
+            );
 
             if (booking) {
                 const bookingForLabel = selectedSubAccount

@@ -216,6 +216,26 @@ export default function AdminTrainersPage() {
 
     const handleDocsStatusUpdate = async (newStatus: "verified" | "rejected") => {
         if (!docsModal.trainerId) return;
+
+        // Block verify when profile is incomplete
+        if (newStatus === "verified") {
+            const { data: user } = await supabase
+                .from("users")
+                .select("first_name, last_name, phone, date_of_birth, avatar_url")
+                .eq("id", docsModal.trainerId)
+                .maybeSingle();
+            const { data: profile } = await supabase
+                .from("trainer_profiles")
+                .select("bio, sports, city, years_experience, session_pricing, training_locations")
+                .eq("user_id", docsModal.trainerId)
+                .maybeSingle();
+            const completeness = computeTrainerCompleteness(user, profile);
+            if (!completeness.complete) {
+                alert(`Profile incomplete: ${completeness.missing.join(", ")}`);
+                return;
+            }
+        }
+
         setDocsActionLoading(true);
         try {
             const { error: profErr } = await supabase
@@ -223,6 +243,12 @@ export default function AdminTrainersPage() {
                 .update({ verification_status: newStatus, is_verified: newStatus === "verified" })
                 .eq("user_id", docsModal.trainerId);
             if (profErr) throw profErr;
+            // Keep users.is_approved aligned with verification state
+            const { error: userErr } = await supabase
+                .from("users")
+                .update({ is_approved: newStatus === "verified" })
+                .eq("id", docsModal.trainerId);
+            if (userErr) console.error("users.is_approved update failed:", userErr);
 
             const notification = newStatus === "verified"
                 ? {
@@ -267,12 +293,13 @@ export default function AdminTrainersPage() {
     const toggleFounding50 = async (id: string, current: boolean) => {
         setFounding50Loading(id);
         try {
-            const { error } = await supabase.from("trainer_profiles").update({
-                is_founding_50: !current,
-                founding_50_granted_at: !current ? new Date().toISOString() : null,
-                ...((!current) ? { subscription_status: "active", subscription_expires_at: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString() } : {})
-            }).eq("user_id", id);
-            if (error) throw error;
+            const res = await adminFetch('/api/admin/founding-50', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ trainerUserId: id, action: current ? 'revoke' : 'grant' })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data?.error || 'Founding 50 action failed');
             await loadTrainers();
         } catch (err: any) {
             console.error(err);
@@ -290,6 +317,26 @@ export default function AdminTrainersPage() {
         const { id, newStatus } = confirmModal;
         if (!id || !newStatus) return;
 
+        // Block verify when profile is incomplete — fetch fresh user + profile and re-check
+        if (newStatus === "verified") {
+            const { data: user } = await supabase
+                .from("users")
+                .select("first_name, last_name, phone, date_of_birth, avatar_url")
+                .eq("id", id)
+                .maybeSingle();
+            const { data: profile } = await supabase
+                .from("trainer_profiles")
+                .select("bio, sports, city, years_experience, session_pricing, training_locations")
+                .eq("user_id", id)
+                .maybeSingle();
+            const completeness = computeTrainerCompleteness(user, profile);
+            if (!completeness.complete) {
+                setConfirmModal({ isOpen: false, id: null, newStatus: null, name: "" });
+                alert(`Profile incomplete: ${completeness.missing.join(", ")}`);
+                return;
+            }
+        }
+
         setActionLoading(true);
         try {
             // Keep verification_status and is_verified in sync — search/discovery uses is_verified
@@ -298,6 +345,11 @@ export default function AdminTrainersPage() {
                 is_verified: newStatus === "verified",
             }).eq("user_id", id);
             if (error) throw error;
+            // Also flip users.is_approved so other branches (search, dashboards) stay consistent
+            const { error: userErr } = await supabase.from("users").update({
+                is_approved: newStatus === "verified",
+            }).eq("id", id);
+            if (userErr) console.error("users.is_approved update failed:", userErr);
             setTrainers(prev => prev.map(t => {
                 if (t.id === id) {
                     const isVerified = newStatus === "verified";
@@ -473,8 +525,8 @@ export default function AdminTrainersPage() {
             </div>
 
             {/* Table */}
-            <div className="bg-gradient-to-b from-surface to-surface/50 border border-white/5 rounded-[24px] overflow-hidden shadow-2xl">
-                <div className="overflow-x-auto">
+            <div className="bg-gradient-to-b from-surface to-surface/50 border border-white/5 rounded-[24px] shadow-2xl">
+                <div className="overflow-x-auto admin-table-scroll" style={{ scrollbarColor: 'rgba(255,255,255,0.2) transparent', scrollbarWidth: 'thin' }}>
                     <table className="w-full text-left border-collapse whitespace-nowrap">
                         <thead>
                             <tr className="border-b border-white/5 text-[10px] uppercase font-black tracking-widest text-text-main/40 bg-white/5">

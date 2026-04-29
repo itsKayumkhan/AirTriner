@@ -5,9 +5,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
+import { requireSessionUser } from '@/lib/session-auth';
 
 export async function POST(req: NextRequest) {
     try {
+        const auth = await requireSessionUser(req);
+        if ('error' in auth) return auth.error;
+
         if (!process.env.STRIPE_SECRET_KEY) {
             return NextResponse.json({ error: 'Stripe not configured' }, { status: 500 });
         }
@@ -34,12 +38,20 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Payment not completed yet', status: session.payment_status }, { status: 400 });
         }
 
-        const userId = session.metadata?.userId;
+        const sessionUserId = session.metadata?.userId;
         const plan = session.metadata?.plan;
 
-        if (!userId) {
+        if (!sessionUserId) {
             return NextResponse.json({ error: 'No userId in session metadata' }, { status: 400 });
         }
+
+        // Ownership check: caller must own the Stripe session
+        if (sessionUserId !== auth.user.id) {
+            return NextResponse.json({ error: 'Subscription ownership mismatch' }, { status: 403 });
+        }
+
+        // Trust the authenticated caller, not the response body / metadata
+        const userId = auth.user.id;
 
         // Check current status — if already active, don't overwrite
         const { data: profile } = await supabaseAdmin

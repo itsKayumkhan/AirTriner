@@ -6,7 +6,7 @@ Tick each item once you've reproduced or confirmed it. One line per bug.
 
 ## P0 — Money / Security (test these first)
 
-- [ ] **Refund without owning the booking**
+- [] **Refund without owning the booking**
   How to test: log in as any athlete → DevTools console → run
   `fetch('/api/stripe/refund-booking',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({bookingId:'<any-other-paid-booking-id>',cancelledBy:'athlete'})}).then(r=>r.json()).then(console.log)`.
   Expected (broken): 200 OK, refund issued.
