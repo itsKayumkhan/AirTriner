@@ -9,7 +9,6 @@ export const Config = {
   supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL || extra.supabaseUrl || '',
   supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || extra.supabaseAnonKey || '',
   stripePublishableKey: process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY || extra.stripePublishableKey || '',
-  apiUrl: process.env.EXPO_PUBLIC_API_URL || extra.apiUrl || 'http://localhost:4000/api/v1',
   appUrl: process.env.EXPO_PUBLIC_APP_URL || extra.appUrl || 'http://localhost:3000',
 };
 

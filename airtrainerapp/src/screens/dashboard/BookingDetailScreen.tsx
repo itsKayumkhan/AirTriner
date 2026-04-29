@@ -457,7 +457,7 @@ export default function BookingDetailScreen({ route, navigation }: any) {
         if (!booking || !user) return;
         setIsPaymentLoading(true);
         try {
-            const apiUrl = Config.appUrl || Config.apiUrl?.replace('/api/v1', '');
+            const apiUrl = Config.appUrl;
             if (!apiUrl) {
                 throw new Error('Payment service is not configured. Please try again later.');
             }

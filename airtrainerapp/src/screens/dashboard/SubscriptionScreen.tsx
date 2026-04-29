@@ -16,8 +16,7 @@ import { supabase } from '../../lib/supabase';
 import { apiFetchJson } from '../../lib/api-fetch';
 import { Colors, Spacing, BorderRadius, FontSize, FontWeight, Shadows } from '../../theme';
 import { ScreenWrapper, ScreenHeader, Card, Badge, LoadingScreen, Button, SectionHeader, ListItem } from '../../components/ui';
-
-const API_URL = 'https://api.airtrainr.com/api/v1';
+import { Config } from '../../lib/config';
 
 type SubscriptionStatus = 'trial' | 'active' | 'expired' | 'cancelled';
 
@@ -143,10 +142,10 @@ export default function SubscriptionScreen({ navigation }: any) {
     const handleSubscribe = async (plan: 'monthly' | 'annual') => {
         setSubscribing(true);
         try {
-            const response = await fetch(`${API_URL}/payments/trainer/subscription`, {
+            const response = await fetch(`${Config.appUrl}/api/stripe/create-checkout`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ plan, trainerId: user?.id }),
+                body: JSON.stringify({ plan, email: user?.email, trainerProfileId: user?.id }),
             });
 
             if (response.ok) {

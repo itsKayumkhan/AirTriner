@@ -375,7 +375,7 @@ export default function NotificationsScreen({ navigation }: any) {
                 .single();
 
             // 2. Call web API to create Stripe checkout session
-            const apiUrl = Config.appUrl || Config.apiUrl?.replace('/api/v1', '');
+            const apiUrl = Config.appUrl;
             if (!apiUrl) {
                 throw new Error('App URL not configured');
             }

@@ -2,9 +2,8 @@
 // Sends the authenticated user id via x-airtrainr-uid header so the
 // hardened server routes can identify the caller without trusting body fields.
 //
-// Important: server routes live under apps/web (Next.js). The mobile app must
-// hit those same routes via Config.appUrl (the web origin), NOT Config.apiUrl
-// which points at a separate v1 service.
+// Important: server routes live under apps/web (Next.js). The mobile app
+// hits those routes via Config.appUrl (the web origin).
 
 import { Config } from './config';
 import { supabase } from './supabase';
