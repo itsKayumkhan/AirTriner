@@ -801,10 +801,10 @@ export default function SearchTrainersPage() {
                         <div className="p-4 flex flex-col gap-3">
                             {/* Name */}
                             <div className="flex items-center gap-1.5 min-w-0">
-                                <h3 className="text-base font-bold text-white leading-tight truncate">
+                                <h3 className="flex-1 min-w-0 text-base font-bold text-white leading-tight truncate">
                                     {trainer.user?.first_name} {trainer.user?.last_name}
                                 </h3>
-                                {trainer.is_founding_50 && <FoundingBadgeTooltip size={18} />}
+                                {trainer.is_founding_50 && <span className="shrink-0"><FoundingBadgeTooltip size={18} /></span>}
                                 {radiusCenterLat !== null && radiusCenterLng !== null && trainer.latitude && trainer.longitude && (() => {
                                     const miles = calculateDistance(radiusCenterLat, radiusCenterLng, trainer.latitude, trainer.longitude);
                                     if (miles >= 9999) return null;
