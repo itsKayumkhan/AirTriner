@@ -1,24 +1,65 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { getSession, AuthUser } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { Send, Users, Plus, X, Clock, MapPin, DollarSign, Star, ChevronRight, Filter, Search, Calendar, MessageSquare, Zap, Award, PartyPopper, Lock, Crown, Trash2, Repeat } from "lucide-react";
 import { toast } from "@/components/ui/Toast";
 import { formatSportName } from "@/lib/format";
+import { detectCountry, radiusUnit, miToKm } from "@/lib/units";
+
+const SPORTS = [
+    "Hockey", "Baseball", "Basketball", "Football", "Soccer",
+    "Tennis", "Golf", "Swimming", "Boxing", "Lacrosse",
+    "Wrestling", "Martial Arts", "Gymnastics", "Track & Field", "Volleyball",
+];
+
+const SKILL_LEVELS = [
+    { value: "any", label: "Any Skill Level" },
+    { value: "beginner", label: "Beginner" },
+    { value: "intermediate", label: "Intermediate" },
+    { value: "advanced", label: "Advanced" },
+    { value: "pro", label: "Pro" },
+];
+
+const DEFAULT_RADIUS = 25;
+const MAX_RADIUS = 100;
+
+// Haversine distance in miles
+const distanceMiles = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+    const R = 3958.8;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
+const calcAge = (dob: string | null | undefined): number | null => {
+    if (!dob) return null;
+    const d = new Date(dob);
+    if (isNaN(d.getTime())) return null;
+    return Math.floor((Date.now() - d.getTime()) / (1000 * 60 * 60 * 24 * 365.25));
+};
 
 interface Athlete {
     id: string;
     first_name: string;
     last_name: string;
     avatar_url: string | null;
+    date_of_birth: string | null;
     athlete_profile: {
         sports: string[];
         skill_level: string;
         address_line1: string | null;
         city: string | null;
         state: string | null;
+        zip_code: string | null;
+        latitude: number | null;
+        longitude: number | null;
     } | null;
 }
 
@@ -48,6 +89,15 @@ export default function TrainingOffersPage() {
     const [searchTerm, setSearchTerm] = useState("");
     const [sending, setSending] = useState(false);
     const [tab, setTab] = useState<"athletes" | "sent">("athletes");
+
+    // Filters
+    const [sportFilter, setSportFilter] = useState<string>("all");
+    const [locationFilter, setLocationFilter] = useState<string>("");
+    const [radiusValue, setRadiusValue] = useState<number>(DEFAULT_RADIUS);
+    const [radiusEnabled, setRadiusEnabled] = useState<boolean>(false);
+    const [skillFilter, setSkillFilter] = useState<string>("any");
+    const [ageMin, setAgeMin] = useState<string>("");
+    const [ageMax, setAgeMax] = useState<string>("");
 
     // Cancel Modal State
     const [offerToCancel, setOfferToCancel] = useState<string | null>(null);
@@ -123,7 +173,7 @@ export default function TrainingOffersPage() {
             // Load athletes
             const { data: athleteData } = await supabase
                 .from("users")
-                .select("id, first_name, last_name, avatar_url, athlete_profiles(sports, skill_level, address_line1, city, state)")
+                .select("id, first_name, last_name, avatar_url, date_of_birth, athlete_profiles(sports, skill_level, address_line1, city, state, zip_code, latitude, longitude)")
                 .eq("role", "athlete")
                 .limit(50);
 
@@ -133,6 +183,7 @@ export default function TrainingOffersPage() {
                     first_name: a.first_name as string,
                     last_name: a.last_name as string,
                     avatar_url: a.avatar_url as string | null,
+                    date_of_birth: (a.date_of_birth as string | null) ?? null,
                     athlete_profile: a.athlete_profiles
                         ? (Array.isArray(a.athlete_profiles) ? a.athlete_profiles[0] : a.athlete_profiles) as Athlete['athlete_profile']
                         : null,
@@ -362,13 +413,84 @@ export default function TrainingOffersPage() {
         }
     };
 
-    const filteredAthletes = athletes.filter(a => {
+    // Trainer's location (used as radius search center) + unit detection
+    const trainerZip = user?.trainerProfile?.zip_code || "";
+    const trainerCountry = trainerZip ? detectCountry(trainerZip) : ("US" as const);
+    const unit = radiusUnit(trainerCountry);
+    const trainerLat = user?.trainerProfile?.latitude ?? null;
+    const trainerLng = user?.trainerProfile?.longitude ?? null;
+    const hasTrainerCoords = trainerLat !== null && trainerLng !== null;
+
+    const ageMinNum = ageMin.trim() === "" ? null : parseInt(ageMin, 10);
+    const ageMaxNum = ageMax.trim() === "" ? null : parseInt(ageMax, 10);
+
+    // Convert radius input to miles for haversine comparison
+    const radiusInMiles = unit === "km" ? radiusValue / 1.60934 : radiusValue;
+
+    const filteredAthletes = useMemo(() => athletes.filter(a => {
         const name = `${a.first_name} ${a.last_name}`.toLowerCase();
-        const sports = a.athlete_profile?.sports?.join(" ").toLowerCase() || "";
-        const location = `${a.athlete_profile?.city || ""} ${a.athlete_profile?.state || ""}`.toLowerCase();
+        const sportsArr = a.athlete_profile?.sports || [];
+        const sportsJoined = sportsArr.join(" ").toLowerCase();
+        const locationStr = `${a.athlete_profile?.city || ""} ${a.athlete_profile?.state || ""} ${a.athlete_profile?.zip_code || ""}`.toLowerCase();
         const query = searchTerm.toLowerCase();
-        return name.includes(query) || sports.includes(query) || location.includes(query);
-    });
+
+        if (query && !(name.includes(query) || sportsJoined.includes(query) || locationStr.includes(query))) return false;
+
+        // Sport filter — match against athlete's sports array (case-insensitive)
+        if (sportFilter !== "all") {
+            const wanted = sportFilter.toLowerCase();
+            const has = sportsArr.some(s => s.toLowerCase() === wanted || s.toLowerCase().replace(/[_-]/g, " ") === wanted);
+            if (!has) return false;
+        }
+
+        // Skill filter
+        if (skillFilter !== "any") {
+            if ((a.athlete_profile?.skill_level || "").toLowerCase() !== skillFilter) return false;
+        }
+
+        // Age filter — exclude athletes with no DOB when an age bound is active
+        if (ageMinNum !== null || ageMaxNum !== null) {
+            const age = calcAge(a.date_of_birth);
+            if (age === null) return false;
+            if (ageMinNum !== null && age < ageMinNum) return false;
+            if (ageMaxNum !== null && age > ageMaxNum) return false;
+        }
+
+        // Location filter
+        if (radiusEnabled) {
+            // Need trainer coords + athlete coords for radius search
+            if (!hasTrainerCoords) return false;
+            const lat = a.athlete_profile?.latitude;
+            const lng = a.athlete_profile?.longitude;
+            if (lat == null || lng == null) return false;
+            const dist = distanceMiles(trainerLat as number, trainerLng as number, lat, lng);
+            if (dist > radiusInMiles) return false;
+        } else if (locationFilter.trim()) {
+            const loc = locationFilter.trim().toLowerCase();
+            if (!locationStr.includes(loc)) return false;
+        }
+
+        return true;
+    }), [athletes, searchTerm, sportFilter, skillFilter, ageMinNum, ageMaxNum, radiusEnabled, radiusInMiles, hasTrainerCoords, trainerLat, trainerLng, locationFilter]);
+
+    const activeFiltersCount = [
+        sportFilter !== "all",
+        skillFilter !== "any",
+        ageMin.trim() !== "",
+        ageMax.trim() !== "",
+        radiusEnabled,
+        !radiusEnabled && locationFilter.trim() !== "",
+    ].filter(Boolean).length;
+
+    const clearFilters = () => {
+        setSportFilter("all");
+        setSkillFilter("any");
+        setAgeMin("");
+        setAgeMax("");
+        setLocationFilter("");
+        setRadiusEnabled(false);
+        setRadiusValue(DEFAULT_RADIUS);
+    };
 
     if (loading) {
         return (
@@ -448,7 +570,7 @@ export default function TrainingOffersPage() {
             {tab === "athletes" && (
                 <div>
                     {/* Search */}
-                    <div className="relative mb-8">
+                    <div className="relative mb-4">
                         <Search size={18} className="absolute left-5 top-1/2 -translate-y-1/2 text-text-main/40" />
                         <input
                             type="text"
@@ -458,6 +580,136 @@ export default function TrainingOffersPage() {
                             className="w-full bg-[#1A1C23] border border-white/5 rounded-[20px] pl-12 pr-5 py-4 text-white text-sm outline-none focus:border-primary/50 transition-colors shadow-md"
                         />
                     </div>
+
+                    {/* Filter Bar */}
+                    <div className="bg-[#1A1C23] border border-white/5 rounded-[20px] p-4 sm:p-5 mb-4 shadow-md">
+                        <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-2 text-text-main/60 text-xs font-bold uppercase tracking-[0.15em]">
+                                <Filter size={13} /> Filters
+                                {activeFiltersCount > 0 && (
+                                    <span className="ml-1 inline-flex items-center justify-center w-5 h-5 rounded-full bg-primary/20 text-primary text-[10px] font-black">{activeFiltersCount}</span>
+                                )}
+                            </div>
+                            {activeFiltersCount > 0 && (
+                                <button
+                                    onClick={clearFilters}
+                                    className="text-[11px] font-bold text-text-main/50 hover:text-red-400 transition-colors uppercase tracking-wider"
+                                >
+                                    Clear filters
+                                </button>
+                            )}
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                            {/* Sport */}
+                            <div>
+                                <label className="block text-[10px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-1.5">Sport</label>
+                                <select
+                                    value={sportFilter}
+                                    onChange={(e) => setSportFilter(e.target.value)}
+                                    className="w-full bg-[#12141A] border border-white/5 rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-primary/50 transition-colors appearance-none"
+                                    style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center' }}
+                                >
+                                    <option value="all">All Sports</option>
+                                    {SPORTS.map(s => (
+                                        <option key={s} value={s}>{s}</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            {/* Skill */}
+                            <div>
+                                <label className="block text-[10px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-1.5">Skill Level</label>
+                                <select
+                                    value={skillFilter}
+                                    onChange={(e) => setSkillFilter(e.target.value)}
+                                    className="w-full bg-[#12141A] border border-white/5 rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-primary/50 transition-colors appearance-none"
+                                    style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center' }}
+                                >
+                                    {SKILL_LEVELS.map(s => (
+                                        <option key={s.value} value={s.value}>{s.label}</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            {/* Age range */}
+                            <div>
+                                <label className="block text-[10px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-1.5">Age Range</label>
+                                <div className="flex items-center gap-2">
+                                    <input
+                                        type="number"
+                                        min={0}
+                                        max={120}
+                                        value={ageMin}
+                                        onChange={(e) => setAgeMin(e.target.value)}
+                                        placeholder="Min"
+                                        className="w-full bg-[#12141A] border border-white/5 rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-primary/50 transition-colors placeholder:text-text-main/30"
+                                    />
+                                    <span className="text-text-main/30 text-xs">to</span>
+                                    <input
+                                        type="number"
+                                        min={0}
+                                        max={120}
+                                        value={ageMax}
+                                        onChange={(e) => setAgeMax(e.target.value)}
+                                        placeholder="Max"
+                                        className="w-full bg-[#12141A] border border-white/5 rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-primary/50 transition-colors placeholder:text-text-main/30"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Location */}
+                            <div>
+                                <label className="block text-[10px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-1.5">
+                                    Location
+                                    {radiusEnabled && !hasTrainerCoords && (
+                                        <span className="text-amber-400/80 normal-case tracking-normal ml-1">(set your address in profile)</span>
+                                    )}
+                                </label>
+                                <div className="flex items-center gap-2">
+                                    <div className="relative flex-1">
+                                        <MapPin size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-main/30 pointer-events-none" />
+                                        <input
+                                            type="text"
+                                            value={locationFilter}
+                                            onChange={(e) => setLocationFilter(e.target.value)}
+                                            placeholder={radiusEnabled ? "Using your location" : "City, state, or zip"}
+                                            disabled={radiusEnabled}
+                                            className="w-full bg-[#12141A] border border-white/5 rounded-xl pl-7 pr-3 py-2.5 text-white text-sm outline-none focus:border-primary/50 transition-colors placeholder:text-text-main/30 disabled:opacity-50"
+                                        />
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2 mt-2">
+                                    <label className="flex items-center gap-1.5 text-[11px] text-text-main/60 font-bold cursor-pointer select-none">
+                                        <input
+                                            type="checkbox"
+                                            checked={radiusEnabled}
+                                            onChange={(e) => setRadiusEnabled(e.target.checked)}
+                                            className="accent-primary"
+                                        />
+                                        Radius
+                                    </label>
+                                    <input
+                                        type="range"
+                                        min={1}
+                                        max={MAX_RADIUS}
+                                        value={radiusValue}
+                                        onChange={(e) => setRadiusValue(parseInt(e.target.value, 10))}
+                                        disabled={!radiusEnabled}
+                                        className="flex-1 accent-primary disabled:opacity-40"
+                                    />
+                                    <span className={`text-[11px] font-bold tabular-nums ${radiusEnabled ? "text-primary" : "text-text-main/40"}`}>
+                                        {radiusValue} {unit}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Result count */}
+                    <p className="text-text-main/40 text-xs font-medium mb-4">
+                        Showing <span className="text-white font-bold">{filteredAthletes.length}</span> of {athletes.length} athletes
+                    </p>
 
                     {/* Athletes Grid */}
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
