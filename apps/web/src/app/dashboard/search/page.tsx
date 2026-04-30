@@ -740,29 +740,29 @@ export default function SearchTrainersPage() {
             )}
 
             {/* Trainer Grid */}
-            {viewMode === "list" && (<><div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {viewMode === "list" && (<><div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-stretch">
                 {paginatedTrainers.map((trainer) => (
                     <div
                         key={trainer.id}
                         onClick={() => router.push(`/dashboard/trainers/${trainer.id}`)}
-                        className="bg-[#13151b] border border-white/[0.06] rounded-2xl overflow-hidden group hover:border-primary/30 hover:shadow-[0_4px_20px_rgba(69,208,255,0.06)] transition-all duration-300 cursor-pointer"
+                        className="bg-[#13151b] border border-white/[0.06] rounded-2xl group hover:border-primary/30 hover:shadow-[0_4px_20px_rgba(69,208,255,0.06)] transition-all duration-300 cursor-pointer flex flex-col"
                     >
                         {/* Image area */}
-                        <div className="h-[200px] relative overflow-hidden bg-[#0d0f14]">
+                        <div className="h-[200px] relative overflow-hidden bg-[#0d0f14] rounded-t-2xl">
                             <div
                                 className="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-105"
                                 style={{ backgroundImage: `url(${trainer.cover_image})` }}
                             />
                             <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/10" />
 
-                            {/* Status badge — top left */}
+                            {/* Status badge — top left (with strong dark backdrop for light bgs) */}
                             <div className="absolute top-3 left-3">
                                 {trainer.is_performance_verified ? (
-                                    <span className="bg-primary text-bg text-[10px] font-black px-2.5 py-1 rounded-lg uppercase tracking-wider shadow-lg">Verified</span>
+                                    <span className="bg-primary text-bg text-[10px] font-black px-2.5 py-1 rounded-lg uppercase tracking-wider shadow-[0_2px_8px_rgba(0,0,0,0.6)]">Verified</span>
                                 ) : trainer.total_sessions > 0 ? (
-                                    <span className="bg-blue-500 text-white text-[10px] font-black px-2.5 py-1 rounded-lg uppercase tracking-wider shadow-lg">Pro</span>
+                                    <span className="bg-blue-500 text-white text-[10px] font-black px-2.5 py-1 rounded-lg uppercase tracking-wider shadow-[0_2px_8px_rgba(0,0,0,0.6)]">Pro</span>
                                 ) : (
-                                    <span className="bg-white/20 backdrop-blur text-white text-[10px] font-black px-2.5 py-1 rounded-lg uppercase tracking-wider shadow-lg">New</span>
+                                    <span className="bg-black/70 backdrop-blur-sm text-white text-[10px] font-black px-2.5 py-1 rounded-lg uppercase tracking-wider shadow-[0_2px_8px_rgba(0,0,0,0.6)] border border-white/20">New</span>
                                 )}
                             </div>
 
@@ -774,10 +774,10 @@ export default function SearchTrainersPage() {
                                     const minPrice = minEnabledPrice(pricing) ?? Number(trainer.hourly_rate);
                                     const multiple = enabled.length > 1;
                                     return (
-                                        <div className="bg-primary/20 backdrop-blur-sm px-3 py-1.5 rounded-xl border border-primary/50 shadow-[0_0_12px_rgba(69,208,255,0.3)]">
-                                            {multiple && <span className="text-primary/70 text-[10px] font-bold mr-1">from</span>}
+                                        <div className="bg-black/70 backdrop-blur-md px-3 py-1.5 rounded-xl border border-primary/60 shadow-[0_2px_12px_rgba(0,0,0,0.6),0_0_12px_rgba(69,208,255,0.25)]">
+                                            {multiple && <span className="text-primary/80 text-[10px] font-bold mr-1">from</span>}
                                             <span className="text-primary font-black text-xl leading-none">${Number(minPrice).toFixed(0)}</span>
-                                            {!multiple && <span className="text-primary/60 text-[11px] font-bold">/1hr</span>}
+                                            {!multiple && <span className="text-primary/70 text-[11px] font-bold">/1hr</span>}
                                         </div>
                                     );
                                 })()}
@@ -798,7 +798,7 @@ export default function SearchTrainersPage() {
                         </div>
 
                         {/* Info area */}
-                        <div className="p-4 flex flex-col gap-3">
+                        <div className="p-4 flex flex-col gap-3 flex-1">
                             {/* Name */}
                             <div className="flex items-center gap-1.5 min-w-0">
                                 <h3 className="flex-1 min-w-0 text-base font-bold text-white leading-tight truncate">
@@ -838,10 +838,10 @@ export default function SearchTrainersPage() {
                                 </div>
                             )}
 
-                            {/* Button */}
+                            {/* Button — pushed to bottom of card via mt-auto */}
                             <button
                                 onClick={(e) => { e.stopPropagation(); router.push(`/dashboard/trainers/${trainer.id}`); }}
-                                className="w-full bg-gradient-to-r from-primary to-[#0090d4] text-bg font-black text-sm px-4 py-3 rounded-2xl flex items-center justify-center gap-2 hover:opacity-90 transition-opacity shadow-[0_4px_15px_rgba(69,208,255,0.25)]"
+                                className="mt-auto w-full bg-gradient-to-r from-primary to-[#0090d4] text-bg font-black text-sm px-4 py-3 rounded-2xl flex items-center justify-center gap-2 hover:opacity-90 transition-opacity shadow-[0_4px_15px_rgba(69,208,255,0.25)]"
                             >
                                 View Profile <ArrowRight size={14} strokeWidth={3} />
                             </button>
