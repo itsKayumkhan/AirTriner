@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, Fragment } from "react";
-import { Mail, MailOpen, Trash2, Loader2, Search, X, Check, CheckCheck, ChevronDown, ChevronRight, Copy } from "lucide-react";
+import { Mail, MailOpen, Trash2, Loader2, Search, X, Check, CheckCheck, ChevronDown, ChevronRight, Copy, Reply } from "lucide-react";
 
 type DropdownOption = { value: string; label: string };
 
@@ -409,6 +409,16 @@ export default function AdminContactsPage() {
                                             </td>
                                             <td className="px-3 py-3 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                                                 <div className="inline-flex items-center gap-2">
+                                                    {msg.email && (
+                                                        <a
+                                                            href={`mailto:${msg.email}?subject=${encodeURIComponent("Re: " + (msg.subject || "AirTrainr Contact"))}`}
+                                                            aria-label="Reply via email"
+                                                            title="Reply via email"
+                                                            className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-white/5 text-text-main/60 hover:bg-white/10 hover:text-text-main transition-colors"
+                                                        >
+                                                            <Reply size={12} />
+                                                        </a>
+                                                    )}
                                                     <button
                                                         onClick={() => handleMarkRead(msg.id, isUnread)}
                                                         disabled={markingId === msg.id}
