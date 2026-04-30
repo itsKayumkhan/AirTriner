@@ -99,6 +99,13 @@ export default function TrainingOffersPage() {
     const [ageMin, setAgeMin] = useState<string>("");
     const [ageMax, setAgeMax] = useState<string>("");
 
+    // Sent Offers tab filters
+    const [sentSportFilter, setSentSportFilter] = useState<string>("all");
+    const [sentStatusFilter, setSentStatusFilter] = useState<string>("all");
+    const [sentDateFrom, setSentDateFrom] = useState<string>("");
+    const [sentDateTo, setSentDateTo] = useState<string>("");
+    const [sentSearchTerm, setSentSearchTerm] = useState<string>("");
+
     // Cancel Modal State
     const [offerToCancel, setOfferToCancel] = useState<string | null>(null);
     const [isCanceling, setIsCanceling] = useState(false);
@@ -492,6 +499,51 @@ export default function TrainingOffersPage() {
         setRadiusValue(DEFAULT_RADIUS);
     };
 
+    const filteredSentOffers = useMemo(() => offers.filter(o => {
+        if (sentSearchTerm.trim()) {
+            const q = sentSearchTerm.trim().toLowerCase();
+            if (!(o.athlete_name || "").toLowerCase().includes(q)) return false;
+        }
+        if (sentSportFilter !== "all") {
+            const wanted = sentSportFilter.toLowerCase();
+            const offerSport = (o.sport || "").toLowerCase();
+            if (!(offerSport === wanted || offerSport.replace(/[_-]/g, " ") === wanted || wanted.replace(/[_-]/g, " ") === offerSport)) return false;
+        }
+        if (sentStatusFilter !== "all") {
+            if ((o.status || "").toLowerCase() !== sentStatusFilter) return false;
+        }
+        if (sentDateFrom || sentDateTo) {
+            const created = o.created_at ? new Date(o.created_at) : null;
+            if (!created || isNaN(created.getTime())) return false;
+            if (sentDateFrom) {
+                const from = new Date(sentDateFrom);
+                if (created < from) return false;
+            }
+            if (sentDateTo) {
+                const to = new Date(sentDateTo);
+                to.setHours(23, 59, 59, 999);
+                if (created > to) return false;
+            }
+        }
+        return true;
+    }), [offers, sentSearchTerm, sentSportFilter, sentStatusFilter, sentDateFrom, sentDateTo]);
+
+    const sentActiveFiltersCount = [
+        sentSportFilter !== "all",
+        sentStatusFilter !== "all",
+        sentDateFrom !== "",
+        sentDateTo !== "",
+        sentSearchTerm.trim() !== "",
+    ].filter(Boolean).length;
+
+    const clearSentFilters = () => {
+        setSentSportFilter("all");
+        setSentStatusFilter("all");
+        setSentDateFrom("");
+        setSentDateTo("");
+        setSentSearchTerm("");
+    };
+
     if (loading) {
         return (
             <div className="flex justify-center items-center h-full min-h-[50vh]">
@@ -780,14 +832,118 @@ export default function TrainingOffersPage() {
             {/* Sent Offers Tab */}
             {tab === "sent" && (
                 <div className="flex flex-col gap-4">
+                    {offers.length > 0 && (
+                        <>
+                            {/* Search */}
+                            <div className="relative">
+                                <Search size={18} className="absolute left-5 top-1/2 -translate-y-1/2 text-text-main/40" />
+                                <input
+                                    type="text"
+                                    value={sentSearchTerm}
+                                    onChange={(e) => setSentSearchTerm(e.target.value)}
+                                    placeholder="Search by athlete name..."
+                                    className="w-full bg-[#1A1C23] border border-white/5 rounded-[20px] pl-12 pr-5 py-4 text-white text-sm outline-none focus:border-primary/50 transition-colors shadow-md"
+                                />
+                            </div>
+
+                            {/* Filter Bar */}
+                            <div className="bg-[#1A1C23] border border-white/5 rounded-[20px] p-4 sm:p-5 shadow-md">
+                                <div className="flex items-center justify-between mb-3">
+                                    <div className="flex items-center gap-2 text-text-main/60 text-xs font-bold uppercase tracking-[0.15em]">
+                                        <Filter size={13} /> Filters
+                                        {sentActiveFiltersCount > 0 && (
+                                            <span className="ml-1 inline-flex items-center justify-center w-5 h-5 rounded-full bg-primary/20 text-primary text-[10px] font-black">{sentActiveFiltersCount}</span>
+                                        )}
+                                    </div>
+                                    {sentActiveFiltersCount > 0 && (
+                                        <button
+                                            onClick={clearSentFilters}
+                                            className="text-[11px] font-bold text-text-main/50 hover:text-red-400 transition-colors uppercase tracking-wider"
+                                        >
+                                            Clear filters
+                                        </button>
+                                    )}
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                                    {/* Sport */}
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-1.5">Sport</label>
+                                        <select
+                                            value={sentSportFilter}
+                                            onChange={(e) => setSentSportFilter(e.target.value)}
+                                            className="w-full bg-[#12141A] border border-white/5 rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-primary/50 transition-colors appearance-none"
+                                            style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center' }}
+                                        >
+                                            <option value="all">All Sports</option>
+                                            {SPORTS.map(s => (
+                                                <option key={s} value={s}>{s}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    {/* Status */}
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-1.5">Status</label>
+                                        <select
+                                            value={sentStatusFilter}
+                                            onChange={(e) => setSentStatusFilter(e.target.value)}
+                                            className="w-full bg-[#12141A] border border-white/5 rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-primary/50 transition-colors appearance-none"
+                                            style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center' }}
+                                        >
+                                            <option value="all">All Statuses</option>
+                                            <option value="pending">Pending</option>
+                                            <option value="accepted">Accepted</option>
+                                            <option value="declined">Declined</option>
+                                            <option value="expired">Expired</option>
+                                        </select>
+                                    </div>
+
+                                    {/* Date From */}
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-1.5">Date From</label>
+                                        <input
+                                            type="date"
+                                            value={sentDateFrom}
+                                            onChange={(e) => setSentDateFrom(e.target.value)}
+                                            className="w-full bg-[#12141A] border border-white/5 rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-primary/50 transition-colors"
+                                        />
+                                    </div>
+
+                                    {/* Date To */}
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-text-main/50 uppercase tracking-[0.15em] mb-1.5">Date To</label>
+                                        <input
+                                            type="date"
+                                            value={sentDateTo}
+                                            onChange={(e) => setSentDateTo(e.target.value)}
+                                            className="w-full bg-[#12141A] border border-white/5 rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-primary/50 transition-colors"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Result count */}
+                            <p className="text-text-main/40 text-xs font-medium">
+                                Showing <span className="text-white font-bold">{filteredSentOffers.length}</span> of {offers.length} offers
+                            </p>
+                        </>
+                    )}
+
                     {offers.length === 0 ? (
                         <div className="text-center py-16 bg-[#1A1C23] border border-white/5 rounded-[20px] shadow-md">
                             <Send size={48} className="mx-auto mb-4 text-text-main/20" />
                             <p className="text-white font-bold text-lg mb-1">No offers sent yet</p>
                             <p className="text-text-main/50 text-sm">Browse athletes and send your first training offer!</p>
                         </div>
+                    ) : filteredSentOffers.length === 0 ? (
+                        <div className="text-center py-16 bg-[#1A1C23] border border-white/5 rounded-[20px] shadow-md">
+                            <Send size={48} className="mx-auto mb-4 text-text-main/20" />
+                            <p className="text-white font-bold text-lg mb-1">No offers match your filters</p>
+                            <p className="text-text-main/50 text-sm">Try adjusting or clearing your filters.</p>
+                        </div>
                     ) : (
-                        offers.map((offer) => (
+                        filteredSentOffers.map((offer) => (
                             <div
                                 key={offer.id}
                                 onClick={() => openOfferDetails(offer)}
