@@ -81,12 +81,11 @@ export function FoundingBadge({ size = 28 }: { size?: number }) {
 
 export function FoundingBadgeTooltip({ size = 28 }: { size?: number }) {
     return (
-        <div className="relative group/badge inline-flex">
+        <span
+            className="relative inline-flex shrink-0 cursor-help"
+            title="Founding 50 Coach"
+        >
             <FoundingBadge size={size} />
-            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-[#1a1200] border border-yellow-500/40 rounded-lg text-[10px] font-black uppercase tracking-widest text-yellow-400 whitespace-nowrap opacity-0 group-hover/badge:opacity-100 transition-opacity pointer-events-none z-50 shadow-lg">
-                Founding 50 Coach
-                <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-yellow-500/40" />
-            </div>
-        </div>
+        </span>
     );
 }

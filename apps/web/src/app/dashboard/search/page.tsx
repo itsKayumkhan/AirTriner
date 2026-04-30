@@ -14,6 +14,7 @@ import { formatSportName } from "@/lib/format";
 import LocationAutocomplete, { type LocationValue } from "@/components/forms/LocationAutocomplete";
 import { normalizeSessionPricing, minEnabledPrice, enabledDurations } from "@/lib/session-pricing";
 import { trainerPublicGate } from "@/lib/trainer-gate";
+import { cloudinaryUrl } from "@/lib/cloudinary";
 
 const FindTrainerMap = dynamic(() => import("@/components/search/FindTrainerMap"), { ssr: false });
 
@@ -362,7 +363,7 @@ export default function SearchTrainersPage() {
                     avg_rating: rating,
                     review_count: p.total_reviews || 0,
                     matchScore: Math.min(100, matchScore),
-                    cover_image: getSportImage(p.sports, slugToImage),
+                    cover_image: usersMap.get(p.user_id)?.avatar_url || getSportImage(p.sports, slugToImage),
                     dispute_count: disputeCount,
                     is_performance_verified: isPerformanceVerified
                 };
@@ -382,7 +383,7 @@ export default function SearchTrainersPage() {
         if (Object.keys(slugToImage).length === 0) return;
         setTrainers((prev) => prev.map((t) => ({
             ...t,
-            cover_image: getSportImage(t.sports, slugToImage),
+            cover_image: t.user?.avatar_url || getSportImage(t.sports, slugToImage),
         })));
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [slugToImage]);
@@ -749,24 +750,34 @@ export default function SearchTrainersPage() {
                     >
                         {/* Image area */}
                         <div className="h-[200px] relative overflow-hidden bg-[#0d0f14] rounded-t-2xl">
-                            <div
-                                className="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-105"
-                                style={{ backgroundImage: `url(${trainer.cover_image})` }}
+                            <img
+                                src={
+                                    trainer.cover_image?.includes("res.cloudinary.com")
+                                        ? cloudinaryUrl(trainer.cover_image, "w_400,h_300,c_fill,f_auto,q_auto")
+                                        : trainer.cover_image
+                                }
+                                alt={`${trainer.user?.first_name || "Trainer"} cover`}
+                                loading="lazy"
+                                decoding="async"
+                                className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                             />
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/10" />
+                            {/* Top dark strip so NEW + price are readable on bright photos */}
+                            <div className="absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-black/70 via-black/30 to-transparent pointer-events-none" />
+                            {/* Bottom gradient for rating */}
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none" />
 
-                            {/* Status badge — top left (with strong dark backdrop for light bgs) */}
+                            {/* Status badge — top left */}
                             <div className="absolute top-3 left-3">
                                 {trainer.is_performance_verified ? (
-                                    <span className="bg-primary text-bg text-[10px] font-black px-2.5 py-1 rounded-lg uppercase tracking-wider shadow-[0_2px_8px_rgba(0,0,0,0.6)]">Verified</span>
+                                    <span className="bg-primary text-bg text-[10px] font-black px-2.5 py-1 rounded-lg uppercase tracking-wider">Verified</span>
                                 ) : trainer.total_sessions > 0 ? (
-                                    <span className="bg-blue-500 text-white text-[10px] font-black px-2.5 py-1 rounded-lg uppercase tracking-wider shadow-[0_2px_8px_rgba(0,0,0,0.6)]">Pro</span>
+                                    <span className="bg-blue-500 text-white text-[10px] font-black px-2.5 py-1 rounded-lg uppercase tracking-wider">Pro</span>
                                 ) : (
-                                    <span className="bg-black/70 backdrop-blur-sm text-white text-[10px] font-black px-2.5 py-1 rounded-lg uppercase tracking-wider shadow-[0_2px_8px_rgba(0,0,0,0.6)] border border-white/20">New</span>
+                                    <span className="bg-white/15 backdrop-blur-sm text-white text-[10px] font-black px-2.5 py-1 rounded-lg uppercase tracking-wider">New</span>
                                 )}
                             </div>
 
-                            {/* Price — top right, highlighted */}
+                            {/* Price — top right */}
                             <div className="absolute top-3 right-3">
                                 {(() => {
                                     const pricing = normalizeSessionPricing(trainer.session_pricing, trainer.hourly_rate);
@@ -774,10 +785,10 @@ export default function SearchTrainersPage() {
                                     const minPrice = minEnabledPrice(pricing) ?? Number(trainer.hourly_rate);
                                     const multiple = enabled.length > 1;
                                     return (
-                                        <div className="bg-black/70 backdrop-blur-md px-3 py-1.5 rounded-xl border border-primary/60 shadow-[0_2px_12px_rgba(0,0,0,0.6),0_0_12px_rgba(69,208,255,0.25)]">
-                                            {multiple && <span className="text-primary/80 text-[10px] font-bold mr-1">from</span>}
+                                        <div className="bg-primary/20 backdrop-blur-sm px-3 py-1.5 rounded-xl border border-primary/50 shadow-[0_0_12px_rgba(69,208,255,0.3)]">
+                                            {multiple && <span className="text-primary/70 text-[10px] font-bold mr-1">from</span>}
                                             <span className="text-primary font-black text-xl leading-none">${Number(minPrice).toFixed(0)}</span>
-                                            {!multiple && <span className="text-primary/70 text-[11px] font-bold">/1hr</span>}
+                                            {!multiple && <span className="text-primary/60 text-[11px] font-bold">/1hr</span>}
                                         </div>
                                     );
                                 })()}
@@ -799,19 +810,21 @@ export default function SearchTrainersPage() {
 
                         {/* Info area */}
                         <div className="p-4 flex flex-col gap-3 flex-1">
-                            {/* Name */}
-                            <div className="flex items-center gap-1.5 min-w-0">
-                                <h3 className="flex-1 min-w-0 text-base font-bold text-white leading-tight truncate">
-                                    {trainer.user?.first_name} {trainer.user?.last_name}
-                                </h3>
-                                {trainer.is_founding_50 && <span className="shrink-0"><FoundingBadgeTooltip size={18} /></span>}
+                            {/* Name + founding badge + distance */}
+                            <div className="flex flex-col gap-1 min-w-0">
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                    <h3 className="flex-1 min-w-0 text-base font-bold text-white leading-tight truncate">
+                                        {trainer.user?.first_name} {trainer.user?.last_name}
+                                    </h3>
+                                    {trainer.is_founding_50 && <FoundingBadgeTooltip size={18} />}
+                                </div>
                                 {radiusCenterLat !== null && radiusCenterLng !== null && trainer.latitude && trainer.longitude && (() => {
                                     const miles = calculateDistance(radiusCenterLat, radiusCenterLng, trainer.latitude, trainer.longitude);
                                     if (miles >= 9999) return null;
                                     const km = miles * 1.60934;
                                     const display = unit === "km" ? `${km.toFixed(km < 10 ? 1 : 0)} km` : `${miles.toFixed(miles < 10 ? 1 : 0)} mi`;
                                     return (
-                                        <span className="ml-auto text-[10px] font-bold text-primary/80 whitespace-nowrap">
+                                        <span className="text-[10px] font-bold text-primary/80 whitespace-nowrap">
                                             {display} away
                                         </span>
                                     );
