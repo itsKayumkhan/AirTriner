@@ -363,8 +363,8 @@ export default function AdminContactsPage() {
                 </div>
             ) : (
                 <div className="bg-surface border border-white/5 rounded-2xl overflow-hidden">
-                    <div>
-                        <table className="w-full text-sm table-fixed">
+                    <div className="overflow-x-auto admin-table-scroll" style={{ scrollbarColor: 'rgba(255,255,255,0.2) transparent', scrollbarWidth: 'thin' }}>
+                        <table className="w-full text-sm min-w-[900px]">
                             <thead>
                                 <tr className="border-b border-white/5">
                                     <th className="text-left px-3 py-4 text-text-main/40 font-bold text-xs uppercase tracking-wider w-10"></th>
@@ -412,6 +412,18 @@ export default function AdminContactsPage() {
                                                     {msg.email && (
                                                         <a
                                                             href={`mailto:${msg.email}?subject=${encodeURIComponent("Re: " + (msg.subject || "AirTrainr Contact"))}`}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                const mailto = `mailto:${msg.email}?subject=${encodeURIComponent("Re: " + (msg.subject || "AirTrainr Contact"))}`;
+                                                                const gmail = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(msg.email)}&su=${encodeURIComponent("Re: " + (msg.subject || "AirTrainr Contact"))}`;
+                                                                e.preventDefault();
+                                                                const w = window.open(mailto, "_blank");
+                                                                if (!w) {
+                                                                    window.open(gmail, "_blank");
+                                                                }
+                                                            }}
                                                             aria-label="Reply via email"
                                                             title="Reply via email"
                                                             className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-white/5 text-text-main/60 hover:bg-white/10 hover:text-text-main transition-colors"
