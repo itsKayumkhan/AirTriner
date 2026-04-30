@@ -24,6 +24,7 @@ export default function DashboardOverview() {
     const recentBookings = isTrainer ? trainerContext.recentBookings : athleteContext.recentBookings;
 
     const [requireVerification, setRequireVerification] = useState(true);
+    const [gateUser, setGateUser] = useState<any>(null);
 
     useEffect(() => {
         if (user) {
@@ -36,6 +37,17 @@ export default function DashboardOverview() {
                 });
         }
     }, [user]);
+
+    useEffect(() => {
+        if (user?.id && isTrainer) {
+            supabase
+                .from("users")
+                .select("first_name, last_name, phone, date_of_birth, avatar_url, is_suspended, deleted_at")
+                .eq("id", user.id)
+                .maybeSingle()
+                .then(({ data }) => { if (data) setGateUser(data); });
+        }
+    }, [user?.id, isTrainer]);
 
     if (loading) {
         return (
@@ -96,9 +108,9 @@ export default function DashboardOverview() {
         <div className="space-y-6 pb-10">
 
             {/* Trainer Approval / Public Visibility Panel */}
-            {isTrainer && (
+            {isTrainer && gateUser && (
                 <ApprovalStatusPanel
-                    user={user as any}
+                    user={gateUser}
                     trainerProfile={(user as any)?.trainerProfile ?? null}
                 />
             )}
