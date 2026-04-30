@@ -1,7 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
-import { CheckCircle2, XCircle, ShieldCheck, CreditCard, UserCheck, Lock, Sparkles, AlertTriangle } from "lucide-react";
+import { CheckCircle2, XCircle, ShieldCheck, CreditCard, UserCheck, Lock, Sparkles, AlertTriangle, ChevronDown } from "lucide-react";
 import { computeTrainerCompleteness } from "@/lib/profile-completeness";
 
 type Props = {
@@ -113,45 +114,37 @@ export default function ApprovalStatusPanel({ user, trainerProfile }: Props) {
     const metCount = conditions.filter((c) => c.met).length;
     const allMet = metCount === conditions.length;
     const remaining = conditions.length - metCount;
+    const [open, setOpen] = useState(!allMet && remaining > 0 ? false : false);
 
     return (
         <div className="bg-surface border border-white/[0.06] rounded-2xl overflow-hidden">
-            <div className="px-5 py-4 border-b border-white/[0.06]">
-                <h2 className="text-sm font-bold text-text-main">Public Visibility Status</h2>
-                <p className="text-xs text-text-main/40 mt-0.5">
-                    All four steps must be complete before athletes can find and book you.
-                </p>
-            </div>
+            <button
+                type="button"
+                onClick={() => setOpen((p) => !p)}
+                className="w-full text-left flex items-start gap-3 p-4 hover:bg-white/[0.02] transition-colors"
+                aria-expanded={open}
+            >
+                <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${allMet ? "bg-emerald-500/10" : "bg-amber-500/10"}`}>
+                    {allMet ? <Sparkles size={16} className="text-emerald-400" /> : <AlertTriangle size={16} className="text-amber-400" />}
+                </div>
+                <div className="flex-1 min-w-0">
+                    <p className={`text-sm font-bold ${allMet ? "text-emerald-300" : "text-amber-300"}`}>
+                        {allMet ? "You're live!" : `${remaining} of ${conditions.length} step${remaining > 1 ? "s" : ""} remaining`}
+                    </p>
+                    <p className="text-xs text-text-main/50 mt-0.5 leading-relaxed">
+                        {allMet
+                            ? "Athletes can now find and book you. Tap to review checklist."
+                            : "Your profile is hidden from athletes. Tap to see what's missing."}
+                    </p>
+                </div>
+                <ChevronDown
+                    size={18}
+                    className={`text-text-main/40 shrink-0 mt-2 transition-transform ${open ? "rotate-180" : ""}`}
+                />
+            </button>
 
-            <div className="p-5">
-                {allMet ? (
-                    <div className="flex items-start gap-3 p-4 rounded-xl bg-emerald-500/5 border border-emerald-500/20 mb-5">
-                        <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center shrink-0">
-                            <Sparkles size={15} className="text-emerald-400" />
-                        </div>
-                        <div>
-                            <p className="font-bold text-sm text-emerald-300">You&apos;re live!</p>
-                            <p className="text-text-main/50 text-xs mt-0.5 leading-relaxed">
-                                Athletes can now find and book you. Keep your availability and profile up to date.
-                            </p>
-                        </div>
-                    </div>
-                ) : (
-                    <div className="flex items-start gap-3 p-4 rounded-xl bg-amber-500/5 border border-amber-500/20 mb-5">
-                        <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center shrink-0">
-                            <AlertTriangle size={15} className="text-amber-400" />
-                        </div>
-                        <div>
-                            <p className="font-bold text-sm text-amber-300">
-                                {remaining} of {conditions.length} step{remaining > 1 ? "s" : ""} remaining
-                            </p>
-                            <p className="text-text-main/50 text-xs mt-0.5 leading-relaxed">
-                                Your profile is hidden from athletes until everything below is checked off.
-                            </p>
-                        </div>
-                    </div>
-                )}
-
+            {open && (
+            <div className="p-5 border-t border-white/[0.06]">
                 <ul className="space-y-3">
                     {conditions.map((c) => {
                         const Icon = c.icon;
@@ -201,6 +194,7 @@ export default function ApprovalStatusPanel({ user, trainerProfile }: Props) {
                     })}
                 </ul>
             </div>
+            )}
         </div>
     );
 }
