@@ -11,6 +11,7 @@ import Link from "next/link";
 import { useTrainer } from "@/context/TrainerContext";
 import { useAthlete } from "@/context/AthleteContext";
 import { useAuth } from "@/context/AuthContext";
+import ApprovalStatusPanel from "@/components/trainer/ApprovalStatusPanel";
 
 export default function DashboardOverview() {
     const { user } = useAuth();
@@ -93,6 +94,14 @@ export default function DashboardOverview() {
 
     return (
         <div className="space-y-6 pb-10">
+
+            {/* Trainer Approval / Public Visibility Panel */}
+            {isTrainer && (
+                <ApprovalStatusPanel
+                    user={user as any}
+                    trainerProfile={(user as any)?.trainerProfile ?? null}
+                />
+            )}
 
             {/* Verification Banner */}
             {isTrainer && requireVerification && user?.trainerProfile && !user.trainerProfile.is_verified && (
