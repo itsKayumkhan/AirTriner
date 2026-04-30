@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { Users, Dumbbell, DollarSign, CalendarCheck, Search, Filter, Download, Check, ChevronDown } from "lucide-react";
-import { supabase } from "@/lib/supabase";
+import { adminFetch } from "@/lib/admin-fetch";
 
 export default function AdminDashboardPage() {
     const [searchQuery, setSearchQuery] = useState("");
@@ -29,53 +29,13 @@ export default function AdminDashboardPage() {
     useEffect(() => {
         const loadData = async () => {
             try {
-                const { count: athletesCount } = await supabase.from("users").select("*", { count: "exact", head: true }).eq("role", "athlete");
-                const { count: trainersCount } = await supabase.from("users").select("*", { count: "exact", head: true }).eq("role", "trainer");
-                const { data: revData } = await supabase.from("bookings").select("price").eq("status", "completed");
-                const revenue = (revData || []).reduce((sum, b) => sum + Number(b.price || 0), 0);
-                const { count: activeCount } = await supabase.from("bookings").select("*", { count: "exact", head: true }).eq("status", "confirmed");
-
-                setStats({ athletes: athletesCount || 0, trainers: trainersCount || 0, revenue, activeBookings: activeCount || 0 });
-
-                const { data: recentBookings } = await supabase.from("bookings").select("*").order("created_at", { ascending: false }).limit(5);
-
-                if (recentBookings && recentBookings.length > 0) {
-                    const userIds = new Set<string>();
-                    recentBookings.forEach((b: any) => { userIds.add(b.athlete_id); userIds.add(b.trainer_id); });
-                    const { data: usersData } = await supabase.from("users").select("id, first_name, last_name").in("id", Array.from(userIds));
-                    const usersMap = new Map((usersData || []).map((u: any) => [u.id, `${u.first_name} ${u.last_name}`]));
-
-                    setTransactions(recentBookings.map((b: any) => ({
-                        id: `#TR-${b.id.substring(0, 5).toUpperCase()}`,
-                        athlete: usersMap.get(b.athlete_id) || "Unknown",
-                        trainer: usersMap.get(b.trainer_id) || "Unknown",
-                        date: new Date(b.created_at).toLocaleDateString(),
-                        amount: `$${Number(b.price || 0).toFixed(2)}`,
-                        status: b.status === "completed" ? "Completed" : "Pending"
-                    })));
-
-                    setActivities(recentBookings.map((b: any) => ({
-                        title: `Booking ${b.status}`,
-                        desc: `Session booked by ${usersMap.get(b.athlete_id) || "User"}`,
-                        time: new Date(b.created_at).toLocaleDateString(),
-                        dot: b.status === "completed" ? "bg-primary" : "bg-blue-500"
-                    })));
-                }
-                const { data: monthlyData } = await supabase
-                    .from("bookings")
-                    .select("created_at")
-                    .gte("created_at", new Date(new Date().getFullYear(), 0, 1).toISOString());
-
-                const monthlyCounts = Array(12).fill(0);
-                (monthlyData || []).forEach((b: any) => {
-                    const month = new Date(b.created_at).getMonth();
-                    monthlyCounts[month]++;
-                });
-
-                const maxCount = Math.max(...monthlyCounts, 1);
-                const hasBookings = monthlyCounts.some(c => c > 0);
-                const heights = monthlyCounts.map(c => hasBookings ? Math.max(c > 0 ? 8 : 20, Math.round((c / maxCount) * 100)) : 20);
-                setChartHeights(heights);
+                const res = await adminFetch("/api/admin/dashboard-stats");
+                if (!res.ok) throw new Error(`Failed to load dashboard stats: ${res.status}`);
+                const { stats, transactions, activities, chartHeights } = await res.json();
+                setStats(stats);
+                setTransactions(transactions || []);
+                setActivities(activities || []);
+                setChartHeights(chartHeights || Array(12).fill(20));
             } catch (err) {
                 console.error(err);
             } finally {
