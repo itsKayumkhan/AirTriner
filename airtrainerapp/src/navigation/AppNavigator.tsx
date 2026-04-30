@@ -41,6 +41,7 @@ import TermsScreen from '../screens/dashboard/TermsScreen';
 import PrivacyScreen from '../screens/dashboard/PrivacyScreen';
 import SubscriptionScreen from '../screens/dashboard/SubscriptionScreen';
 import TrainingOffersScreen from '../screens/dashboard/TrainingOffersScreen';
+import AthleteOffersScreen from '../screens/dashboard/AthleteOffersScreen';
 import BookingDetailScreen from '../screens/dashboard/BookingDetailScreen';
 
 const AuthStack = createNativeStackNavigator();
@@ -288,6 +289,7 @@ function MainStackNavigator() {
             <MainStack.Screen name="Privacy" component={PrivacyScreen} options={{ animation: 'slide_from_right' }} />
             <MainStack.Screen name="Subscription" component={SubscriptionScreen} options={{ animation: 'slide_from_right' }} />
             <MainStack.Screen name="TrainingOffers" component={TrainingOffersScreen} options={{ animation: 'slide_from_right' }} />
+            <MainStack.Screen name="AthleteOffers" component={AthleteOffersScreen} options={{ animation: 'slide_from_right' }} />
             <MainStack.Screen name="BookingDetail" component={BookingDetailScreen} options={{ animation: 'slide_from_right' }} />
         </MainStack.Navigator>
     );

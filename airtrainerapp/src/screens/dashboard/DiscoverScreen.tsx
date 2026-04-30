@@ -234,6 +234,35 @@ export default function DiscoverScreen({ navigation }: any) {
     const [trainers, setTrainers] = useState<TrainerWithUser[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
+    const [pendingOfferCount, setPendingOfferCount] = useState(0);
+
+    // Athlete-only: track count of pending offers for the header "Offers" button badge
+    useEffect(() => {
+        if (!user || user.role !== 'athlete') return;
+        let cancelled = false;
+        const fetchCount = async () => {
+            const { count } = await supabase
+                .from('training_offers')
+                .select('id', { count: 'exact', head: true })
+                .eq('athlete_id', user.id)
+                .eq('status', 'pending');
+            if (!cancelled) setPendingOfferCount(count ?? 0);
+        };
+        fetchCount();
+        const channel = supabase
+            .channel(`discover-offers-${user.id}`)
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'training_offers',
+                filter: `athlete_id=eq.${user.id}`,
+            }, () => { fetchCount(); })
+            .subscribe();
+        return () => {
+            cancelled = true;
+            supabase.removeChannel(channel);
+        };
+    }, [user]);
 
     // Sport categories from DB
     const [sportOptions, setSportOptions] = useState(FALLBACK_SPORT_OPTIONS);
@@ -827,16 +856,36 @@ export default function DiscoverScreen({ navigation }: any) {
                             {filteredTrainers.length} trainer{filteredTrainers.length !== 1 ? 's' : ''} near you
                         </Text>
                     </View>
-                    {activeFilterCount > 0 && (
-                        <TouchableOpacity
-                            onPress={clearAllFilters}
-                            style={styles.clearButton}
-                            activeOpacity={0.7}
-                        >
-                            <Ionicons name="refresh-outline" size={16} color={Colors.primary} />
-                            <Text style={styles.clearButtonText}>Clear all</Text>
-                        </TouchableOpacity>
-                    )}
+                    <View style={styles.headerActions}>
+                        {activeFilterCount > 0 && (
+                            <TouchableOpacity
+                                onPress={clearAllFilters}
+                                style={styles.clearButton}
+                                activeOpacity={0.7}
+                            >
+                                <Ionicons name="refresh-outline" size={16} color={Colors.primary} />
+                                <Text style={styles.clearButtonText}>Clear all</Text>
+                            </TouchableOpacity>
+                        )}
+                        {user?.role === 'athlete' && (
+                            <TouchableOpacity
+                                onPress={() => navigation.navigate('AthleteOffers')}
+                                style={styles.offersButton}
+                                activeOpacity={0.7}
+                                accessibilityLabel="My offers"
+                            >
+                                <Ionicons name="pricetag-outline" size={18} color={Colors.primary} />
+                                <Text style={styles.offersButtonText}>Offers</Text>
+                                {pendingOfferCount > 0 && (
+                                    <View style={styles.offersBadge}>
+                                        <Text style={styles.offersBadgeText}>
+                                            {pendingOfferCount > 9 ? '9+' : pendingOfferCount}
+                                        </Text>
+                                    </View>
+                                )}
+                            </TouchableOpacity>
+                        )}
+                    </View>
                 </View>
             </View>
 
@@ -1268,6 +1317,42 @@ const styles = StyleSheet.create({
         fontSize: FontSize.xs,
         fontWeight: FontWeight.semibold,
         color: Colors.primary,
+    },
+    headerActions: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.sm,
+    },
+    offersButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 5,
+        paddingVertical: Spacing.sm,
+        paddingHorizontal: Spacing.lg,
+        borderRadius: BorderRadius.pill,
+        backgroundColor: Colors.primaryMuted,
+        borderWidth: 1,
+        borderColor: Colors.borderActive,
+    },
+    offersButtonText: {
+        fontSize: FontSize.xs,
+        fontWeight: FontWeight.semibold,
+        color: Colors.primary,
+    },
+    offersBadge: {
+        minWidth: 18,
+        height: 18,
+        borderRadius: 9,
+        backgroundColor: Colors.primary,
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingHorizontal: 5,
+        marginLeft: 2,
+    },
+    offersBadgeText: {
+        fontSize: FontSize.xxs,
+        fontWeight: FontWeight.bold,
+        color: Colors.textInverse,
     },
 
     // ── Search Bar ──
