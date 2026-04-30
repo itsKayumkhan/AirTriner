@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet, Pressable, Linking } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius, FontSize, FontWeight } from '../../theme';
@@ -132,45 +132,34 @@ export default function ApprovalStatusPanel({ user, trainerProfile, navigation }
     const metCount = conditions.filter((c) => c.met).length;
     const allMet = metCount === conditions.length;
     const remaining = conditions.length - metCount;
+    const [open, setOpen] = useState(false);
 
     return (
         <View style={styles.card}>
-            <View style={styles.header}>
-                <Text style={styles.title}>Public Visibility Status</Text>
-                <Text style={styles.subtitle}>
-                    All four steps must be complete before athletes can find and book you.
-                </Text>
-            </View>
+            <Pressable onPress={() => setOpen((p) => !p)} style={styles.summaryRow}>
+                <View style={[styles.bannerIcon, { backgroundColor: allMet ? 'rgba(16,185,129,0.12)' : 'rgba(245,158,11,0.12)' }]}>
+                    <Ionicons name={allMet ? 'sparkles' : 'alert-circle-outline'} size={16} color={allMet ? EMERALD : AMBER} />
+                </View>
+                <View style={styles.bannerTextWrap}>
+                    <Text style={[styles.bannerTitle, { color: allMet ? EMERALD : AMBER }]}>
+                        {allMet ? "You're live!" : `${remaining} of ${conditions.length} step${remaining > 1 ? 's' : ''} remaining`}
+                    </Text>
+                    <Text style={styles.bannerDesc}>
+                        {allMet
+                            ? 'Athletes can now find and book you. Tap to review checklist.'
+                            : "Your profile is hidden from athletes. Tap to see what's missing."}
+                    </Text>
+                </View>
+                <Ionicons
+                    name={open ? 'chevron-up' : 'chevron-down'}
+                    size={18}
+                    color={Colors.textTertiary}
+                    style={{ marginTop: 6 }}
+                />
+            </Pressable>
 
-            <View style={styles.body}>
-                {allMet ? (
-                    <View style={[styles.banner, { backgroundColor: EMERALD_BG, borderColor: EMERALD_BORDER }]}>
-                        <View style={[styles.bannerIcon, { backgroundColor: 'rgba(16,185,129,0.12)' }]}>
-                            <Ionicons name="sparkles" size={15} color={EMERALD} />
-                        </View>
-                        <View style={styles.bannerTextWrap}>
-                            <Text style={[styles.bannerTitle, { color: EMERALD }]}>You&apos;re live!</Text>
-                            <Text style={styles.bannerDesc}>
-                                Athletes can now find and book you. Keep your availability and profile up to date.
-                            </Text>
-                        </View>
-                    </View>
-                ) : (
-                    <View style={[styles.banner, { backgroundColor: AMBER_BG, borderColor: AMBER_BORDER }]}>
-                        <View style={[styles.bannerIcon, { backgroundColor: 'rgba(245,158,11,0.12)' }]}>
-                            <Ionicons name="alert-circle-outline" size={15} color={AMBER} />
-                        </View>
-                        <View style={styles.bannerTextWrap}>
-                            <Text style={[styles.bannerTitle, { color: AMBER }]}>
-                                {remaining} of {conditions.length} step{remaining > 1 ? 's' : ''} remaining
-                            </Text>
-                            <Text style={styles.bannerDesc}>
-                                Your profile is hidden from athletes until everything below is checked off.
-                            </Text>
-                        </View>
-                    </View>
-                )}
-
+            {open && (
+            <View style={[styles.body, { borderTopWidth: 1, borderTopColor: Colors.border }]}>
                 <View style={styles.list}>
                     {conditions.map((c) => (
                         <View
@@ -217,6 +206,7 @@ export default function ApprovalStatusPanel({ user, trainerProfile, navigation }
                     ))}
                 </View>
             </View>
+            )}
         </View>
     );
 }
@@ -247,6 +237,13 @@ const styles = StyleSheet.create({
     },
     body: {
         padding: Spacing.lg,
+    },
+    summaryRow: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        gap: Spacing.md,
+        paddingHorizontal: Spacing.lg,
+        paddingVertical: Spacing.md,
     },
     banner: {
         flexDirection: 'row',
