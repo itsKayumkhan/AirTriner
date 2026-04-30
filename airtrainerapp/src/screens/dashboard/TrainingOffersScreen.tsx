@@ -216,6 +216,14 @@ export default function TrainingOffersScreen({ navigation }: any) {
     const [sentOffers, setSentOffers] = useState<SentOffer[]>([]);
     const [isSentLoading, setIsSentLoading] = useState(false);
 
+    // Sent Offers filter state
+    const [sentFilterModalVisible, setSentFilterModalVisible] = useState(false);
+    const [sentSportFilter, setSentSportFilter] = useState<string>('all');
+    const [sentStatusFilter, setSentStatusFilter] = useState<string>('all');
+    const [sentDateFrom, setSentDateFrom] = useState<string>('');
+    const [sentDateTo, setSentDateTo] = useState<string>('');
+    const [sentSearchTerm, setSentSearchTerm] = useState<string>('');
+
     // View / Edit Sent Offer modal state
     const [viewingOffer, setViewingOffer] = useState<SentOffer | null>(null);
     const [isEditingOffer, setIsEditingOffer] = useState(false);
@@ -314,6 +322,57 @@ export default function TrainingOffersScreen({ navigation }: any) {
         setRadiusEnabled(false);
         setRadiusValue(DEFAULT_RADIUS);
     };
+
+    const filteredSentOffers = useMemo(() => sentOffers.filter((o) => {
+        if (sentSportFilter !== 'all') {
+            const wanted = sentSportFilter.toLowerCase().replace(/[_-]/g, ' ');
+            const actual = (o.sport || '').toLowerCase().replace(/[_-]/g, ' ');
+            if (actual !== wanted) return false;
+        }
+        if (sentStatusFilter !== 'all') {
+            if ((o.status || '').toLowerCase() !== sentStatusFilter) return false;
+        }
+        if (sentDateFrom.trim()) {
+            const from = new Date(sentDateFrom.trim());
+            if (!isNaN(from.getTime()) && new Date(o.created_at) < from) return false;
+        }
+        if (sentDateTo.trim()) {
+            const to = new Date(sentDateTo.trim());
+            if (!isNaN(to.getTime())) {
+                to.setHours(23, 59, 59, 999);
+                if (new Date(o.created_at) > to) return false;
+            }
+        }
+        if (sentSearchTerm.trim()) {
+            const term = sentSearchTerm.trim().toLowerCase();
+            const name = `${o.athlete?.first_name || ''} ${o.athlete?.last_name || ''}`.toLowerCase();
+            if (!name.includes(term)) return false;
+        }
+        return true;
+    }), [sentOffers, sentSportFilter, sentStatusFilter, sentDateFrom, sentDateTo, sentSearchTerm]);
+
+    const sentActiveFiltersCount =
+        (sentSportFilter !== 'all' ? 1 : 0) +
+        (sentStatusFilter !== 'all' ? 1 : 0) +
+        (sentDateFrom.trim() !== '' ? 1 : 0) +
+        (sentDateTo.trim() !== '' ? 1 : 0) +
+        (sentSearchTerm.trim() !== '' ? 1 : 0);
+
+    const clearSentFilters = () => {
+        setSentSportFilter('all');
+        setSentStatusFilter('all');
+        setSentDateFrom('');
+        setSentDateTo('');
+        setSentSearchTerm('');
+    };
+
+    const SENT_STATUS_OPTIONS: { value: string; label: string }[] = [
+        { value: 'all', label: 'All' },
+        { value: 'pending', label: 'Pending' },
+        { value: 'accepted', label: 'Accepted' },
+        { value: 'declined', label: 'Declined' },
+        { value: 'expired', label: 'Expired' },
+    ];
 
     // Auto-load athlete pool when filters become active without a search query
     useEffect(() => {
@@ -1202,6 +1261,38 @@ export default function TrainingOffersScreen({ navigation }: any) {
                     {/* Sent Offers Section */}
                     <Divider />
                     <SectionHeader title="Sent Offers" />
+                    {sentOffers.length > 0 && (
+                        <>
+                            <View style={styles.searchRow}>
+                                <View style={[styles.searchInputWrap, { flex: 1, marginBottom: 0 }]}>
+                                    <Ionicons name="search-outline" size={18} color={Colors.textTertiary} style={{ marginRight: Spacing.sm }} />
+                                    <TextInput
+                                        style={styles.searchInput}
+                                        value={sentSearchTerm}
+                                        onChangeText={setSentSearchTerm}
+                                        placeholder="Search by athlete name..."
+                                        placeholderTextColor={Colors.textTertiary}
+                                        autoCapitalize="words"
+                                    />
+                                </View>
+                                <TouchableOpacity
+                                    style={styles.filterTriggerBtn}
+                                    onPress={() => setSentFilterModalVisible(true)}
+                                    activeOpacity={0.7}
+                                >
+                                    <Ionicons name="options-outline" size={18} color={sentActiveFiltersCount > 0 ? Colors.primary : Colors.textSecondary} />
+                                    {sentActiveFiltersCount > 0 && (
+                                        <View style={styles.filterTriggerBadge}>
+                                            <Text style={styles.filterTriggerBadgeText}>{sentActiveFiltersCount}</Text>
+                                        </View>
+                                    )}
+                                </TouchableOpacity>
+                            </View>
+                            <Text style={styles.resultCountText}>
+                                Showing <Text style={styles.resultCountStrong}>{filteredSentOffers.length}</Text> of {sentOffers.length} offer{sentOffers.length !== 1 ? 's' : ''}
+                            </Text>
+                        </>
+                    )}
                     {isSentLoading ? (
                         <ActivityIndicator size="small" color={Colors.primary} style={{ marginTop: Spacing.xl }} />
                     ) : sentOffers.length === 0 ? (
@@ -1210,8 +1301,14 @@ export default function TrainingOffersScreen({ navigation }: any) {
                             title="No offers sent yet"
                             description="Send your first offer to an athlete above."
                         />
+                    ) : filteredSentOffers.length === 0 ? (
+                        <EmptyState
+                            icon="filter-outline"
+                            title="No offers match your filters"
+                            description="Try adjusting or clearing your filters."
+                        />
                     ) : (
-                        sentOffers.map((offer) => (
+                        filteredSentOffers.map((offer) => (
                             <SentOfferCard
                                 key={offer.id}
                                 offer={offer}
@@ -1247,6 +1344,127 @@ export default function TrainingOffersScreen({ navigation }: any) {
                 onCancelEdit={cancelEditMode}
                 onSave={saveEditedOffer}
             />
+
+            {/* Sent Offers Filter Modal */}
+            <Modal
+                visible={sentFilterModalVisible}
+                animationType="slide"
+                transparent
+                onRequestClose={() => setSentFilterModalVisible(false)}
+            >
+                <View style={styles.filterModalOverlay}>
+                    <View style={styles.filterModalContent}>
+                        <View style={styles.filterModalDragHandle} />
+
+                        <View style={styles.filterModalHeader}>
+                            <Text style={styles.filterModalTitle}>Filter Sent Offers</Text>
+                            <TouchableOpacity
+                                onPress={() => setSentFilterModalVisible(false)}
+                                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                                style={styles.filterModalCloseBtn}
+                            >
+                                <Ionicons name="close" size={20} color={Colors.textSecondary} />
+                            </TouchableOpacity>
+                        </View>
+
+                        <ScrollView showsVerticalScrollIndicator={false} style={styles.filterModalScroll} keyboardShouldPersistTaps="handled">
+                            {/* Sport */}
+                            <View style={styles.filterSectionBlock}>
+                                <Text style={styles.filterSectionLabel}>Sport</Text>
+                                <View style={styles.filterPillRow}>
+                                    <TouchableOpacity
+                                        style={[styles.filterPill, sentSportFilter === 'all' && styles.filterPillActive]}
+                                        onPress={() => setSentSportFilter('all')}
+                                    >
+                                        <Text style={[styles.filterPillText, sentSportFilter === 'all' && styles.filterPillTextActive]}>All</Text>
+                                    </TouchableOpacity>
+                                    {FILTER_SPORTS.map((s) => (
+                                        <TouchableOpacity
+                                            key={s}
+                                            style={[styles.filterPill, sentSportFilter === s && styles.filterPillActive]}
+                                            onPress={() => setSentSportFilter(s)}
+                                        >
+                                            <Text style={[styles.filterPillText, sentSportFilter === s && styles.filterPillTextActive]}>{s}</Text>
+                                        </TouchableOpacity>
+                                    ))}
+                                </View>
+                            </View>
+
+                            {/* Status */}
+                            <View style={styles.filterSectionBlock}>
+                                <Text style={styles.filterSectionLabel}>Status</Text>
+                                <View style={styles.filterPillRow}>
+                                    {SENT_STATUS_OPTIONS.map((opt) => (
+                                        <TouchableOpacity
+                                            key={opt.value}
+                                            style={[styles.filterPill, sentStatusFilter === opt.value && styles.filterPillActive]}
+                                            onPress={() => setSentStatusFilter(opt.value)}
+                                        >
+                                            <Text style={[styles.filterPillText, sentStatusFilter === opt.value && styles.filterPillTextActive]}>{opt.label}</Text>
+                                        </TouchableOpacity>
+                                    ))}
+                                </View>
+                            </View>
+
+                            {/* Date Range */}
+                            <View style={styles.filterSectionBlock}>
+                                <Text style={styles.filterSectionLabel}>Sent Date Range</Text>
+                                <View style={styles.filterAgeRow}>
+                                    <TextInput
+                                        style={styles.filterTextInput}
+                                        value={sentDateFrom}
+                                        onChangeText={setSentDateFrom}
+                                        placeholder="YYYY-MM-DD"
+                                        placeholderTextColor={Colors.textTertiary}
+                                        keyboardType="numbers-and-punctuation"
+                                        autoCapitalize="none"
+                                        autoCorrect={false}
+                                    />
+                                    <Text style={styles.filterAgeSep}>to</Text>
+                                    <TextInput
+                                        style={styles.filterTextInput}
+                                        value={sentDateTo}
+                                        onChangeText={setSentDateTo}
+                                        placeholder="YYYY-MM-DD"
+                                        placeholderTextColor={Colors.textTertiary}
+                                        keyboardType="numbers-and-punctuation"
+                                        autoCapitalize="none"
+                                        autoCorrect={false}
+                                    />
+                                </View>
+                            </View>
+
+                            {/* Athlete Name */}
+                            <View style={styles.filterSectionBlock}>
+                                <Text style={styles.filterSectionLabel}>Athlete Name</Text>
+                                <TextInput
+                                    style={styles.filterTextInput}
+                                    value={sentSearchTerm}
+                                    onChangeText={setSentSearchTerm}
+                                    placeholder="Search by athlete name"
+                                    placeholderTextColor={Colors.textTertiary}
+                                    autoCapitalize="words"
+                                />
+                            </View>
+                        </ScrollView>
+
+                        <View style={styles.filterModalFooter}>
+                            <TouchableOpacity style={styles.filterResetBtn} onPress={clearSentFilters} activeOpacity={0.7}>
+                                <Text style={styles.filterResetText}>Clear filters</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={styles.filterDoneBtn}
+                                onPress={() => setSentFilterModalVisible(false)}
+                                activeOpacity={0.8}
+                            >
+                                <Text style={styles.filterDoneText}>
+                                    Show {filteredSentOffers.length} Offer{filteredSentOffers.length !== 1 ? 's' : ''}
+                                </Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
 
             {/* Athlete Filter Modal */}
             <Modal
