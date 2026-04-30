@@ -6,13 +6,32 @@ import { getSession, AuthUser } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { formatSportName } from "@/lib/format";
 
+function computeAge(dob: string): number {
+    if (!dob) return NaN;
+    const d = new Date(dob);
+    if (isNaN(d.getTime())) return NaN;
+    const now = new Date();
+    let age = now.getFullYear() - d.getFullYear();
+    const m = now.getMonth() - d.getMonth();
+    if (m < 0 || (m === 0 && now.getDate() < d.getDate())) age--;
+    return age;
+}
+
+function formatBirthday(dob: string): string {
+    if (!dob) return "";
+    const d = new Date(dob);
+    if (isNaN(d.getTime())) return "";
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
 interface SubAccount {
     id: string;
     parent_user_id: string;
     profile_data: {
         first_name: string;
         last_name: string;
-        age?: number;
+        date_of_birth?: string;
+        age?: number;         // legacy fallback
         sport?: string;       // legacy, keep for backwards compat
         sports?: string[];    // new — preferred
         skill_level?: string;
@@ -62,7 +81,7 @@ export default function SubAccountsPage() {
     const [form, setForm] = useState({
         first_name: "",
         last_name: "",
-        age: "",
+        date_of_birth: "",
         sports: ["hockey"] as string[],
         skill_level: "beginner",
         notes: "",
@@ -113,7 +132,7 @@ export default function SubAccountsPage() {
     };
 
     const resetForm = () => {
-        setForm({ first_name: "", last_name: "", age: "", sports: ["hockey"], skill_level: "beginner", notes: "" });
+        setForm({ first_name: "", last_name: "", date_of_birth: "", sports: ["hockey"], skill_level: "beginner", notes: "" });
         setFormErrors({});
         setSaveError(null);
         setEditingId(null);
@@ -125,7 +144,7 @@ export default function SubAccountsPage() {
         setForm({
             first_name: acct.profile_data.first_name || "",
             last_name: acct.profile_data.last_name || "",
-            age: String(acct.profile_data.age || ""),
+            date_of_birth: acct.profile_data.date_of_birth || "",
             sports: sportsArray.length ? sportsArray : ["hockey"],
             skill_level: acct.profile_data.skill_level || "beginner",
             notes: acct.profile_data.notes || "",
@@ -150,8 +169,16 @@ export default function SubAccountsPage() {
             errors.last_name = "Last name must be at least 2 characters";
         }
 
-        if (form.age && (Number(form.age) < 3 || Number(form.age) > 99)) {
-            errors.age = "Age must be between 3 and 99";
+        if (form.date_of_birth) {
+            const d = new Date(form.date_of_birth);
+            if (isNaN(d.getTime())) {
+                errors.date_of_birth = "Please enter a valid date";
+            } else {
+                const age = computeAge(form.date_of_birth);
+                if (age < 3 || age > 99) {
+                    errors.date_of_birth = "Age must be between 3 and 99";
+                }
+            }
         }
 
         if (form.sports.length === 0) {
@@ -170,7 +197,7 @@ export default function SubAccountsPage() {
         const profileData = {
             first_name: form.first_name.trim(),
             last_name: form.last_name.trim(),
-            age: form.age ? Number(form.age) : undefined,
+            date_of_birth: form.date_of_birth || undefined,
             sports: form.sports,
             sport: form.sports[0], // legacy backwards compat
             skill_level: form.skill_level,
@@ -418,18 +445,16 @@ CREATE INDEX ON sub_accounts(parent_user_id);`}</pre>
                             />
                             {formErrors.last_name && <span className="text-[11px] text-red-500 font-bold mt-1.5 block">{formErrors.last_name}</span>}
                         </div>
-                        {/* Age */}
+                        {/* Date of Birth */}
                         <div>
-                            <label className="block text-xs font-bold text-text-main/40 uppercase tracking-widest mb-2">Age</label>
+                            <label className="block text-xs font-bold text-text-main/40 uppercase tracking-widest mb-2">Date of Birth</label>
                             <input
-                                type="number"
-                                value={form.age}
-                                onChange={(e) => { setForm((p) => ({ ...p, age: e.target.value })); setFormErrors((p) => ({ ...p, age: "" })); }}
-                                className={`${inputStyle} ${formErrors.age ? "border-red-500/50 focus:border-red-500" : ""}`}
-                                min={3} max={99}
-                                placeholder="Age (optional)"
+                                type="date"
+                                value={form.date_of_birth}
+                                onChange={(e) => { setForm((p) => ({ ...p, date_of_birth: e.target.value })); setFormErrors((p) => ({ ...p, date_of_birth: "" })); }}
+                                className={`${inputStyle} ${formErrors.date_of_birth ? "border-red-500/50 focus:border-red-500" : ""}`}
                             />
-                            {formErrors.age && <span className="text-[11px] text-red-500 font-bold mt-1.5 block">{formErrors.age}</span>}
+                            {formErrors.date_of_birth && <span className="text-[11px] text-red-500 font-bold mt-1.5 block">{formErrors.date_of_birth}</span>}
                         </div>
                         {/* Sports (multi-select, max 3) */}
                         <div className="md:col-span-2">
@@ -572,7 +597,16 @@ CREATE INDEX ON sub_accounts(parent_user_id);`}</pre>
                                     <h4 className="font-bold text-lg text-text-main font-display mb-0.5 truncate">
                                         {acct.profile_data.first_name} {acct.profile_data.last_name}
                                     </h4>
-                                    {acct.profile_data.age ? (
+                                    {acct.profile_data.date_of_birth ? (
+                                        <div className="flex flex-col">
+                                            <span className="text-xs text-text-main/50 font-medium tracking-widest uppercase">
+                                                Age {computeAge(acct.profile_data.date_of_birth)}
+                                            </span>
+                                            <span className="text-[10px] text-text-main/40 font-medium mt-0.5">
+                                                Born {formatBirthday(acct.profile_data.date_of_birth)}
+                                            </span>
+                                        </div>
+                                    ) : acct.profile_data.age ? (
                                         <span className="text-xs text-text-main/50 font-medium tracking-widest uppercase">
                                             Age {acct.profile_data.age}
                                         </span>
