@@ -38,11 +38,28 @@ type SubAccountProfileData = {
     first_name: string;
     last_name: string;
     age?: number;
+    date_of_birth?: string;
     sport?: string;       // kept for backwards compatibility
     sports?: string[];    // up to 3 sports
     skill_level?: string;
     notes?: string;
 };
+
+function computeAge(dob: string): number {
+    const d = new Date(dob);
+    if (isNaN(d.getTime())) return 0;
+    const now = new Date();
+    let age = now.getFullYear() - d.getFullYear();
+    const m = now.getMonth() - d.getMonth();
+    if (m < 0 || (m === 0 && now.getDate() < d.getDate())) age--;
+    return age;
+}
+
+function formatBirthday(dob: string): string {
+    const d = new Date(dob);
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+}
 
 type SubAccount = {
     id: string;
@@ -79,7 +96,7 @@ export default function SubAccountsScreen({ navigation }: any) {
 
     const [firstName, setFirstName] = useState('');
     const [lastName, setLastName] = useState('');
-    const [age, setAge] = useState('');
+    const [dateOfBirth, setDateOfBirth] = useState('');
     const [selectedSports, setSelectedSports] = useState<string[]>([]);
     const [skillLevel, setSkillLevel] = useState<SkillLevel>('beginner');
     const [notes, setNotes] = useState('');
@@ -118,7 +135,7 @@ export default function SubAccountsScreen({ navigation }: any) {
     const resetForm = () => {
         setFirstName('');
         setLastName('');
-        setAge('');
+        setDateOfBirth('');
         setSelectedSports([]);
         setSkillLevel('beginner');
         setNotes('');
@@ -137,7 +154,7 @@ export default function SubAccountsScreen({ navigation }: any) {
         const pd = account.profile_data;
         setFirstName(pd.first_name || '');
         setLastName(pd.last_name || '');
-        setAge(pd.age ? String(pd.age) : '');
+        setDateOfBirth(pd.date_of_birth || '');
         // Migrate from legacy single `sport` to `sports` array
         setSelectedSports(normalizeSports(pd));
         setSkillLevel((pd.skill_level as SkillLevel) || 'beginner');
@@ -163,8 +180,16 @@ export default function SubAccountsScreen({ navigation }: any) {
             errors.last_name = 'Last name must be at least 2 characters';
         }
 
-        if (age && (Number(age) < 3 || Number(age) > 99)) {
-            errors.age = 'Age must be between 3 and 99';
+        if (dateOfBirth) {
+            const d = new Date(dateOfBirth);
+            if (isNaN(d.getTime())) {
+                errors.date_of_birth = 'Please enter a valid date';
+            } else {
+                const a = computeAge(dateOfBirth);
+                if (a < 3 || a > 99) {
+                    errors.date_of_birth = 'Age must be between 3 and 99';
+                }
+            }
         }
 
         if (selectedSports.length === 0) {
@@ -183,7 +208,7 @@ export default function SubAccountsScreen({ navigation }: any) {
         const profileData: SubAccountProfileData = {
             first_name: firstName.trim(),
             last_name: lastName.trim(),
-            age: age ? Number(age) : undefined,
+            date_of_birth: dateOfBirth || undefined,
             sports: selectedSports,
             sport: selectedSports[0] || undefined, // backwards compat
             skill_level: skillLevel,
@@ -356,7 +381,12 @@ export default function SubAccountsScreen({ navigation }: any) {
                                     />
                                     <View style={styles.accountInfo}>
                                         <Text style={styles.accountName}>{fullName}</Text>
-                                        {pd.age ? (
+                                        {pd.date_of_birth ? (
+                                            <>
+                                                <Text style={styles.accountAge}>Age {computeAge(pd.date_of_birth)}</Text>
+                                                <Text style={styles.accountBirthday}>Born {formatBirthday(pd.date_of_birth)}</Text>
+                                            </>
+                                        ) : pd.age ? (
                                             <Text style={styles.accountAge}>Age {pd.age}</Text>
                                         ) : (
                                             <Text style={styles.accountAgeMuted}>No age set</Text>
@@ -480,19 +510,22 @@ export default function SubAccountsScreen({ navigation }: any) {
                                 <Text style={styles.fieldError}>{formErrors.last_name}</Text>
                             ) : null}
 
-                            {/* Age */}
-                            <Text style={styles.inputLabel}>Age</Text>
+                            {/* Date of Birth */}
+                            <Text style={styles.inputLabel}>Date of Birth</Text>
                             <TextInput
-                                style={[styles.input, formErrors.age ? styles.inputError : null]}
-                                placeholder="Age (optional)"
+                                style={[styles.input, formErrors.date_of_birth ? styles.inputError : null]}
+                                placeholder="YYYY-MM-DD"
                                 placeholderTextColor={Colors.textTertiary}
-                                value={age}
-                                onChangeText={(text) => { setAge(text.replace(/[^0-9]/g, '')); setFormErrors((p) => ({ ...p, age: '' })); }}
-                                keyboardType="number-pad"
-                                maxLength={2}
+                                value={dateOfBirth}
+                                onChangeText={(text) => { setDateOfBirth(text); setFormErrors((p) => ({ ...p, date_of_birth: '' })); }}
+                                keyboardType="numbers-and-punctuation"
+                                maxLength={10}
+                                autoCapitalize="none"
+                                autoCorrect={false}
                             />
-                            {formErrors.age ? (
-                                <Text style={styles.fieldError}>{formErrors.age}</Text>
+                            <Text style={styles.fieldHint}>Format: YYYY-MM-DD</Text>
+                            {formErrors.date_of_birth ? (
+                                <Text style={styles.fieldError}>{formErrors.date_of_birth}</Text>
                             ) : null}
 
                             {/* Sports (up to 3) */}
@@ -704,6 +737,11 @@ const styles = StyleSheet.create({
         fontStyle: 'italic',
         marginTop: 2,
     },
+    accountBirthday: {
+        fontSize: FontSize.xs,
+        color: Colors.textTertiary,
+        marginTop: 2,
+    },
 
     // Card meta badges
     cardMetaRow: {
@@ -856,6 +894,12 @@ const styles = StyleSheet.create({
         fontSize: FontSize.xs,
         fontWeight: FontWeight.bold,
         color: Colors.error,
+        marginTop: -Spacing.md,
+        marginBottom: Spacing.md,
+    },
+    fieldHint: {
+        fontSize: FontSize.xs,
+        color: Colors.textTertiary,
         marginTop: -Spacing.md,
         marginBottom: Spacing.md,
     },
