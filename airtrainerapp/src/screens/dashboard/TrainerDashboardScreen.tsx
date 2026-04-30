@@ -16,6 +16,7 @@ import {
     ScreenWrapper, Card, SectionHeader,
     Badge, EmptyState, LoadingScreen,
 } from '../../components/ui';
+import ApprovalStatusPanel from '../../components/trainer/ApprovalStatusPanel';
 
 type BookingWithOtherUser = BookingRow & {
     other_user?: { first_name: string; last_name: string };
@@ -36,6 +37,15 @@ export default function TrainerDashboardScreen({ navigation }: any) {
     });
     const [recentBookings, setRecentBookings] = useState<BookingWithOtherUser[]>([]);
     const [requireVerification, setRequireVerification] = useState(true);
+    const [gateUser, setGateUser] = useState<{
+        is_suspended?: boolean | null;
+        deleted_at?: string | null;
+        first_name?: string | null;
+        last_name?: string | null;
+        phone?: string | null;
+        date_of_birth?: string | null;
+        avatar_url?: string | null;
+    } | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
 
@@ -64,6 +74,13 @@ export default function TrainerDashboardScreen({ navigation }: any) {
             if (platformData) {
                 setRequireVerification(platformData.require_trainer_verification);
             }
+
+            const { data: userRow } = await supabase
+                .from('users')
+                .select('first_name, last_name, phone, date_of_birth, avatar_url, is_suspended, deleted_at')
+                .eq('id', user.id)
+                .maybeSingle();
+            if (userRow) setGateUser(userRow as any);
 
             let bookingsQuery = supabase
                 .from('bookings')
@@ -239,6 +256,17 @@ export default function TrainerDashboardScreen({ navigation }: any) {
                     <Ionicons name="notifications-outline" size={22} color={Colors.text} />
                 </Pressable>
             </Animated.View>
+
+            {/* ─── Approval Status Panel ─── */}
+            {user?.role === 'trainer' && (
+                <Animated.View entering={FadeInDown.duration(250).delay(60)} style={styles.approvalPanelWrap}>
+                    <ApprovalStatusPanel
+                        user={gateUser}
+                        trainerProfile={(user?.trainerProfile as any) ?? null}
+                        navigation={navigation}
+                    />
+                </Animated.View>
+            )}
 
             {/* ─── Verification Banner ─── */}
             {isVerificationPending && (
@@ -466,6 +494,11 @@ const styles = StyleSheet.create({
     },
     waveEmoji: {
         fontSize: FontSize.md,
+    },
+
+    /* ── Approval Status Panel ── */
+    approvalPanelWrap: {
+        marginBottom: Spacing.lg,
     },
 
     /* ── Verification Banner ── */
