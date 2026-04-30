@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
     View,
     Text,
@@ -34,6 +34,7 @@ import SectionHeader from '../../components/ui/SectionHeader';
 import TabFilter from '../../components/ui/TabFilter';
 import Input from '../../components/ui/Input';
 import Divider from '../../components/ui/Divider';
+import { radiusUnit } from '../../lib/units';
 
 // ---- Types ----
 
@@ -66,6 +67,16 @@ type Athlete = {
     last_name: string;
     avatar_url: string | null;
     email: string;
+    date_of_birth?: string | null;
+    athlete_profile?: {
+        sports: string[] | null;
+        skill_level: string | null;
+        city: string | null;
+        state: string | null;
+        zip_code: string | null;
+        latitude: number | null;
+        longitude: number | null;
+    } | null;
 };
 
 type SentOffer = {
@@ -122,6 +133,41 @@ const EMPTY_FORM: FormState = {
 
 const SESSION_LENGTHS = [30, 45, 60, 90];
 
+const FILTER_SPORTS = [
+    'Hockey', 'Baseball', 'Basketball', 'Football', 'Soccer',
+    'Tennis', 'Golf', 'Swimming', 'Boxing', 'Lacrosse',
+    'Wrestling', 'Martial Arts', 'Gymnastics', 'Track & Field', 'Volleyball',
+];
+
+const FILTER_SKILL_LEVELS: { value: string; label: string }[] = [
+    { value: 'any', label: 'Any' },
+    { value: 'beginner', label: 'Beginner' },
+    { value: 'intermediate', label: 'Intermediate' },
+    { value: 'advanced', label: 'Advanced' },
+    { value: 'pro', label: 'Pro' },
+];
+
+const DEFAULT_RADIUS = 25;
+const MAX_RADIUS = 100;
+
+const distanceMiles = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+    const R = 3958.8;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
+const calcAge = (dob: string | null | undefined): number | null => {
+    if (!dob) return null;
+    const d = new Date(dob);
+    if (isNaN(d.getTime())) return null;
+    return Math.floor((Date.now() - d.getTime()) / (1000 * 60 * 60 * 24 * 365.25));
+};
+
 // ---- Component ----
 
 export default function TrainingOffersScreen({ navigation }: any) {
@@ -151,6 +197,16 @@ export default function TrainingOffersScreen({ navigation }: any) {
     const [sessionDates, setSessionDates] = useState<SessionDate[]>([{ date: '', time: '' }]);
     const [sessionType, setSessionType] = useState('private');
     const [isSendingOffer, setIsSendingOffer] = useState(false);
+
+    // Athlete filter state
+    const [filterModalVisible, setFilterModalVisible] = useState(false);
+    const [sportFilter, setSportFilter] = useState<string>('all');
+    const [skillFilter, setSkillFilter] = useState<string>('any');
+    const [ageMin, setAgeMin] = useState<string>('');
+    const [ageMax, setAgeMax] = useState<string>('');
+    const [locationFilter, setLocationFilter] = useState<string>('');
+    const [radiusEnabled, setRadiusEnabled] = useState<boolean>(false);
+    const [radiusValue, setRadiusValue] = useState<number>(DEFAULT_RADIUS);
 
     // Camp state
     const [camps, setCamps] = useState<Camp[]>([]);
@@ -193,6 +249,83 @@ export default function TrainingOffersScreen({ navigation }: any) {
     }, [user?.id]);
 
     const isSubscriptionActive = subscriptionStatus === 'active' || subscriptionStatus === 'trial';
+
+    // Trainer location for radius search + unit detection
+    const trainerCountry: 'US' | 'CA' | 'OTHER' = (trainerProfile?.country === 'CA' ? 'CA' : trainerProfile?.country === 'US' ? 'US' : 'OTHER');
+    const unit = radiusUnit(trainerCountry);
+    const trainerLat = trainerProfile?.latitude ?? null;
+    const trainerLng = trainerProfile?.longitude ?? null;
+    const hasTrainerCoords = trainerLat !== null && trainerLng !== null;
+
+    const ageMinNum = ageMin.trim() === '' ? null : parseInt(ageMin, 10);
+    const ageMaxNum = ageMax.trim() === '' ? null : parseInt(ageMax, 10);
+    const radiusInMiles = unit === 'km' ? radiusValue / 1.60934 : radiusValue;
+
+    const filteredAthletes = useMemo(() => athleteResults.filter((a) => {
+        const sportsArr = a.athlete_profile?.sports || [];
+
+        if (sportFilter !== 'all') {
+            const wanted = sportFilter.toLowerCase();
+            const has = sportsArr.some((s) => s.toLowerCase() === wanted || s.toLowerCase().replace(/[_-]/g, ' ') === wanted);
+            if (!has) return false;
+        }
+
+        if (skillFilter !== 'any') {
+            if ((a.athlete_profile?.skill_level || '').toLowerCase() !== skillFilter) return false;
+        }
+
+        if (ageMinNum !== null || ageMaxNum !== null) {
+            const age = calcAge(a.date_of_birth);
+            if (age === null) return false;
+            if (ageMinNum !== null && age < ageMinNum) return false;
+            if (ageMaxNum !== null && age > ageMaxNum) return false;
+        }
+
+        if (radiusEnabled) {
+            if (!hasTrainerCoords) return false;
+            const lat = a.athlete_profile?.latitude;
+            const lng = a.athlete_profile?.longitude;
+            if (lat == null || lng == null) return false;
+            const dist = distanceMiles(trainerLat as number, trainerLng as number, lat, lng);
+            if (dist > radiusInMiles) return false;
+        } else if (locationFilter.trim()) {
+            const loc = locationFilter.trim().toLowerCase();
+            const locStr = `${a.athlete_profile?.city || ''} ${a.athlete_profile?.state || ''} ${a.athlete_profile?.zip_code || ''}`.toLowerCase();
+            if (!locStr.includes(loc)) return false;
+        }
+
+        return true;
+    }), [athleteResults, sportFilter, skillFilter, ageMinNum, ageMaxNum, radiusEnabled, radiusInMiles, hasTrainerCoords, trainerLat, trainerLng, locationFilter]);
+
+    const activeFiltersCount =
+        (sportFilter !== 'all' ? 1 : 0) +
+        (skillFilter !== 'any' ? 1 : 0) +
+        (ageMin.trim() !== '' ? 1 : 0) +
+        (ageMax.trim() !== '' ? 1 : 0) +
+        (radiusEnabled ? 1 : 0) +
+        (!radiusEnabled && locationFilter.trim() !== '' ? 1 : 0);
+
+    const clearFilters = () => {
+        setSportFilter('all');
+        setSkillFilter('any');
+        setAgeMin('');
+        setAgeMax('');
+        setLocationFilter('');
+        setRadiusEnabled(false);
+        setRadiusValue(DEFAULT_RADIUS);
+    };
+
+    // Auto-load athlete pool when filters become active without a search query
+    useEffect(() => {
+        if (
+            activeFiltersCount > 0 &&
+            athleteQuery.trim().length < 2 &&
+            athleteResults.length === 0 &&
+            !selectedAthlete
+        ) {
+            loadAthletePool();
+        }
+    }, [activeFiltersCount, athleteQuery, athleteResults.length, selectedAthlete, loadAthletePool]);
 
     // Data fetching
 
@@ -355,6 +488,20 @@ export default function TrainingOffersScreen({ navigation }: any) {
 
     // Athlete search
 
+    const ATHLETE_SELECT = 'id, first_name, last_name, avatar_url, email, date_of_birth, athlete_profiles(sports, skill_level, city, state, zip_code, latitude, longitude)';
+
+    const normalizeAthletes = (rows: any[]): Athlete[] => rows.map((a) => ({
+        id: a.id,
+        first_name: a.first_name,
+        last_name: a.last_name,
+        avatar_url: a.avatar_url ?? null,
+        email: a.email,
+        date_of_birth: (a.date_of_birth as string | null) ?? null,
+        athlete_profile: a.athlete_profiles
+            ? (Array.isArray(a.athlete_profiles) ? a.athlete_profiles[0] : a.athlete_profiles)
+            : null,
+    }));
+
     const searchAthletes = useCallback(async (query: string) => {
         setAthleteQuery(query);
         if (query.trim().length < 2) {
@@ -365,15 +512,32 @@ export default function TrainingOffersScreen({ navigation }: any) {
         try {
             const { data, error } = await supabase
                 .from('users')
-                .select('id, first_name, last_name, avatar_url, email')
+                .select(ATHLETE_SELECT)
                 .eq('role', 'athlete')
                 .ilike('first_name', `%${query}%`)
-                .limit(10);
+                .limit(50);
 
             if (error) throw error;
-            setAthleteResults((data || []) as Athlete[]);
+            setAthleteResults(normalizeAthletes(data || []));
         } catch (err: any) {
             console.error('Athlete search error:', err);
+        } finally {
+            setIsSearching(false);
+        }
+    }, []);
+
+    const loadAthletePool = useCallback(async () => {
+        setIsSearching(true);
+        try {
+            const { data, error } = await supabase
+                .from('users')
+                .select(ATHLETE_SELECT)
+                .eq('role', 'athlete')
+                .limit(50);
+            if (error) throw error;
+            setAthleteResults(normalizeAthletes(data || []));
+        } catch (err: any) {
+            console.error('Athlete pool load error:', err);
         } finally {
             setIsSearching(false);
         }
@@ -655,23 +819,52 @@ export default function TrainingOffersScreen({ navigation }: any) {
                 >
                     {/* Athlete Search */}
                     <SectionHeader title="Find Athlete" />
-                    <View style={styles.searchInputWrap}>
-                        <Ionicons name="search-outline" size={18} color={Colors.textTertiary} style={{ marginRight: Spacing.sm }} />
-                        <TextInput
-                            style={styles.searchInput}
-                            value={athleteQuery}
-                            onChangeText={searchAthletes}
-                            placeholder="Search athletes by name..."
-                            placeholderTextColor={Colors.textTertiary}
-                            autoCapitalize="words"
-                        />
-                        {isSearching && <ActivityIndicator size="small" color={Colors.primary} />}
+                    <View style={styles.searchRow}>
+                        <View style={[styles.searchInputWrap, { flex: 1, marginBottom: 0 }]}>
+                            <Ionicons name="search-outline" size={18} color={Colors.textTertiary} style={{ marginRight: Spacing.sm }} />
+                            <TextInput
+                                style={styles.searchInput}
+                                value={athleteQuery}
+                                onChangeText={searchAthletes}
+                                placeholder="Search athletes by name..."
+                                placeholderTextColor={Colors.textTertiary}
+                                autoCapitalize="words"
+                            />
+                            {isSearching && <ActivityIndicator size="small" color={Colors.primary} />}
+                        </View>
+                        <TouchableOpacity
+                            style={styles.filterTriggerBtn}
+                            onPress={() => setFilterModalVisible(true)}
+                            activeOpacity={0.7}
+                        >
+                            <Ionicons name="options-outline" size={18} color={activeFiltersCount > 0 ? Colors.primary : Colors.textSecondary} />
+                            {activeFiltersCount > 0 && (
+                                <View style={styles.filterTriggerBadge}>
+                                    <Text style={styles.filterTriggerBadgeText}>{activeFiltersCount}</Text>
+                                </View>
+                            )}
+                        </TouchableOpacity>
                     </View>
 
+                    {/* Result count when filtering */}
+                    {(activeFiltersCount > 0 || athleteResults.length > 0) && !selectedAthlete && (
+                        <Text style={styles.resultCountText}>
+                            Showing <Text style={styles.resultCountStrong}>{filteredAthletes.length}</Text> of {athleteResults.length} athletes
+                        </Text>
+                    )}
+
+                    {/* Radius warning when no trainer coords */}
+                    {radiusEnabled && !hasTrainerCoords && (
+                        <View style={styles.radiusWarning}>
+                            <Ionicons name="warning-outline" size={14} color={Colors.warning} />
+                            <Text style={styles.radiusWarningText}>Set your address in profile to use radius search.</Text>
+                        </View>
+                    )}
+
                     {/* Search Results */}
-                    {athleteResults.length > 0 && (
+                    {filteredAthletes.length > 0 && !selectedAthlete && (
                         <View style={styles.searchResults}>
-                            {athleteResults.map((athlete) => (
+                            {filteredAthletes.map((athlete) => (
                                 <AthleteCard
                                     key={athlete.id}
                                     athlete={athlete}
@@ -1054,6 +1247,161 @@ export default function TrainingOffersScreen({ navigation }: any) {
                 onCancelEdit={cancelEditMode}
                 onSave={saveEditedOffer}
             />
+
+            {/* Athlete Filter Modal */}
+            <Modal
+                visible={filterModalVisible}
+                animationType="slide"
+                transparent
+                onRequestClose={() => setFilterModalVisible(false)}
+            >
+                <View style={styles.filterModalOverlay}>
+                    <View style={styles.filterModalContent}>
+                        <View style={styles.filterModalDragHandle} />
+
+                        <View style={styles.filterModalHeader}>
+                            <Text style={styles.filterModalTitle}>Filters</Text>
+                            <TouchableOpacity
+                                onPress={() => setFilterModalVisible(false)}
+                                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                                style={styles.filterModalCloseBtn}
+                            >
+                                <Ionicons name="close" size={20} color={Colors.textSecondary} />
+                            </TouchableOpacity>
+                        </View>
+
+                        <ScrollView showsVerticalScrollIndicator={false} style={styles.filterModalScroll} keyboardShouldPersistTaps="handled">
+                            {/* Sport */}
+                            <View style={styles.filterSectionBlock}>
+                                <Text style={styles.filterSectionLabel}>Sport</Text>
+                                <View style={styles.filterPillRow}>
+                                    <TouchableOpacity
+                                        style={[styles.filterPill, sportFilter === 'all' && styles.filterPillActive]}
+                                        onPress={() => setSportFilter('all')}
+                                    >
+                                        <Text style={[styles.filterPillText, sportFilter === 'all' && styles.filterPillTextActive]}>All</Text>
+                                    </TouchableOpacity>
+                                    {FILTER_SPORTS.map((s) => (
+                                        <TouchableOpacity
+                                            key={s}
+                                            style={[styles.filterPill, sportFilter === s && styles.filterPillActive]}
+                                            onPress={() => setSportFilter(s)}
+                                        >
+                                            <Text style={[styles.filterPillText, sportFilter === s && styles.filterPillTextActive]}>{s}</Text>
+                                        </TouchableOpacity>
+                                    ))}
+                                </View>
+                            </View>
+
+                            {/* Skill Level */}
+                            <View style={styles.filterSectionBlock}>
+                                <Text style={styles.filterSectionLabel}>Skill Level</Text>
+                                <View style={styles.filterPillRow}>
+                                    {FILTER_SKILL_LEVELS.map((lvl) => (
+                                        <TouchableOpacity
+                                            key={lvl.value}
+                                            style={[styles.filterPill, skillFilter === lvl.value && styles.filterPillActive]}
+                                            onPress={() => setSkillFilter(lvl.value)}
+                                        >
+                                            <Text style={[styles.filterPillText, skillFilter === lvl.value && styles.filterPillTextActive]}>{lvl.label}</Text>
+                                        </TouchableOpacity>
+                                    ))}
+                                </View>
+                            </View>
+
+                            {/* Age Range */}
+                            <View style={styles.filterSectionBlock}>
+                                <Text style={styles.filterSectionLabel}>Age Range</Text>
+                                <View style={styles.filterAgeRow}>
+                                    <TextInput
+                                        style={styles.filterNumInput}
+                                        value={ageMin}
+                                        onChangeText={setAgeMin}
+                                        placeholder="Min"
+                                        placeholderTextColor={Colors.textTertiary}
+                                        keyboardType="number-pad"
+                                    />
+                                    <Text style={styles.filterAgeSep}>to</Text>
+                                    <TextInput
+                                        style={styles.filterNumInput}
+                                        value={ageMax}
+                                        onChangeText={setAgeMax}
+                                        placeholder="Max"
+                                        placeholderTextColor={Colors.textTertiary}
+                                        keyboardType="number-pad"
+                                    />
+                                </View>
+                            </View>
+
+                            {/* Location */}
+                            <View style={styles.filterSectionBlock}>
+                                <Text style={styles.filterSectionLabel}>Location</Text>
+                                <TextInput
+                                    style={[styles.filterTextInput, radiusEnabled && styles.filterTextInputDisabled]}
+                                    value={locationFilter}
+                                    onChangeText={setLocationFilter}
+                                    placeholder={radiusEnabled ? 'Using your location' : 'City, state, or zip'}
+                                    placeholderTextColor={Colors.textTertiary}
+                                    editable={!radiusEnabled}
+                                />
+
+                                <TouchableOpacity
+                                    style={styles.filterRadiusToggleRow}
+                                    onPress={() => setRadiusEnabled((v) => !v)}
+                                    activeOpacity={0.7}
+                                >
+                                    <View style={[styles.filterCheckbox, radiusEnabled && styles.filterCheckboxChecked]}>
+                                        {radiusEnabled && <Ionicons name="checkmark" size={14} color={Colors.background} />}
+                                    </View>
+                                    <Text style={styles.filterRadiusToggleLabel}>Use radius from my location</Text>
+                                </TouchableOpacity>
+
+                                {radiusEnabled && (
+                                    <>
+                                        {!hasTrainerCoords && (
+                                            <Text style={styles.filterRadiusWarn}>Set your address in profile — radius search needs your coordinates.</Text>
+                                        )}
+                                        <View style={styles.filterRadiusInputRow}>
+                                            <TextInput
+                                                style={styles.filterNumInput}
+                                                value={String(radiusValue)}
+                                                onChangeText={(t) => {
+                                                    const n = parseInt(t.replace(/[^0-9]/g, ''), 10);
+                                                    if (isNaN(n)) {
+                                                        setRadiusValue(0);
+                                                    } else {
+                                                        setRadiusValue(Math.min(n, MAX_RADIUS));
+                                                    }
+                                                }}
+                                                keyboardType="number-pad"
+                                                placeholder={String(DEFAULT_RADIUS)}
+                                                placeholderTextColor={Colors.textTertiary}
+                                            />
+                                            <Text style={styles.filterRadiusUnit}>{unit}</Text>
+                                            <Text style={styles.filterRadiusHint}>(max {MAX_RADIUS})</Text>
+                                        </View>
+                                    </>
+                                )}
+                            </View>
+                        </ScrollView>
+
+                        <View style={styles.filterModalFooter}>
+                            <TouchableOpacity style={styles.filterResetBtn} onPress={clearFilters} activeOpacity={0.7}>
+                                <Text style={styles.filterResetText}>Clear filters</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={styles.filterDoneBtn}
+                                onPress={() => setFilterModalVisible(false)}
+                                activeOpacity={0.8}
+                            >
+                                <Text style={styles.filterDoneText}>
+                                    Show {filteredAthletes.length} Athlete{filteredAthletes.length !== 1 ? 's' : ''}
+                                </Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
         </View>
     );
 }
@@ -2096,5 +2444,264 @@ const styles = StyleSheet.create({
     sessionTypeChipTextActive: {
         color: Colors.primary,
         fontWeight: FontWeight.semibold,
+    },
+
+    // Athlete filter bar
+    searchRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.sm,
+        marginBottom: Spacing.md,
+    },
+    filterTriggerBtn: {
+        width: 44,
+        height: 44,
+        borderRadius: BorderRadius.md,
+        backgroundColor: Colors.card,
+        borderWidth: 1,
+        borderColor: Colors.border,
+        alignItems: 'center',
+        justifyContent: 'center',
+        position: 'relative',
+    },
+    filterTriggerBadge: {
+        position: 'absolute',
+        top: -4,
+        right: -4,
+        minWidth: 18,
+        height: 18,
+        paddingHorizontal: 4,
+        borderRadius: 9,
+        backgroundColor: Colors.primary,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    filterTriggerBadgeText: {
+        color: Colors.background,
+        fontSize: 10,
+        fontWeight: FontWeight.bold,
+    },
+    resultCountText: {
+        fontSize: FontSize.xs,
+        color: Colors.textTertiary,
+        marginBottom: Spacing.md,
+    },
+    resultCountStrong: {
+        color: Colors.text,
+        fontWeight: FontWeight.bold,
+    },
+    radiusWarning: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.sm,
+        paddingVertical: Spacing.sm,
+        paddingHorizontal: Spacing.md,
+        backgroundColor: Colors.card,
+        borderRadius: BorderRadius.md,
+        marginBottom: Spacing.md,
+    },
+    radiusWarningText: {
+        flex: 1,
+        fontSize: FontSize.xs,
+        color: Colors.textSecondary,
+    },
+
+    // Filter modal
+    filterModalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        justifyContent: 'flex-end',
+    },
+    filterModalContent: {
+        backgroundColor: Colors.background,
+        borderTopLeftRadius: BorderRadius.xl,
+        borderTopRightRadius: BorderRadius.xl,
+        maxHeight: '90%',
+        paddingBottom: Spacing.xl,
+    },
+    filterModalDragHandle: {
+        width: 40,
+        height: 4,
+        borderRadius: 2,
+        backgroundColor: Colors.border,
+        alignSelf: 'center',
+        marginTop: Spacing.md,
+        marginBottom: Spacing.md,
+    },
+    filterModalHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: Spacing.xl,
+        paddingBottom: Spacing.lg,
+        borderBottomWidth: 1,
+        borderBottomColor: Colors.border,
+    },
+    filterModalTitle: {
+        fontSize: FontSize.lg,
+        fontWeight: FontWeight.bold,
+        color: Colors.text,
+    },
+    filterModalCloseBtn: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: Colors.card,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    filterModalScroll: {
+        paddingHorizontal: Spacing.xl,
+    },
+    filterSectionBlock: {
+        paddingVertical: Spacing.lg,
+        borderBottomWidth: 1,
+        borderBottomColor: Colors.border,
+    },
+    filterSectionLabel: {
+        fontSize: FontSize.md,
+        fontWeight: FontWeight.semibold,
+        color: Colors.text,
+        marginBottom: Spacing.md,
+    },
+    filterPillRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: Spacing.sm,
+    },
+    filterPill: {
+        paddingHorizontal: Spacing.lg,
+        paddingVertical: Spacing.sm,
+        borderRadius: BorderRadius.pill,
+        backgroundColor: Colors.card,
+        borderWidth: 1,
+        borderColor: Colors.border,
+    },
+    filterPillActive: {
+        backgroundColor: Colors.primary,
+        borderColor: Colors.primary,
+    },
+    filterPillText: {
+        fontSize: FontSize.sm,
+        color: Colors.textSecondary,
+        fontWeight: FontWeight.medium,
+    },
+    filterPillTextActive: {
+        color: Colors.background,
+        fontWeight: FontWeight.semibold,
+    },
+    filterAgeRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.md,
+    },
+    filterAgeSep: {
+        color: Colors.textTertiary,
+        fontSize: FontSize.sm,
+    },
+    filterNumInput: {
+        flex: 1,
+        backgroundColor: Colors.card,
+        borderWidth: 1,
+        borderColor: Colors.border,
+        borderRadius: BorderRadius.md,
+        paddingHorizontal: Spacing.md,
+        paddingVertical: Spacing.md,
+        color: Colors.text,
+        fontSize: FontSize.md,
+    },
+    filterTextInput: {
+        backgroundColor: Colors.card,
+        borderWidth: 1,
+        borderColor: Colors.border,
+        borderRadius: BorderRadius.md,
+        paddingHorizontal: Spacing.md,
+        paddingVertical: Spacing.md,
+        color: Colors.text,
+        fontSize: FontSize.md,
+    },
+    filterTextInputDisabled: {
+        opacity: 0.5,
+    },
+    filterRadiusToggleRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.sm,
+        marginTop: Spacing.md,
+    },
+    filterCheckbox: {
+        width: 20,
+        height: 20,
+        borderRadius: 4,
+        borderWidth: 1.5,
+        borderColor: Colors.border,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: Colors.card,
+    },
+    filterCheckboxChecked: {
+        backgroundColor: Colors.primary,
+        borderColor: Colors.primary,
+    },
+    filterRadiusToggleLabel: {
+        fontSize: FontSize.sm,
+        color: Colors.textSecondary,
+        fontWeight: FontWeight.medium,
+    },
+    filterRadiusInputRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.md,
+        marginTop: Spacing.md,
+    },
+    filterRadiusUnit: {
+        fontSize: FontSize.md,
+        color: Colors.text,
+        fontWeight: FontWeight.semibold,
+    },
+    filterRadiusHint: {
+        fontSize: FontSize.xs,
+        color: Colors.textTertiary,
+    },
+    filterRadiusWarn: {
+        fontSize: FontSize.xs,
+        color: Colors.warning,
+        marginTop: Spacing.sm,
+    },
+    filterModalFooter: {
+        flexDirection: 'row',
+        paddingHorizontal: Spacing.xl,
+        paddingTop: Spacing.lg,
+        gap: Spacing.md,
+        borderTopWidth: 1,
+        borderTopColor: Colors.border,
+    },
+    filterResetBtn: {
+        flex: 1,
+        paddingVertical: Spacing.md,
+        borderRadius: BorderRadius.md,
+        backgroundColor: Colors.card,
+        borderWidth: 1,
+        borderColor: Colors.border,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    filterResetText: {
+        fontSize: FontSize.md,
+        color: Colors.textSecondary,
+        fontWeight: FontWeight.semibold,
+    },
+    filterDoneBtn: {
+        flex: 2,
+        paddingVertical: Spacing.md,
+        borderRadius: BorderRadius.md,
+        backgroundColor: Colors.primary,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    filterDoneText: {
+        fontSize: FontSize.md,
+        color: Colors.background,
+        fontWeight: FontWeight.bold,
     },
 });
