@@ -12,6 +12,9 @@ export default function AdminDashboardPage() {
     const [activities, setActivities] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [chartHeights, setChartHeights] = useState<number[]>(Array(12).fill(20));
+    const [athleteSignups, setAthleteSignups] = useState<number[]>(Array(12).fill(0));
+    const [trainerSignups, setTrainerSignups] = useState<number[]>(Array(12).fill(0));
+    const [thisMonthNewUsers, setThisMonthNewUsers] = useState<number>(0);
     const [txFilter, setTxFilter] = useState<"All" | "Completed" | "Pending">("All");
     const [showFilterMenu, setShowFilterMenu] = useState(false);
     const filterRef = useRef<HTMLDivElement>(null);
@@ -31,11 +34,14 @@ export default function AdminDashboardPage() {
             try {
                 const res = await adminFetch("/api/admin/dashboard-stats");
                 if (!res.ok) throw new Error(`Failed to load dashboard stats: ${res.status}`);
-                const { stats, transactions, activities, chartHeights } = await res.json();
+                const { stats, transactions, activities, chartHeights, athleteSignups, trainerSignups, thisMonthNewUsers } = await res.json();
                 setStats(stats);
                 setTransactions(transactions || []);
                 setActivities(activities || []);
                 setChartHeights(chartHeights || Array(12).fill(20));
+                setAthleteSignups(athleteSignups || Array(12).fill(0));
+                setTrainerSignups(trainerSignups || Array(12).fill(0));
+                setThisMonthNewUsers(thisMonthNewUsers || 0);
             } catch (err) {
                 console.error(err);
             } finally {
@@ -120,23 +126,49 @@ export default function AdminDashboardPage() {
                     <div className="flex justify-between items-center mb-6">
                         <div>
                             <h2 className="text-lg font-black text-text-main">Platform Growth</h2>
-                            <p className="text-sm text-text-main/60">Growth metrics for the last 12 months</p>
+                            <p className="text-sm text-text-main/60">New user signups per month</p>
+                            {thisMonthNewUsers > 0 && (
+                                <p className="text-xs font-bold text-primary mt-1">{thisMonthNewUsers} new users this month</p>
+                            )}
                         </div>
                         <button className="px-4 py-2 rounded-full border border-gray-700 text-xs font-bold text-text-main/80 hover:text-text-main transition-colors">
                             Last 12 Months
                         </button>
                     </div>
-                    {/* CSS Bar Chart */}
+                    {/* CSS Bar Chart - Stacked: athletes (bottom, primary) + trainers (top, blue) */}
                     <div className="flex flex-col gap-2 mt-4">
                         <div className="h-48 sm:h-56 flex items-end justify-between gap-1 sm:gap-1.5 px-1">
                             {["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"].map((month, i) => {
                                 const isActive = i === new Date().getMonth();
+                                const aCount = athleteSignups[i] || 0;
+                                const tCount = trainerSignups[i] || 0;
+                                const total = aCount + tCount;
+                                const colHeight = Math.max(chartHeights[i], 15);
+                                const athletePct = total > 0 ? (aCount / total) * 100 : 0;
+                                const trainerPct = total > 0 ? (tCount / total) * 100 : 0;
+                                const monthFull = ["January","February","March","April","May","June","July","August","September","October","November","December"][i];
+                                const tooltip = `${monthFull}: ${aCount} athletes + ${tCount} trainers`;
                                 return (
-                                    <div key={month} className="flex-1 flex justify-center group">
+                                    <div key={month} className="flex-1 flex justify-center group" title={tooltip}>
                                         <div
-                                            style={{ height: `${Math.max(chartHeights[i], 15)}%` }}
-                                            className={`w-full max-w-10 rounded-t-md transition-all duration-500 ${isActive ? "bg-primary shadow-[0_0_12px_rgba(69,208,255,0.3)]" : "bg-white/30 group-hover:bg-primary/50"}`}
-                                        />
+                                            style={{ height: `${colHeight}%` }}
+                                            className="w-full max-w-10 rounded-t-md overflow-hidden transition-all duration-500 flex flex-col"
+                                        >
+                                            {total === 0 ? (
+                                                <div className="w-full h-full bg-white/10" />
+                                            ) : (
+                                                <>
+                                                    <div
+                                                        style={{ height: `${trainerPct}%` }}
+                                                        className="w-full bg-blue-500/70 group-hover:bg-blue-500 transition-colors"
+                                                    />
+                                                    <div
+                                                        style={{ height: `${athletePct}%` }}
+                                                        className={`w-full transition-colors ${isActive ? "bg-primary shadow-[0_0_12px_rgba(69,208,255,0.3)]" : "bg-primary/80 group-hover:bg-primary"}`}
+                                                    />
+                                                </>
+                                            )}
+                                        </div>
                                     </div>
                                 );
                             })}
@@ -147,6 +179,10 @@ export default function AdminDashboardPage() {
                                     <span className={`text-[8px] sm:text-[9px] font-bold tracking-widest ${i % 2 !== 0 ? "hidden sm:block" : ""} ${i === new Date().getMonth() ? "text-primary" : "text-text-main/40"}`}>{month}</span>
                                 </div>
                             ))}
+                        </div>
+                        <div className="flex items-center gap-4 pt-2 text-[10px] font-bold uppercase tracking-widest text-text-main/60">
+                            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-primary inline-block" /> Athletes</span>
+                            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-blue-500/70 inline-block" /> Trainers</span>
                         </div>
                     </div>
                 </div>

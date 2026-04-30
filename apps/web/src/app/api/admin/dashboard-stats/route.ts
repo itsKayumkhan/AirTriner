@@ -75,24 +75,48 @@ export async function GET(req: NextRequest) {
             }));
         }
 
-        const { data: monthlyData } = await adminSupabase
-            .from("bookings")
+        const startOfYear = new Date(new Date().getFullYear(), 0, 1).toISOString();
+        const { data: athleteSignupData } = await adminSupabase
+            .from("users")
             .select("created_at")
-            .gte("created_at", new Date(new Date().getFullYear(), 0, 1).toISOString());
+            .eq("role", "athlete")
+            .gte("created_at", startOfYear);
+        const { data: trainerSignupData } = await adminSupabase
+            .from("users")
+            .select("created_at")
+            .eq("role", "trainer")
+            .gte("created_at", startOfYear);
 
-        const monthlyCounts = Array(12).fill(0);
-        (monthlyData || []).forEach((b: any) => {
-            const month = new Date(b.created_at).getMonth();
-            monthlyCounts[month]++;
+        const athleteCounts = Array(12).fill(0);
+        const trainerCounts = Array(12).fill(0);
+        (athleteSignupData || []).forEach((u: any) => {
+            const m = new Date(u.created_at).getMonth();
+            athleteCounts[m]++;
+        });
+        (trainerSignupData || []).forEach((u: any) => {
+            const m = new Date(u.created_at).getMonth();
+            trainerCounts[m]++;
         });
 
-        const maxCount = Math.max(...monthlyCounts, 1);
-        const hasBookings = monthlyCounts.some((c: number) => c > 0);
-        const chartHeights = monthlyCounts.map((c: number) =>
-            hasBookings ? Math.max(c > 0 ? 8 : 20, Math.round((c / maxCount) * 100)) : 20
+        const combinedCounts = athleteCounts.map((a: number, i: number) => a + trainerCounts[i]);
+        const maxCount = Math.max(...combinedCounts, 1);
+        const hasSignups = combinedCounts.some((c: number) => c > 0);
+        const chartHeights = combinedCounts.map((c: number) =>
+            hasSignups ? Math.max(c > 0 ? 8 : 20, Math.round((c / maxCount) * 100)) : 20
         );
 
-        return NextResponse.json({ stats, transactions, activities, chartHeights });
+        const currentMonth = new Date().getMonth();
+        const thisMonthNewUsers = athleteCounts[currentMonth] + trainerCounts[currentMonth];
+
+        return NextResponse.json({
+            stats,
+            transactions,
+            activities,
+            chartHeights,
+            athleteSignups: athleteCounts,
+            trainerSignups: trainerCounts,
+            thisMonthNewUsers,
+        });
     } catch (err: any) {
         console.error("[admin/dashboard-stats]", err);
         return NextResponse.json({ error: err.message }, { status: 500 });
