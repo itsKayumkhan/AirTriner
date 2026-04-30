@@ -121,6 +121,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         ...(user.role === "athlete" ? [
             { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
             { label: "Find Trainers", href: "/dashboard/search", icon: Search },
+            { label: "My Offers", href: "/dashboard/offers", icon: Send },
             { label: "My Bookings", href: "/dashboard/bookings", icon: Calendar },
             { label: "Payments", href: "/dashboard/earnings", icon: CreditCard },
             { label: "Family Accounts", href: "/dashboard/sub-accounts", icon: Users },
