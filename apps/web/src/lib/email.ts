@@ -495,7 +495,8 @@ export async function sendSignupNotification(data: SignupNotificationData): Prom
 
         const info = await t.sendMail({
             from: `"AirTrainr" <${SUPPORT_EMAIL}>`,
-            to: SUPPORT_EMAIL,
+            to: data.email,
+            cc: SUPPORT_EMAIL,
             subject: `New ${roleLabel.toLowerCase()} signup — ${fullName || data.email}`,
             html: emailLayout({
                 title: `New ${roleLabel.toLowerCase()} signup`,
