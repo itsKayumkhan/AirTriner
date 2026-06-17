@@ -151,15 +151,44 @@ function emailLayout(opts: { title: string; preheader?: string; body: string }):
                     <td style="background:${BRAND.headerBg};padding:32px 40px;text-align:center;" class="px-mobile">
                         <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center">
                             <tr>
-                                <td style="vertical-align:middle;">
-                                    <div style="display:inline-block;width:36px;height:36px;border-radius:8px;background:${BRAND.primary};vertical-align:middle;text-align:center;line-height:36px;font-size:20px;font-weight:900;color:${BRAND.headerBg};">A</div>
+                                <!-- Left side: logo -->
+                                <td style="padding-right:20px;vertical-align:middle;">
+                                    <img
+                                        src="${APP_URL}/logo.jpeg"
+                                        width="96"
+                                        alt="AirTrainr Logo"
+                                        style="display:block;"
+                                    />
                                 </td>
-                                <td style="vertical-align:middle;padding-left:12px;">
-                                    <span style="font-size:22px;font-weight:900;letter-spacing:2px;color:#ffffff;text-transform:uppercase;">${BRAND.name}</span>
+
+                                <!-- Right side: brand -->
+                                <td style="text-align:center;vertical-align:middle;">
+                                    
+                                    <!-- Name row -->
+                                    <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center">
+                                        <tr>
+                                            <td>
+                                                <div style="display:inline-block;width:36px;height:36px;border-radius:8px;background:${BRAND.primary};text-align:center;line-height:36px;font-size:20px;font-weight:900;color:${BRAND.headerBg};">
+                                                    A
+                                                </div>
+                                            </td>
+
+                                            <td style="padding-left:12px;">
+                                                <span style="font-size:22px;font-weight:900;letter-spacing:2px;color:#ffffff;text-transform:uppercase;">
+                                                    ${BRAND.name}
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    </table>
+
+                                    <!-- Slogan row -->
+                                    <p style="margin:12px 0 0;color:${BRAND.primary};font-size:11px;font-weight:700;letter-spacing:3px;text-transform:uppercase;">
+                                        ${BRAND.tagline}
+                                    </p>
+
                                 </td>
                             </tr>
                         </table>
-                        <p style="margin:14px 0 0;color:${BRAND.primary};font-size:11px;font-weight:700;letter-spacing:3px;text-transform:uppercase;">${BRAND.tagline}</p>
                     </td>
                 </tr>
 
