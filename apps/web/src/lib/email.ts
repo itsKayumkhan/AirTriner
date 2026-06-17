@@ -167,12 +167,6 @@ function emailLayout(opts: { title: string; preheader?: string; body: string }):
                                     <!-- Name row -->
                                     <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center">
                                         <tr>
-                                            <td>
-                                                <div style="display:inline-block;width:36px;height:36px;border-radius:8px;background:${BRAND.primary};text-align:center;line-height:36px;font-size:20px;font-weight:900;color:${BRAND.headerBg};">
-                                                    A
-                                                </div>
-                                            </td>
-
                                             <td style="padding-left:12px;">
                                                 <span style="font-size:22px;font-weight:900;letter-spacing:2px;color:#ffffff;text-transform:uppercase;">
                                                     ${BRAND.name}
