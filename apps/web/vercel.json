@@ -4,7 +4,7 @@
   "ignoreCommand": "git diff --quiet HEAD^ HEAD .",
   "framework": "nextjs",
   "crons": [{
-    "path": "/api/cron",
+    "path": "/api/cron/profile-notify",
     "schedule": "0 10 * * *"
   }]
 }

@@ -536,3 +536,65 @@ export async function sendSignupNotification(data: SignupNotificationData): Prom
         console.error('[email] Failed to send signup notification:', error);
     }
 }
+
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Profile notification (sent to trainers)
+// ──────────────────────────────────────────────────────────────────────────────
+
+export interface ProfileNotificationData {
+    email: string;
+    firstName: string;
+    lastName: string;
+    role: 'athlete' | 'trainer';
+    platform: 'web' | 'mobile';
+    userId: string;
+}
+
+export async function sendProfileNotification(data: ProfileNotificationData): Promise<void> {
+    try {
+        const t = await getTransporter();
+        const timestamp = new Date().toLocaleString('en-US', {
+            weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+            hour: 'numeric', minute: '2-digit', timeZoneName: 'short',
+        });
+        const fullName = `${data.firstName} ${data.lastName}`.trim();
+        const roleLabel = data.role.charAt(0).toUpperCase() + data.role.slice(1);
+        const platformLabel = data.platform === 'web' ? 'Website' : 'Mobile app';
+
+        const body = `
+            <p style="margin:0 0 16px;font-size:16px;">New ${escapeHtml(roleLabel.toLowerCase())} just joined</p>
+            <p style="margin:0 0 24px;color:${BRAND.textMuted};">A few details are missing from your profile.</p>
+
+            ${infoCard([
+                { label: 'Name', value: escapeHtml(fullName || '(not provided)') },
+                { label: 'Email', value: `<a href="mailto:${escapeHtml(data.email)}" style="color:${BRAND.primaryDark};text-decoration:none;">${escapeHtml(data.email)}</a>` },
+                { label: 'Role', value: `<span style="display:inline-block;padding:2px 10px;background:${data.role === 'trainer' ? '#fef3c7' : '#dbeafe'};color:${data.role === 'trainer' ? '#92400e' : '#1e40af'};border-radius:999px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">${escapeHtml(roleLabel)}</span>` },
+                { label: 'Platform', value: escapeHtml(platformLabel) },
+                { label: 'User ID', value: `<span style="font-family:monospace;font-size:12px;color:${BRAND.textMuted};">${escapeHtml(data.userId)}</span>` },
+                { label: 'Signed up', value: escapeHtml(timestamp) },
+            ])}
+
+            ${emailButton('Complete Profile', `${APP_URL}/dashboard/profile`)}
+        `;
+
+        const info = await t.sendMail({
+            from: `"AirTrainr" <${SUPPORT_EMAIL}>`,
+            to: data.email,
+            cc: SUPPORT_EMAIL,
+            subject: `Missing profile information for ${fullName || data.email}`,
+            html: emailLayout({
+                title: `Missing profile information`,
+                preheader: `${fullName || data.email} needs to complete their profile`,
+                body,
+            }),
+        });
+
+        if (process.env.NODE_ENV !== 'production') {
+            console.log(`[email] Profile notification preview:`, nodemailer.getTestMessageUrl(info));
+        }
+        console.log(`[email] Profile notification sent for ${data.email}`);
+    } catch (error) {
+        console.error('[email] Failed to send profile notification:', error);
+    }
+}
