@@ -12,7 +12,7 @@ const admin = createClient(
  * POST /api/cron/profile-notify
  * Sends a notification email when a new athlete still needs to complete their profile.
 */
-export async function POST() {
+export async function GET() {
   try {
     const { data: users, error } = await admin
       .from("users")
