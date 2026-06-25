@@ -31,7 +31,7 @@ export async function GET() {
         created_at,
         avatar_url,
         phone,
-        trainer_profiles (
+        trainer_profiles!trainer_profiles_user_id_fkey (
           city,
           state,
           zip_code,
