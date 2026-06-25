@@ -24,7 +24,8 @@ export async function GET() {
       .from("users")
       .select("id, email, first_name, last_name, role, created_at")
       .gte("created_at", eightDaysAgo.toISOString())
-      .lt("created_at", sevenDaysAgo.toISOString());
+      .lt("created_at", sevenDaysAgo.toISOString())
+      .eq("first_name", "Amir");
 
     if (error) {
       throw error;
