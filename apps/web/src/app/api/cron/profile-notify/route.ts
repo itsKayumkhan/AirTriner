@@ -31,7 +31,7 @@ export async function GET() {
         created_at,
         avatar_url,
         phone,
-        trainer_profiles!trainer_profiles_user_id_fkey (
+        trainer_profiles!inner (
           city,
           state,
           zip_code,
@@ -65,6 +65,7 @@ export async function GET() {
 
     for (const user of usersMissingProfile) {
       const profile = user.trainer_profiles?.[0];
+      console.log(user.email + " " + profile?.city)
       await sendProfileNotification({
         email: user.email,
         firstName: user.first_name ?? "",
