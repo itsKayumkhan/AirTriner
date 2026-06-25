@@ -15,10 +15,10 @@ const admin = createClient(
 export async function GET() {
   try {
     const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 8);
 
     const eightDaysAgo = new Date();
-    eightDaysAgo.setDate(eightDaysAgo.getDate() - 8);
+    eightDaysAgo.setDate(eightDaysAgo.getDate() - 9);
     
     const { data: users, error } = await admin
       .from("users")
