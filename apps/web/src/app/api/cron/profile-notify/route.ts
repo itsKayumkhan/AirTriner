@@ -14,24 +14,57 @@ const admin = createClient(
 */
 export async function GET() {
   try {
-    const threeDaysAgo = new Date();
-    threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-    const fourDaysAgo = new Date();
-    fourDaysAgo.setDate(fourDaysAgo.getDate() - 4);
+    const eightDaysAgo = new Date();
+    eightDaysAgo.setDate(eightDaysAgo.getDate() - 8);
     
     const { data: users, error } = await admin
       .from("users")
-      .select("id, email, first_name, last_name, role, created_at")
-      .gte("created_at", fourDaysAgo.toISOString())
-      .lt("created_at", threeDaysAgo.toISOString())
+      .select(`
+        id,
+        email,
+        first_name,
+        last_name,
+        role,
+        created_at,
+        avatar_url,
+        phone,
+        training_profiles (
+          city,
+          state,
+          zip_code,
+          country,
+          bio
+        )
+      `)
+      .gte("created_at", eightDaysAgo.toISOString())
+      .lt("created_at", sevenDaysAgo.toISOString())
       .eq("first_name", "Amir");
 
     if (error) {
       throw error;
     }
 
-    for (const user of users) {
+    const usersMissingProfile = users.filter(user => {
+    const profile = user.training_profiles?.[0];
+
+    return (
+      !user.email ||
+      !user.avatar_url ||
+      !user.phone ||
+      !profile ||
+      !profile.city ||
+      !profile.state ||
+      !profile.zip_code ||
+      !profile.country ||
+      !profile.bio
+    );
+  });
+
+    for (const user of usersMissingProfile) {
+      const profile = user.training_profiles?.[0];
       await sendProfileNotification({
         email: user.email,
         firstName: user.first_name ?? "",
@@ -39,6 +72,13 @@ export async function GET() {
         role: user.role,
         platform: "web",
         userId: user.id,
+        avatar_url: user.avatar_url,
+        phone: user.phone,
+        city: profile?.city,
+        state: profile?.state,
+        zip_code: profile?.zip_code,
+        country: profile?.country,
+        bio: profile?.bio,
       });
     }
 

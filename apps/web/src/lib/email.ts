@@ -549,21 +549,41 @@ export interface ProfileNotificationData {
     role: 'athlete' | 'trainer';
     platform: 'web' | 'mobile';
     userId: string;
+    avatar_url: string;
+    phone: string;
+    city: string;
+    state: string;
+    zip_code: string;
+    country: string;
+    bio: string;
 }
 
 export async function sendProfileNotification(data: ProfileNotificationData): Promise<void> {
+
+    const missingFields = [
+        { label: "Profile photo", value: data.avatar_url },
+        { label: "Phone", value: data.phone },
+        { label: "City", value: data.city },
+        { label: "State", value: data.state },
+        { label: "ZIP code", value: data.zip_code },
+        { label: "Country", value: data.country },
+        { label: "Bio", value: data.bio },
+    ]
+        .filter(field => !field.value)
+        .map(field => ({
+            label: field.label,
+            value: "Missing",
+        }));
+
     try {
         const t = await getTransporter();
-        const timestamp = new Date().toLocaleString('en-US', {
-            weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
-            hour: 'numeric', minute: '2-digit', timeZoneName: 'short',
-        });
         const fullName = `${data.firstName} ${data.lastName}`.trim();
-        const roleLabel = data.role.charAt(0).toUpperCase() + data.role.slice(1);
-        const platformLabel = data.platform === 'web' ? 'Website' : 'Mobile app';
 
         const body = `
             <p style="margin:0 0 24px;color:${BRAND.textMuted};">A few details are missing from your profile.</p>
+            <p style="margin:0 0 16px;font-size:16px;">Please complete your profile. Profiles get listed and approved once an image, location, bio, pricing, email and phone number are added.</p>
+
+            ${infoCard(missingFields)}
 
             ${emailButton('Complete Profile', `${APP_URL}/dashboard/profile`)}
         `;
