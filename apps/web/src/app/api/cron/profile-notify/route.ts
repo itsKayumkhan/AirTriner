@@ -14,17 +14,17 @@ const admin = createClient(
 */
 export async function GET() {
   try {
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const threeDaysAgo = new Date();
+    threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
 
-    const eightDaysAgo = new Date();
-    eightDaysAgo.setDate(eightDaysAgo.getDate() - 8);
+    const fourDaysAgo = new Date();
+    fourDaysAgo.setDate(fourDaysAgo.getDate() - 4);
     
     const { data: users, error } = await admin
       .from("users")
       .select("id, email, first_name, last_name, role, created_at")
-      .gte("created_at", eightDaysAgo.toISOString())
-      .lt("created_at", sevenDaysAgo.toISOString())
+      .gte("created_at", fourDaysAgo.toISOString())
+      .lt("created_at", threeDaysAgo.toISOString())
       .eq("first_name", "Amir");
 
     if (error) {
