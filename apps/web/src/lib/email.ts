@@ -563,17 +563,7 @@ export async function sendProfileNotification(data: ProfileNotificationData): Pr
         const platformLabel = data.platform === 'web' ? 'Website' : 'Mobile app';
 
         const body = `
-            <p style="margin:0 0 16px;font-size:16px;">New ${escapeHtml(roleLabel.toLowerCase())} just joined</p>
             <p style="margin:0 0 24px;color:${BRAND.textMuted};">A few details are missing from your profile.</p>
-
-            ${infoCard([
-                { label: 'Name', value: escapeHtml(fullName || '(not provided)') },
-                { label: 'Email', value: `<a href="mailto:${escapeHtml(data.email)}" style="color:${BRAND.primaryDark};text-decoration:none;">${escapeHtml(data.email)}</a>` },
-                { label: 'Role', value: `<span style="display:inline-block;padding:2px 10px;background:${data.role === 'trainer' ? '#fef3c7' : '#dbeafe'};color:${data.role === 'trainer' ? '#92400e' : '#1e40af'};border-radius:999px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">${escapeHtml(roleLabel)}</span>` },
-                { label: 'Platform', value: escapeHtml(platformLabel) },
-                { label: 'User ID', value: `<span style="font-family:monospace;font-size:12px;color:${BRAND.textMuted};">${escapeHtml(data.userId)}</span>` },
-                { label: 'Signed up', value: escapeHtml(timestamp) },
-            ])}
 
             ${emailButton('Complete Profile', `${APP_URL}/dashboard/profile`)}
         `;
