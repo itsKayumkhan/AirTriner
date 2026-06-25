@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-// import { sendProfileNotification } from "@/lib/email";
+import { sendProfileNotification } from "@/lib/email";
 
 const admin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -31,9 +31,17 @@ export async function GET() {
       throw error;
     }
 
-    users.forEach(u => {
-      console.log(u.email);
-    });
+    for (const user of users) {
+      await sendProfileNotification({
+        email: user.email,
+        firstName: user.first_name ?? "",
+        lastName: user.last_name ?? "",
+        role: user.role,
+        platform: "web",
+        userId: user.id,
+      });
+    }
+
 
     return NextResponse.json({
       ok: true,
