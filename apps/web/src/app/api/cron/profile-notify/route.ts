@@ -31,7 +31,7 @@ export async function GET() {
         created_at,
         avatar_url,
         phone,
-        training_profiles (
+        trainer_profiles (
           city,
           state,
           zip_code,
@@ -48,7 +48,7 @@ export async function GET() {
     }
 
     const usersMissingProfile = users.filter(user => {
-    const profile = user.training_profiles?.[0];
+    const profile = user.trainer_profiles?.[0];
 
     return (
       !user.email ||
@@ -64,7 +64,7 @@ export async function GET() {
   });
 
     for (const user of usersMissingProfile) {
-      const profile = user.training_profiles?.[0];
+      const profile = user.trainer_profiles?.[0];
       await sendProfileNotification({
         email: user.email,
         firstName: user.first_name ?? "",
