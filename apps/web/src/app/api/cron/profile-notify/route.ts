@@ -65,6 +65,7 @@ export async function GET() {
 
     for (const user of usersMissingProfile) {
       const profile = user.trainer_profiles?.[0];
+      console.log(JSON.stringify(user.trainer_profiles, null, 2));
       console.log(user.email + " " + profile?.city)
       await sendProfileNotification({
         email: user.email,
