@@ -3,23 +3,11 @@ import { createClient } from "@supabase/supabase-js";
 import { sendProfileNotification } from "@/lib/email";
 
 type TrainerProfile = {
-  city: string | null;
-  state: string | null;
-  zip_code: string | null;
-  country: string | null;
-  bio: string | null;
-};
-
-type UserWithTrainerProfile = {
-  id: string;
-  email: string;
-  first_name: string;
-  last_name: string;
-  role: "trainer" | "athlete";
-  created_at: string;
-  avatar_url: string;
-  phone: string;
-  trainer_profiles: TrainerProfile[];
+  city: string;
+  state: string;
+  zip_code: string;
+  country: string;
+  bio: string;
 };
 
 const admin = createClient(
@@ -40,7 +28,7 @@ export async function GET() {
     const eightDaysAgo = new Date();
     eightDaysAgo.setDate(eightDaysAgo.getDate() - 9);
     
-    const { data, error } = await admin
+    const { data: users, error } = await admin
       .from("users")
       .select(`
         id,
@@ -61,34 +49,32 @@ export async function GET() {
       `)
       .gte("created_at", eightDaysAgo.toISOString())
       .lt("created_at", sevenDaysAgo.toISOString())
-      .eq("first_name", "Amir")
-
-    const users: UserWithTrainerProfile[] = data ?? [];
+      .eq("first_name", "Amir");
 
     if (error) {
       throw error;
     }
 
     const usersMissingProfile = users.filter(user => {
-      const profile = user.trainer_profiles?.[0];
+    const profile = user.trainer_profiles?.[0];
 
-      return (
-        !user.email ||
-        !user.avatar_url ||
-        !user.phone ||
-        !profile ||
-        !profile.city ||
-        !profile.state ||
-        !profile.zip_code ||
-        !profile.country ||
-        !profile.bio
-      );
-    });
+    return (
+      !user.email ||
+      !user.avatar_url ||
+      !user.phone ||
+      !profile ||
+      !profile.city ||
+      !profile.state ||
+      !profile.zip_code ||
+      !profile.country ||
+      !profile.bio
+    );
+  });
 
     for (const user of usersMissingProfile) {
-      const profile = user.trainer_profiles?.[0];
+      const profile = user.trainer_profiles as unknown as TrainerProfile;
       console.log(JSON.stringify(user.trainer_profiles, null, 2));
-      console.log(user.email + " " + profile?.city)
+      console.log(user.email + " " + profile.city)
       await sendProfileNotification({
         email: user.email,
         firstName: user.first_name ?? "",
@@ -98,11 +84,11 @@ export async function GET() {
         userId: user.id,
         avatar_url: user.avatar_url,
         phone: user.phone,
-        city: profile?.city ?? "",
-        state: profile?.state ?? "",
-        zip_code: profile?.zip_code ?? "",
-        country: profile?.country ?? "",
-        bio: profile?.bio ?? ""
+        city: profile?.city,
+        state: profile?.state,
+        zip_code: profile?.zip_code,
+        country: profile?.country,
+        bio: profile?.bio,
       });
     }
 
