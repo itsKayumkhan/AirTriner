@@ -565,7 +565,7 @@ export async function sendProfileNotification(data: ProfileNotificationData): Pr
         { label: "Phone", value: data.phone },
         { label: "City", value: data.city },
         { label: "State", value: data.state },
-        { label: "ZIP code", value: data.zip_code },
+        { label: "Postal code / ZIP code", value: data.zip_code },
         { label: "Country", value: data.country },
         { label: "Bio", value: data.bio },
     ]
