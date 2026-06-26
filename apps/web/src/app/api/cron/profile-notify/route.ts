@@ -17,10 +17,10 @@ const admin = createClient(
 );
 
 /**
- * POST /api/cron/profile-notify
+ * GET /api/cron/profile-notify
  * Sends a notification email when a new athlete still needs to complete their profile.
 */
-export async function POST(request: NextRequest) {
+export async function GET(request: NextRequest) {
   const authHeader = request.headers.get("authorization");
 
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
