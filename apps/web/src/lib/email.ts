@@ -562,7 +562,7 @@ export async function sendProfileNotification(data: ProfileNotificationData): Pr
 
     const missingFields = [
         { label: "Profile photo", value: data.avatar_url },
-        { label: "Phone", value: data.phone },
+        { label: "Phone number", value: data.phone },
         { label: "City", value: data.city },
         { label: "State", value: data.state },
         { label: "Postal code / ZIP code", value: data.zip_code },
