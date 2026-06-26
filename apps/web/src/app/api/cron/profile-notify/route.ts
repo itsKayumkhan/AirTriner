@@ -31,11 +31,11 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 8);
+    const threeDaysAgo = new Date();
+    threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
 
-    const eightDaysAgo = new Date();
-    eightDaysAgo.setDate(eightDaysAgo.getDate() - 9);
+    const fourDaysAgo = new Date();
+    fourDaysAgo.setDate(fourDaysAgo.getDate() - 4);
     
     const { data: users, error } = await admin
       .from("users")
@@ -56,9 +56,8 @@ export async function POST(request: NextRequest) {
           bio
         )
       `)
-      .gte("created_at", eightDaysAgo.toISOString())
-      .lt("created_at", sevenDaysAgo.toISOString())
-      .eq("first_name", "Amir");
+      .gte("created_at", fourDaysAgo.toISOString())
+      .lt("created_at", threeDaysAgo.toISOString());
 
     if (error) {
       throw error;
@@ -82,8 +81,7 @@ export async function POST(request: NextRequest) {
 
     for (const user of usersMissingProfile) {
       const profile = user.trainer_profiles as unknown as TrainerProfile;
-      console.log(JSON.stringify(user.trainer_profiles, null, 2));
-      console.log(user.email + " " + profile.city)
+
       await sendProfileNotification({
         email: user.email,
         firstName: user.first_name ?? "",
