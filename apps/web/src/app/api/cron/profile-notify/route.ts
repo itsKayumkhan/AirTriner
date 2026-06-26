@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse, NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { sendProfileNotification } from "@/lib/email";
 
@@ -20,7 +20,16 @@ const admin = createClient(
  * POST /api/cron/profile-notify
  * Sends a notification email when a new athlete still needs to complete their profile.
 */
-export async function GET() {
+export async function POST(request: NextRequest) {
+  const authHeader = request.headers.get("authorization");
+
+  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    return NextResponse.json(
+      { error: "Unauthorized" },
+      { status: 401 }
+    );
+  }
+
   try {
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 8);
