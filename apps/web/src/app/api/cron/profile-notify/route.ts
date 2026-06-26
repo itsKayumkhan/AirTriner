@@ -56,20 +56,20 @@ export async function GET() {
     }
 
     const usersMissingProfile = users.filter(user => {
-    const profile = user.trainer_profiles?.[0];
+      const profile = user.trainer_profiles as unknown as TrainerProfile;
 
-    return (
-      !user.email ||
-      !user.avatar_url ||
-      !user.phone ||
-      !profile ||
-      !profile.city ||
-      !profile.state ||
-      !profile.zip_code ||
-      !profile.country ||
-      !profile.bio
-    );
-  });
+      return (
+        !user.email ||
+        !user.avatar_url ||
+        !user.phone ||
+        !profile ||
+        !profile.city ||
+        !profile.state ||
+        !profile.zip_code ||
+        !profile.country ||
+        !profile.bio
+      );
+    });
 
     for (const user of usersMissingProfile) {
       const profile = user.trainer_profiles as unknown as TrainerProfile;
